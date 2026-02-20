@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta content="width=device-width, initial-scale=1.0" name="viewport" />
+    <title>Salsa Elite | El Arte del Movimiento</title>
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&amp;display=swap"
+        rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght@100..700,0..1&amp;display=swap"
+        rel="stylesheet" />
+    <link
+        href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap"
+        rel="stylesheet" />
+    <script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#ed2630",
+                        "background-light": "#f8f6f6",
+                        "background-dark": "#0a0a0a",
+                    },
+                    fontFamily: {
+                        "display": ["Plus Jakarta Sans", "sans-serif"]
+                    },
+                    borderRadius: {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                },
+            },
+        }
+    </script>
+    <style>
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        .hide-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+
+        .hide-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+
+        .glass-tag {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(8px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .video-card-gradient {
+            background: linear-gradient(to top, rgba(10, 10, 10, 0.9) 0%, rgba(10, 10, 10, 0.4) 30%, transparent 60%);
+        }
+
+        .hero-overlay {
+            background: linear-gradient(to bottom, rgba(10, 10, 10, 0.4) 0%, rgba(10, 10, 10, 0.8) 80%, #0a0a0a 100%);
+        }
+    </style>
+</head>
+
+<body
+    class="bg-background-light dark:bg-background-dark text-slate-900 dark:text-slate-100 selection:bg-primary selection:text-white">
+    <!-- Minimalist Navigation Bar -->
+    <nav
+        class="fixed top-0 w-full z-50 px-6 py-4 flex items-center justify-between transition-all duration-300 bg-background-dark/20 backdrop-blur-md border-b border-white/5">
+        <div class="flex items-center gap-2">
+            <div class="text-primary">
+                <svg class="w-8 h-8" fill="currentColor" viewbox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+                    <path
+                        d="M13.8261 30.5736C16.7203 29.8826 20.2244 29.4783 24 29.4783C27.7756 29.4783 31.2797 29.8826 34.1739 30.5736C36.9144 31.2278 39.9967 32.7669 41.3563 33.8352L24.8486 7.36089C24.4571 6.73303 23.5429 6.73303 23.1514 7.36089L6.64374 33.8352C8.00331 32.7669 11.0856 31.2278 13.8261 30.5736Z">
+                    </path>
+                    <path clip-rule="evenodd"
+                        d="M39.998 35.764C39.9944 35.7463 39.9875 35.7155 39.9748 35.6706C39.9436 35.5601 39.8949 35.4259 39.8346 35.2825C39.8168 35.2403 39.7989 35.1993 39.7813 35.1602C38.5103 34.2887 35.9788 33.0607 33.7095 32.5189C30.9875 31.8691 27.6413 31.4783 24 31.4783C20.3587 31.4783 17.0125 31.8691 14.2905 32.5189C12.0012 33.0654 9.44505 34.3104 8.18538 35.1832C8.17384 35.2075 8.16216 35.233 8.15052 35.2592C8.09919 35.3751 8.05721 35.4886 8.02977 35.589C8.00356 35.6848 8.00039 35.7333 8.00004 35.7388C8.00004 35.739 8 35.7393 8.00004 35.7388C8.00004 35.7641 8.0104 36.0767 8.68485 36.6314C9.34546 37.1746 10.4222 37.7531 11.9291 38.2772C14.9242 39.319 19.1919 40 24 40C28.8081 40 33.0758 39.319 36.0709 38.2772C37.5778 37.7531 38.6545 37.1746 39.3151 36.6314C39.9006 36.1499 39.9857 35.8511 39.998 35.764ZM4.95178 32.7688L21.4543 6.30267C22.6288 4.4191 25.3712 4.41909 26.5457 6.30267L43.0534 32.777C43.0709 32.8052 43.0878 32.8338 43.104 32.8629L41.3563 33.8352C43.104 32.8629 43.1038 32.8626 43.104 32.8629L43.1051 32.865L43.1065 32.8675L43.1101 32.8739L43.1199 32.8918C43.1276 32.906 43.1377 32.9246 43.1497 32.9473C43.1738 32.9925 43.2062 33.0545 43.244 33.1299C43.319 33.2792 43.4196 33.489 43.5217 33.7317C43.6901 34.1321 44 34.9311 44 35.7391C44 37.4427 43.003 38.7775 41.8558 39.7209C40.6947 40.6757 39.1354 41.4464 37.385 42.0552C33.8654 43.2794 29.133 44 24 44C18.867 44 14.1346 43.2794 10.615 42.0552C8.86463 41.4464 7.30529 40.6757 6.14419 39.7209C4.99695 38.7775 3.99999 37.4427 3.99999 35.7391C3.99999 34.8725 4.29264 34.0922 4.49321 33.6393C4.60375 33.3898 4.71348 33.1804 4.79687 33.0311C4.83898 32.9556 4.87547 32.8935 4.9035 32.8471C4.91754 32.8238 4.92954 32.8043 4.93916 32.7889L4.94662 32.777L4.95178 32.7688ZM35.9868 29.004L24 9.77997L12.0131 29.004C12.4661 28.8609 12.9179 28.7342 13.3617 28.6282C16.4281 27.8961 20.0901 27.4783 24 27.4783C27.9099 27.4783 31.5719 27.8961 34.6383 28.6282C35.082 28.7342 35.5339 28.8609 35.9868 29.004Z"
+                        fill-rule="evenodd"></path>
+                </svg>
+            </div>
+            <span class="text-xl font-bold tracking-tighter uppercase dark:text-white">Salsa Elite</span>
+        </div>
+        <div class="hidden md:flex items-center gap-10">
+            <a class="text-sm font-semibold tracking-wide hover:text-primary transition-colors"
+                href="#">PRESENTACIONES</a>
+            <a class="text-sm font-semibold tracking-wide hover:text-primary transition-colors" href="#">CLASE
+                MAGISTRAL</a>
+            <a class="text-sm font-semibold tracking-wide hover:text-primary transition-colors" href="#">COMUNIDAD</a>
+            <button
+                class="bg-primary text-white px-6 py-2 rounded-full text-sm font-bold tracking-wide hover:scale-105 transition-transform shadow-[0_0_15px_rgba(237,38,48,0.5)] hover:shadow-[0_0_25px_rgba(237,38,48,0.8)]">ÚNETE
+                A ELITE</button>
+        </div>
+        <div class="md:hidden">
+            <span class="material-symbols-outlined text-3xl">menu</span>
+        </div>
+    </nav>
+    <!-- Hero Section -->
+    <header class="relative h-[90vh] w-full overflow-hidden">
+        <div class="absolute inset-0 bg-cover bg-center"
+            data-alt="High quality action shot of salsa dancers in a dark studio"
+            style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuCKssMtUGdgkTuy6OxRb1Iqf8hEoDH6_i5wOOCrGRkunC6aKJoCmDCVUtZN5k1YRLmIAMjWasA_R0a4RtnVOaITC1eoPkA0rijselsU1Bf5_j7edjTe4otXqI4BFJZPi2K4btyO0cx1nJNxWsXxLNhsoLI_4gBrlVJzvhuCQNhj-6KNYwyk53zNMVBQiB3QHUt1G96vF4f48DwM33uxAFV49Xa_kt-aiRSg8Jypp42ohMbplj77gmp5lZSmgCFgyUQdDpB_em9IawY');">
+        </div>
+        <div class="absolute inset-0 hero-overlay"></div>
+        <div class="relative h-full flex flex-col items-center justify-center text-center px-4">
+            <h1 class="text-white text-6xl md:text-8xl font-black leading-none tracking-tight mb-4 drop-shadow-2xl">
+                EL ARTE DEL <br /><span class="text-primary italic">MOVIMIENTO</span>
+            </h1>
+            <p class="text-slate-300 text-lg md:text-xl max-w-2xl mb-8 font-light tracking-wide">
+                Experimenta la pasión y el ritmo de la instrucción de salsa de clase mundial a través de una narración
+                visual cinematográfica.
+            </p>
+            <div class="flex flex-col md:flex-row gap-4">
+                <button
+                    class="bg-primary text-white px-8 py-4 rounded font-bold tracking-widest text-sm hover:bg-primary/90 transition-all uppercase flex items-center gap-2 shadow-[0_0_15px_rgba(237,38,48,0.3)] hover:shadow-[0_0_25px_rgba(237,38,48,0.6)] hover:-translate-y-1">
+                    <span class="material-symbols-outlined fill-1">play_arrow</span> Ver Último Resumen
+                </button>
+                <button
+                    class="bg-white/10 backdrop-blur-md text-white border border-white/20 px-8 py-4 rounded font-bold tracking-widest text-sm hover:bg-white/20 transition-all uppercase hover:-translate-y-1">
+                    Explorar Clases
+                </button>
+            </div>
+        </div>
+    </header>
+    <main class="relative z-10 -mt-20 space-y-24 pb-20">
+        <!-- Featured Performances - Horizontal Large Scale -->
+
+        <!-- Latest Recaps - Cinematic Poster Grid -->
+        <section class="px-6 md:px-12">
+            <div class="flex items-end justify-between mb-8">
+                <div>
+                    <h2 class="text-white text-3xl font-bold tracking-tight uppercase">Últimos Resúmenes</h2>
+                    <p class="text-slate-400 text-sm mt-1">Momentos destacados de las clases de los últimos 7 días.</p>
+                </div>
+                <a class="text-primary text-xs font-bold tracking-widest uppercase hover:underline transition-all hover:text-white"
+                    href="#">Ver Todos</a>
+            </div>
+            <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                <!-- Recap Card 1 -->
+                <div class="group cursor-pointer">
+                    <div class="relative aspect-[2/3] rounded-lg overflow-hidden mb-3">
+                        <div class="absolute inset-0 bg-cover bg-center transition-transform duration-500 group-hover:scale-105"
+                            data-alt="Instructor demonstrating a salsa move"
+                            style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuAbkPG_6F0ote1x6ZNTrhx1kSI4KCBpEyq-xdxbfF2rn6-Eb4UPGdO6_ef0VM5namJYDLjP3S7n5-tVabyoNVhJmV0izhhadxP0SZAz_Z0iGir5A3aLC2n9GbHOK-4R8QpS16brRQXYUcYUWeIBXbuGPhNLhMwB_Ss9s2MjzE7MMBkDzwRD9iaasDRb6hX1zNaP0Kp6c6-mNcZGzN48_QWo3qXoyu2dHepBPQLepM_bVN0l4i7InL6SnlQeH8oSsiQP4GSY-MLInno');">
+                        </div>
+                        <div
+                            class="absolute top-2 left-2 glass-tag px-2 py-1 rounded text-[10px] font-bold text-white uppercase">
+                            Salsa On2</div>
+                        <div
+                            class="absolute inset-0 video-card-gradient opacity-60 group-hover:opacity-80 transition-opacity">
+                        </div>
+                        <div
+                            class="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-300 translate-y-2 group-hover:translate-y-0">
+                            <span class="material-symbols-outlined text-white text-4xl">play_circle</span>
+                        </div>
+                    </div>
+                    <h4
+                        class="text-white text-sm font-bold uppercase tracking-wide group-hover:text-primary transition-colors">
+                        Técnica de Giros II</h4>
+                    <p class="text-slate-500 text-xs mt-0.5">Antonio Ruiz</p>
+                </div>
+                <!-- Recap Card 2 -->
+                <div class="group cursor-pointer">
+                    <div class="relative aspect-[2/3] rounded-lg overflow-hidden mb-3">
+                        <div class="absolute inset-0 bg-cover bg-center transition-transform duration-500 group-hover:scale-105"
+                            data-alt="Dance studio with soft ambient lighting"
+                            style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuD4DkPU6NseKWe-fRduA4h11ZrBo9s5zMSmigvBP3FZrLoT8267CajIcmRTJyd82E4NGl_mpJvy--1jlch_ozgTkPAURcT_sS8eQsIgZaB1Kid7gxS7Jlw6kPliJuGVlAGRI-TkAHlcxa0eNom_4Ej4Hl3-xi6Dfm31LUtIOf83TsQdFSq-2WOSpdfol5R7lEXW4JmIb5e9hzmIIN3QlOHqrMQZRCL4y0Nl88fopNcqZJYppYB0EW2Ukl5sCizoxLhMZN_CWbcOahk');">
+                        </div>
+                        <div
+                            class="absolute top-2 left-2 glass-tag px-2 py-1 rounded text-[10px] font-bold text-white uppercase">
+                            Estilo Cubano</div>
+                        <div
+                            class="absolute inset-0 video-card-gradient opacity-60 group-hover:opacity-80 transition-opacity">
+                        </div>
+                        <div
+                            class="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-300 translate-y-2 group-hover:translate-y-0">
+                            <span class="material-symbols-outlined text-white text-4xl">play_circle</span>
+                        </div>
+                    </div>
+                    <h4
+                        class="text-white text-sm font-bold uppercase tracking-wide group-hover:text-primary transition-colors">
+                        Patrones de Rueda</h4>
+                    <p class="text-slate-500 text-xs mt-0.5">Isabella Costa</p>
+                </div>
+                <!-- Recap Card 3 -->
+                <div class="group cursor-pointer">
+                    <div class="relative aspect-[2/3] rounded-lg overflow-hidden mb-3">
+                        <div class="absolute inset-0 bg-cover bg-center transition-transform duration-500 group-hover:scale-105"
+                            data-alt="Silhouette of dancers moving together"
+                            style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuA66JLZfdIlJldwFJlpX9G3mvYtts6VHGxEYmdbALAtFSxihE8Rmq9UtGN6nFKf2K_WpfP_mligSx73CoNA9lx-FK3-abclfpqUResY5Y9LPP8zqsa4ZobijE1FgSspkao-8JuvlnPCNpFLfABf4LXrgsfB3kBLM0bl910Zlm-06z91e3_XTsyhlaX-kBS67HEVmP6GZKfz9-OypTj9fzbojM6P7XotBBHskgXzAzsQsQJGM7msIyBhX7myjaN2-G_uDgBy7JBYCRk');">
+                        </div>
+                        <div
+                            class="absolute top-2 left-2 glass-tag px-2 py-1 rounded text-[10px] font-bold text-white uppercase">
+                            On1 Línea</div>
+                        <div
+                            class="absolute inset-0 video-card-gradient opacity-60 group-hover:opacity-80 transition-opacity">
+                        </div>
+                        <div
+                            class="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-300 translate-y-2 group-hover:translate-y-0">
+                            <span class="material-symbols-outlined text-white text-4xl">play_circle</span>
+                        </div>
+                    </div>
+                    <h4
+                        class="text-white text-sm font-bold uppercase tracking-wide group-hover:text-primary transition-colors">
+                        Los Cimientos</h4>
+                    <p class="text-slate-500 text-xs mt-0.5">Carlos &amp; Sofia</p>
+                </div>
+                <!-- Recap Card 4 -->
+                <div class="group cursor-pointer">
+                    <div class="relative aspect-[2/3] rounded-lg overflow-hidden mb-3">
+                        <div class="absolute inset-0 bg-cover bg-center transition-transform duration-500 group-hover:scale-105"
+                            data-alt="Close up of dance shoes on a wooden floor"
+                            style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuBSnpwDDmmrL4_eNYOIi_sMz2PKYh8mz2ggUAhGTL8qiIkXyfFYJLGJirdo-qTbixQK4IeS1Zoqc4nSDUjpMm-JPJvQ6MD4efDE1cBKAVzxXsDlqEFTMwhTI4y85YfB0rub4LGSHf6hMpYPao-lDsJvDtKzuImTKJsXu_NaHoAgnOuJ3kMMAzC1mtc_H9Ab05zYn7fSGelExDXWJhHmK07NAlNfCP2Ua6H_DPIt7Mt5T-flQPSAmHmQyhu_aoDnyRcwjTvDilO4SKI');">
+                        </div>
+                        <div
+                            class="absolute top-2 left-2 glass-tag px-2 py-1 rounded text-[10px] font-bold text-white uppercase">
+                            Pasos Libres</div>
+                        <div
+                            class="absolute inset-0 video-card-gradient opacity-60 group-hover:opacity-80 transition-opacity">
+                        </div>
+                        <div
+                            class="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-300 translate-y-2 group-hover:translate-y-0">
+                            <span class="material-symbols-outlined text-white text-4xl">play_circle</span>
+                        </div>
+                    </div>
+                    <h4
+                        class="text-white text-sm font-bold uppercase tracking-wide group-hover:text-primary transition-colors">
+                        Prácticas de Pachanga</h4>
+                    <p class="text-slate-500 text-xs mt-0.5">Marco Mendez</p>
+                </div>
+                <!-- Recap Card 5 -->
+                <div class="group cursor-pointer">
+                    <div class="relative aspect-[2/3] rounded-lg overflow-hidden mb-3">
+                        <div class="absolute inset-0 bg-cover bg-center transition-transform duration-500 group-hover:scale-105"
+                            data-alt="People socializing at a salsa club event"
+                            style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuBOf0bQFH_IMBp_kjpHmZG02w5ZqBoTAWifb23oOL8jfvNq5j6NWeH4L1ECAwvV6ufLBDOgDxiyXuQ0AQGWw7aj5HJw1qxf_nL2MqKfTdLYyPiHdANn9sA7rkAH_zyCfaXcAK0WGZM0Z4_A9Gjkou2ITsEFsIDEsNIR8Iskb2JpgUZiK_JoCWA8avLFZke03gfj2kWs0tZ3D7klSfGGp5m56931FmPJH5Mf6KnPPuIiDxqstRkhqELcWI1qxuw3lBO3gXdD9SlyxCU');">
+                        </div>
+                        <div
+                            class="absolute top-2 left-2 glass-tag px-2 py-1 rounded text-[10px] font-bold text-white uppercase">
+                            On2 Avanzado</div>
+                        <div
+                            class="absolute inset-0 video-card-gradient opacity-60 group-hover:opacity-80 transition-opacity">
+                        </div>
+                        <div
+                            class="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-300 translate-y-2 group-hover:translate-y-0">
+                            <span class="material-symbols-outlined text-white text-4xl">play_circle</span>
+                        </div>
+                    </div>
+                    <h4
+                        class="text-white text-sm font-bold uppercase tracking-wide group-hover:text-primary transition-colors">
+                        Giros Complejos</h4>
+                    <p class="text-slate-500 text-xs mt-0.5">Elena Rossi</p>
+                </div>
+            </div>
+        </section>
+        <!-- Masterclass Series -->
+
+        <!-- Student Spotlight - Curated Masonry-ish Gallery -->
+        <section class="px-6 md:px-12">
+            <div class="flex flex-col items-center text-center mb-16">
+                <span class="text-primary font-bold tracking-[0.3em] uppercase text-[10px] mb-2">La Comunidad</span>
+                <h2 class="text-white text-4xl font-bold tracking-tight uppercase">Destacados</h2>
+                <div class="w-12 h-1 bg-primary mt-4"></div>
+            </div>
+            <div class="grid grid-cols-2 md:grid-cols-3 gap-4 auto-rows-[200px] md:auto-rows-[300px]">
+                <div class="relative rounded-lg overflow-hidden group">
+                    <div class="absolute inset-0 bg-cover bg-center transition-all duration-700 group-hover:scale-110 grayscale group-hover:grayscale-0"
+                        data-alt="Smiling student practicing salsa"
+                        style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuAPCT7bv535Z5Q5J6Wo6d43m_0rU-m6vVpu9z3OGh2mc-Si4d4JKbjqpBipLGfvKPh1rXN9AMiqUWunVU6zXK-vLPMXRhRbcZ7pIGD3WjABmjM8MwLn9kcDvhjJUGnoJlxKku-yxL_4NMkP6cEi0u5_Ud0r2GJQBjWaWRkI7eBlcq46cYDY7YYcAkH7XGj4Z1-LP7y4Vz7el7TsSQI9GlRqBqbdzc9lY-QSXVDUQD2QaZHFbupvo-K08_Hee8xfeC9TXRfeEUr8F3s');">
+                    </div>
+                    <div class="absolute inset-0 bg-black/40 group-hover:bg-transparent transition-colors"></div>
+                    <div class="absolute bottom-4 left-4">
+                        <p class="text-white text-sm font-bold tracking-wider uppercase drop-shadow-md">Sarah J.</p>
+                        <p class="text-white/70 text-[10px] tracking-widest uppercase">3 Meses de Progreso</p>
+                    </div>
+                </div>
+                <div class="relative rounded-lg overflow-hidden md:row-span-2 group">
+                    <div class="absolute inset-0 bg-cover bg-center transition-all duration-700 group-hover:scale-110 grayscale group-hover:grayscale-0"
+                        data-alt="Couple practicing a turn at a social event"
+                        style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuCU1IkxJeUOs-WILr2r62IcwhbBHIJz2a00mjep2NXfhV9uEBDkbRLRXTNGdVHnmYHHfY8DJ4wnM-eZXb3iQ7FYWicnjPJ54Pb0WDRWOnV4VJGz4nZkmA0po7kLE2PeYGc-Trj27pQx0boW8QueTDajF8Q7lr5DkwJJ1yvoMtp8mUALcCfMLXFkUCcrIhUZmEijAXvWs1GXHzfPfNcGXg1rLEP11dYm27PV4E12Ds1bA2iqDIEaLgXRLplOJDvkyz-ZUthbSF_Oy2E');">
+                    </div>
+                    <div class="absolute inset-0 bg-black/40 group-hover:bg-transparent transition-colors"></div>
+                    <div class="absolute bottom-6 left-6">
+                        <p class="text-white text-lg font-bold tracking-wider uppercase drop-shadow-md">David &amp; Ana
+                        </p>
+                        <p class="text-white/70 text-xs tracking-widest uppercase">Maestría Social</p>
+                    </div>
+                </div>
+                <div class="relative rounded-lg overflow-hidden group">
+                    <div class="absolute inset-0 bg-cover bg-center transition-all duration-700 group-hover:scale-110 grayscale group-hover:grayscale-0"
+                        data-alt="Student doing solo footwork in front of a mirror"
+                        style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuDNsedHrndVbJ5dRkqYgckQ8kMXvJ9Keu01zNBnu49H7jPpdEmsRqbAzeM3dq9WtUzMVqJmcv9pdQDZbR5P50NaD2HYvTyVIoXHdcC89plJ6X-ywTfAh0djo3_CDctXlT1ceq6y40qcAVQw7FVPeUmPvy6QCO2lSeD5JcMA329jX2eMBxA61GgipW_hhcGtB-9bsRXhkjNb9GcffFl7Duzz9kgJfXKW6NcYHlXYgIhQLpKIKfd-aTWIh5HTkhJlwdSR2qjXWn1DNjY');">
+                    </div>
+                    <div class="absolute inset-0 bg-black/40 group-hover:bg-transparent transition-colors"></div>
+                    <div class="absolute bottom-4 left-4">
+                        <p class="text-white text-sm font-bold tracking-wider uppercase drop-shadow-md">Michael T.</p>
+                        <p class="text-white/70 text-[10px] tracking-widest uppercase">Pasos Libres Nivel 1</p>
+                    </div>
+                </div>
+                <div class="relative rounded-lg overflow-hidden group">
+                    <div class="absolute inset-0 bg-cover bg-center transition-all duration-700 group-hover:scale-110 grayscale group-hover:grayscale-0"
+                        data-alt="Excited group of dancers at a workshop"
+                        style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuDef4GovF1GF_trx2FB1seYlKnAJ58X0ubg0wt8uB1CvekR6lOdJIVIT3CmxargDcGupIqE2nH7J-eEdjiUmBMUyG81EJg--8pZYnXu1WKDDeIT0_um9NGOD079xigbnM_789zXOu_pn0Tjh1pJv6S9vRmS5hovcQldU3MYkBjVIunebCUV_6BVpGihtjFnXmFPCRebIPOMyhFmpT5EFBKlFg5pQdE0YRyfn6Ntj48IrDTwL_BOXq64Gik3y3tnt1teqgHIpzRw3UA');">
+                    </div>
+                    <div class="absolute inset-0 bg-black/40 group-hover:bg-transparent transition-colors"></div>
+                    <div class="absolute bottom-4 left-4">
+                        <p class="text-white text-sm font-bold tracking-wider uppercase drop-shadow-md">Equipo del
+                            Viernes
+                        </p>
+                        <p class="text-white/70 text-[10px] tracking-widest uppercase">Resumen del Taller</p>
+                    </div>
+                </div>
+                <div class="relative rounded-lg overflow-hidden group">
+                    <div class="absolute inset-0 bg-cover bg-center transition-all duration-700 group-hover:scale-110 grayscale group-hover:grayscale-0"
+                        data-alt="Individual student posing in dance attire"
+                        style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuAsDhFtATDH1R8njBC6OJSLwaCEj2bD7EkpkPOTIbZVbR2VQLNUGLdK8NwYmAWDyGa8n-0QuTd_coWb_pQam9KSJkQhtPzFIC8gWg6u8E980Mk9zgOlxVybZeDH8GJ7IXjtHacpMdQkDI-8yUeCsL99N3bY8Wm39yuxnwekByC7VISk3dOxboCKrjc-66EgEpkaGungPq7X35mtrYkOWyqhmePclXwcj5R2cr_f7C_w2h-LeHlcvzRZUgMW3HXShu9TFZrXl7l3cdE');">
+                    </div>
+                    <div class="absolute inset-0 bg-black/40 group-hover:bg-transparent transition-colors"></div>
+                    <div class="absolute bottom-4 left-4">
+                        <p class="text-white text-sm font-bold tracking-wider uppercase drop-shadow-md">Elena P.</p>
+                        <p class="text-white/70 text-[10px] tracking-widest uppercase">Exhibición de Shines</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+    <!-- Simple Footer -->
+    <footer class="bg-background-dark py-12 px-6 md:px-12 border-t border-white/5">
+        <div class="flex flex-col md:flex-row justify-between items-center gap-8">
+            <div class="flex items-center gap-2">
+                <div class="text-primary">
+                    <svg class="w-6 h-6" fill="currentColor" viewbox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+                        <path
+                            d="M13.8261 30.5736C16.7203 29.8826 20.2244 29.4783 24 29.4783C27.7756 29.4783 31.2797 29.8826 34.1739 30.5736C36.9144 31.2278 39.9967 32.7669 41.3563 33.8352L24.8486 7.36089C24.4571 6.73303 23.5429 6.73303 23.1514 7.36089L6.64374 33.8352C8.00331 32.7669 11.0856 31.2278 13.8261 30.5736Z">
+                        </path>
+                    </svg>
+                </div>
+                <span class="text-lg font-bold tracking-tighter uppercase text-white">Salsa Elite</span>
+            </div>
+            <div class="flex gap-12">
+                <a class="text-slate-500 hover:text-white transition-colors text-xs font-semibold tracking-widest uppercase"
+                    href="#">Instagram</a>
+                <a class="text-slate-500 hover:text-white transition-colors text-xs font-semibold tracking-widest uppercase"
+                    href="#">YouTube</a>
+                <a class="text-slate-500 hover:text-white transition-colors text-xs font-semibold tracking-widest uppercase"
+                    href="#">Privacidad</a>
+            </div>
+            <p class="text-slate-600 text-[10px] tracking-widest uppercase">© 2024 Academia Salsa Elite. Todos los
+                derechos
+                reservados.</p>
+        </div>
+    </footer>
+</body>
+
+</html>

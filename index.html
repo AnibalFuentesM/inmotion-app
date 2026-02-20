@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="es" class="dark">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Salsa Elite | Catálogo de Videos</title>
+  <meta name="description"
+    content="Busca y explora videos de recapitulación de clases de salsa desde el catálogo de Google Sheets." />
+  <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap"
+    rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap"
+    rel="stylesheet" />
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            primary: '#ed2630',
+            'bg-dark': '#0a0a0a',
+            'bg-card': '#111111',
+            'bg-card-hover': '#1a1a1a',
+            brand: {
+              50: '#fef2f2',
+              100: '#fee2e2',
+              500: '#ed2630',
+              600: '#dc2626',
+              700: '#b91c1c'
+            }
+          },
+          fontFamily: {
+            display: ['Plus Jakarta Sans', 'sans-serif']
+          },
+          boxShadow: {
+            card: '0 10px 30px rgba(0, 0, 0, 0.3)',
+            'card-hover': '0 20px 40px rgba(237, 38, 48, 0.15)',
+            modal: '0 40px 90px rgba(0, 0, 0, 0.6)',
+            glow: '0 0 15px rgba(237, 38, 48, 0.3)',
+            'glow-lg': '0 0 25px rgba(237, 38, 48, 0.5)'
+          }
+        }
+      }
+    };
+  </script>
+  <link rel="stylesheet" href="./assets/css/app.css" />
+</head>
+
+<body class="min-h-screen bg-bg-dark text-slate-100 font-display">
+  <div class="app-background" aria-hidden="true"></div>
+
+  <!-- Navigation Bar -->
+  <nav
+    class="fixed top-0 w-full z-50 px-6 py-3 flex items-center transition-all duration-300 bg-bg-dark/80 backdrop-blur-md border-b border-white/5">
+    <!-- inMOTION SVG Logo -->
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 70" class="h-10 w-auto" aria-label="inMOTION">
+      <!-- Red swoosh / brush stroke circle -->
+      <g fill="none">
+        <path
+          d="M100 10 C145 8, 178 30, 175 52 C172 68, 148 75, 118 72 C88 69, 58 58, 45 42 C32 26, 42 8, 65 5 C80 3, 92 7, 100 10Z"
+          fill="none" stroke="#ed2630" stroke-width="6" stroke-linecap="round" opacity="0.9" />
+        <path d="M55 55 C38 48, 28 32, 38 18 C48 5, 72 2, 95 4" fill="none" stroke="#ed2630" stroke-width="5"
+          stroke-linecap="round" opacity="0.7" />
+        <path d="M108 68 C128 70, 158 65, 170 50" fill="none" stroke="#c0392b" stroke-width="4" stroke-linecap="round"
+          opacity="0.5" />
+      </g>
+      <!-- 'in' italic text -->
+      <text x="38" y="44" font-family="Georgia, serif" font-style="italic" font-size="26" fill="#e2e8f0"
+        font-weight="400">in</text>
+      <!-- 'MOTION' bold text -->
+      <text x="68" y="44" font-family="Arial, Helvetica, sans-serif" font-weight="900" font-size="24" fill="#ffffff"
+        letter-spacing="1">MOTION</text>
+    </svg>
+  </nav>
+
+  <!-- Hero Section -->
+  <header class="relative h-[70vh] min-h-[480px] w-full overflow-hidden">
+    <!-- Background image -->
+    <div class="absolute inset-0 bg-cover bg-center bg-no-repeat"
+      style="background-image: url('./assets/hero-bg.png');"></div>
+    <!-- Multi-layer overlay: dark vignette + bottom fade to bg -->
+    <div class="absolute inset-0"
+      style="background: linear-gradient(to bottom, rgba(10,10,10,0.35) 0%, rgba(10,10,10,0.55) 50%, rgba(10,10,10,0.92) 85%, #0a0a0a 100%);">
+    </div>
+    <!-- Subtle red tint at top -->
+    <div class="absolute inset-0 bg-gradient-to-br from-primary/10 via-transparent to-transparent"></div>
+    <!-- Content centered -->
+    <div class="relative h-full flex flex-col items-center justify-center text-center px-6">
+      <span
+        class="inline-flex rounded-full border border-primary/40 bg-primary/10 backdrop-blur-sm px-4 py-1.5 text-xs font-bold uppercase tracking-[0.25em] text-primary mb-6">
+        Biblioteca de Recaps
+      </span>
+      <h1
+        class="text-5xl sm:text-6xl md:text-7xl font-black tracking-tight text-white leading-none mb-4 drop-shadow-2xl">
+        Catálogo de <br /><span class="text-primary italic">Videos</span>
+      </h1>
+      <p class="max-w-xl text-slate-300 text-base sm:text-lg font-light tracking-wide drop-shadow-md">
+        Busca videos de recapitulación por movimiento, estilo, nivel, fecha y etiquetas.
+      </p>
+    </div>
+  </header>
+
+  <main class="relative -mt-6 mx-auto max-w-7xl px-4 pb-20 sm:px-6 lg:px-8">
+    <!-- Filters Section -->
+    <section class="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-md p-4 shadow-card sm:p-6"
+      aria-label="Filtros">
+      <form id="filtersForm" class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
+        <label class="sm:col-span-2 lg:col-span-3">
+          <span class="mb-1.5 block text-xs font-bold uppercase tracking-[0.15em] text-slate-400">Buscar</span>
+          <input id="searchInput" type="search" placeholder="Buscar por nombre, etiquetas, estilo o nivel"
+            class="w-full rounded-xl border-white/10 bg-white/5 text-sm text-white placeholder-slate-500 shadow-sm focus:border-primary focus:ring-primary transition-all"
+            autocomplete="off" />
+        </label>
+
+        <label>
+          <span class="mb-1.5 block text-xs font-bold uppercase tracking-[0.15em] text-slate-400">Estilo</span>
+          <select id="styleFilter"
+            class="w-full rounded-xl border-white/10 bg-white/5 text-sm text-white shadow-sm focus:border-primary focus:ring-primary transition-all">
+            <option value="all">Todos los estilos</option>
+          </select>
+        </label>
+
+        <label>
+          <span class="mb-1.5 block text-xs font-bold uppercase tracking-[0.15em] text-slate-400">Nivel</span>
+          <select id="levelFilter"
+            class="w-full rounded-xl border-white/10 bg-white/5 text-sm text-white shadow-sm focus:border-primary focus:ring-primary transition-all">
+            <option value="all">Todos los niveles</option>
+          </select>
+        </label>
+      </form>
+
+      <div class="mt-4 flex flex-wrap items-center justify-between gap-3">
+        <p id="resultsMeta" class="text-sm text-slate-400" aria-live="polite"></p>
+        <button id="clearFiltersBtn" type="button"
+          class="inline-flex items-center rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-slate-300 transition hover:border-primary/50 hover:text-primary hover:shadow-glow">
+          <span class="material-symbols-outlined text-base mr-1.5">filter_alt_off</span>
+          Limpiar filtros
+        </button>
+      </div>
+    </section>
+
+    <!-- Content States -->
+    <section class="mt-8" aria-live="polite">
+      <div id="loadingState"
+        class="flex items-center gap-3 rounded-xl border border-white/10 bg-white/5 backdrop-blur p-5 text-slate-300 shadow-sm">
+        <div class="h-5 w-5 animate-spin rounded-full border-2 border-slate-600 border-t-primary"></div>
+        <p class="text-sm font-medium">Cargando videos...</p>
+      </div>
+
+      <div id="errorState"
+        class="hidden rounded-xl border border-red-500/30 bg-red-950/50 backdrop-blur p-5 text-red-300 shadow-sm"
+        role="alert">
+        <h2 class="text-sm font-bold">No se pudieron cargar los videos</h2>
+        <p id="errorMessage" class="mt-1 text-sm text-red-400"></p>
+        <div class="mt-4 flex flex-wrap gap-3">
+          <button id="retryBtn" type="button"
+            class="rounded-lg bg-primary px-4 py-2 text-sm font-bold text-white transition hover:bg-primary/80 hover:shadow-glow">
+            Reintentar
+          </button>
+          <a href="./README.md#troubleshooting"
+            class="rounded-lg border border-red-500/30 bg-red-950/30 px-4 py-2 text-sm font-medium text-red-300 transition hover:bg-red-900/50">
+            Solución de problemas
+          </a>
+        </div>
+      </div>
+
+      <div id="emptyState"
+        class="hidden rounded-xl border border-white/10 bg-white/5 backdrop-blur p-8 text-center shadow-sm">
+        <span class="material-symbols-outlined text-5xl text-slate-600 mb-3">video_library</span>
+        <h2 id="emptyTitle" class="text-lg font-bold text-white">No se encontraron videos</h2>
+        <p id="emptyMessage" class="mt-2 text-sm text-slate-400"></p>
+        <button id="emptyClearBtn" type="button"
+          class="mt-5 inline-flex items-center rounded-lg border border-white/10 bg-white/5 px-5 py-2.5 text-sm font-semibold text-slate-300 transition hover:border-primary/50 hover:text-primary">
+          Limpiar filtros
+        </button>
+      </div>
+
+      <!-- Video Cards Grid -->
+      <div id="cardsGrid" class="mt-6 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3"
+        aria-label="Catálogo de videos"></div>
+    </section>
+  </main>
+
+  <!-- Video Modal -->
+  <div id="videoModal" class="fixed inset-0 z-50 hidden items-center justify-center p-4 sm:p-6" role="dialog"
+    aria-modal="true" aria-labelledby="modalTitle">
+    <div data-modal-backdrop class="absolute inset-0 bg-black/80 backdrop-blur-sm"></div>
+    <div
+      class="modal-panel relative z-10 w-full max-w-4xl overflow-hidden rounded-2xl bg-bg-card border border-white/10 shadow-modal">
+      <div class="flex items-center justify-between border-b border-white/10 px-5 py-4">
+        <h2 id="modalTitle" class="text-base font-bold text-white">Detalles del video</h2>
+        <button data-modal-close type="button"
+          class="rounded-lg border border-white/10 bg-white/5 px-4 py-1.5 text-sm font-semibold text-slate-300 transition hover:border-primary/50 hover:text-primary">
+          Cerrar
+        </button>
+      </div>
+      <div id="modalBody" class="max-h-[80vh] overflow-y-auto p-5 sm:p-6"></div>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <footer class="bg-bg-dark py-8 px-6 md:px-12 border-t border-white/5">
+    <div class="flex flex-col items-center gap-3 max-w-7xl mx-auto">
+      <!-- inMOTION footer logo -->
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 70" class="h-8 w-auto opacity-60" aria-label="inMOTION">
+        <g fill="none">
+          <path
+            d="M100 10 C145 8, 178 30, 175 52 C172 68, 148 75, 118 72 C88 69, 58 58, 45 42 C32 26, 42 8, 65 5 C80 3, 92 7, 100 10Z"
+            fill="none" stroke="#ed2630" stroke-width="6" stroke-linecap="round" opacity="0.9" />
+          <path d="M55 55 C38 48, 28 32, 38 18 C48 5, 72 2, 95 4" fill="none" stroke="#ed2630" stroke-width="5"
+            stroke-linecap="round" opacity="0.7" />
+          <path d="M108 68 C128 70, 158 65, 170 50" fill="none" stroke="#c0392b" stroke-width="4" stroke-linecap="round"
+            opacity="0.5" />
+        </g>
+        <text x="38" y="44" font-family="Georgia, serif" font-style="italic" font-size="26" fill="#e2e8f0"
+          font-weight="400">in</text>
+        <text x="68" y="44" font-family="Arial, Helvetica, sans-serif" font-weight="900" font-size="24" fill="#ffffff"
+          letter-spacing="1">MOTION</text>
+      </svg>
+      <p class="text-slate-600 text-[11px] tracking-widest uppercase">Creado por <span
+          class="text-slate-400 font-semibold">Sagepoint Analytics</span></p>
+    </div>
+  </footer>
+
+  <noscript>
+    <div
+      class="mx-auto mt-6 max-w-3xl rounded-xl border border-amber-500/30 bg-amber-950/50 p-4 text-sm text-amber-300">
+      Se requiere JavaScript para cargar y filtrar el catálogo de videos.
+    </div>
+  </noscript>
+
+  <script type="module" src="./assets/js/app.js"></script>
+</body>
+
+</html>
