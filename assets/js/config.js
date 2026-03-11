@@ -2,6 +2,7 @@
  * @typedef {Object} AppConfig
  * @property {string} gvizUrl
  * @property {number} gid
+ * @property {string} appsScriptWebAppUrl
  * @property {string[]} requiredColumns
  */
 
@@ -47,6 +48,7 @@ export const APP_CONFIG = {
   gvizUrl:
     'https://docs.google.com/spreadsheets/d/1F5vMhZXHYvsc179HOdRWyml1lqeN-uxiSQv_AwZVqvg/gviz/tq?tqx=out:json&gid=0',
   gid: 0,
+  appsScriptWebAppUrl: 'https://script.google.com/macros/s/AKfycbw0anhpWSwaES04MtckLL5fM8OW9ZS6r9u-aplZwhc6oynRW8aqNCWIZt1VNVDfXp-e/exec',
   requiredColumns: [
     'id',
     'step_name',
