@@ -1,0 +1,842 @@
+<!doctype html>
+<html lang="es">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Inmotion · Gestión del Catálogo</title>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap"
+    rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap"
+    rel="stylesheet" />
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0a0a0a;
+      --panel: #111111;
+      --panel-soft: rgba(255, 255, 255, 0.04);
+      --border: rgba(255, 255, 255, 0.08);
+      --border-focus: rgba(237, 38, 48, 0.6);
+      --text: #f0f2f5;
+      --text-secondary: #c1c7d0;
+      --muted: #7a8599;
+      --primary: #ed2630;
+      --primary-glow: rgba(237, 38, 48, 0.15);
+      --primary-soft: rgba(237, 38, 48, 0.08);
+      --success: #34d399;
+      --success-soft: rgba(6, 78, 59, 0.4);
+      --danger: #f87171;
+      --danger-soft: rgba(127, 29, 29, 0.4);
+      --shadow: 0 24px 80px rgba(0, 0, 0, 0.5);
+      --radius: 24px;
+      --radius-sm: 14px;
+      --radius-xs: 10px;
+      --transition: 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: "Plus Jakarta Sans", system-ui, -apple-system, sans-serif;
+      background:
+        radial-gradient(ellipse at 20% -10%, rgba(237, 38, 48, 0.12), transparent 50%),
+        radial-gradient(ellipse at 80% 10%, rgba(237, 38, 48, 0.06), transparent 40%),
+        linear-gradient(180deg, #080808 0%, #0c0c0c 100%);
+      color: var(--text);
+      min-height: 100vh;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    body.embedded {
+      background: transparent;
+      min-height: auto;
+    }
+
+    .shell {
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 32px 24px;
+    }
+
+    body.embedded .shell {
+      max-width: none;
+      padding: 0;
+    }
+
+    body.embedded .header {
+      display: none;
+    }
+
+    body.embedded .panel {
+      border: none;
+      box-shadow: none;
+      background: transparent;
+    }
+
+    /* ── Material icon helper ── */
+    .icon {
+      font-family: "Material Symbols Outlined";
+      font-weight: 400;
+      font-style: normal;
+      font-size: 20px;
+      line-height: 1;
+      letter-spacing: normal;
+      text-transform: none;
+      display: inline-block;
+      white-space: nowrap;
+      word-wrap: normal;
+      direction: ltr;
+      -webkit-font-smoothing: antialiased;
+      vertical-align: middle;
+    }
+
+    /* ── Panel ── */
+    .panel {
+      background: linear-gradient(180deg, rgba(18, 18, 20, 0.98), rgba(12, 12, 14, 0.99));
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    /* ── Header ── */
+    .header {
+      padding: 32px 32px 24px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 20px;
+      background: linear-gradient(180deg, rgba(237, 38, 48, 0.03), transparent);
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      margin: 0 0 12px;
+      color: var(--primary);
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+    }
+
+    .eyebrow .icon {
+      font-size: 16px;
+      color: var(--primary);
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 26px;
+      font-weight: 800;
+      line-height: 1.15;
+      letter-spacing: -0.02em;
+    }
+
+    .subtext {
+      margin: 10px 0 0;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.6;
+      max-width: 540px;
+    }
+
+    .user-card {
+      min-width: 240px;
+      background: var(--panel-soft);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 14px 18px;
+      align-self: flex-start;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .user-card .icon {
+      font-size: 22px;
+      color: var(--muted);
+      flex-shrink: 0;
+    }
+
+    .user-card-text {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .user-card-label {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .user-card-value {
+      font-size: 13px;
+      color: var(--text-secondary);
+    }
+
+    /* ── Body ── */
+    .body {
+      padding: 28px 32px 32px;
+      display: grid;
+      gap: 24px;
+    }
+
+    /* ── Status bar ── */
+    .status {
+      display: none;
+      border-radius: var(--radius-xs);
+      border: 1px solid var(--border);
+      padding: 14px 18px;
+      font-size: 13px;
+      font-weight: 500;
+      line-height: 1.5;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .status.visible { display: flex; }
+    .status .icon { font-size: 18px; flex-shrink: 0; }
+    .status.info { background: var(--panel-soft); color: var(--text-secondary); border-color: var(--border); }
+    .status.info .icon { color: var(--muted); }
+    .status.success { border-color: rgba(52, 211, 153, 0.3); background: var(--success-soft); color: #d1fae5; }
+    .status.success .icon { color: var(--success); }
+    .status.error { border-color: rgba(248, 113, 113, 0.3); background: var(--danger-soft); color: #fee2e2; }
+    .status.error .icon { color: var(--danger); }
+
+    /* ── Mode switcher (tabs) ── */
+    .switcher {
+      display: inline-flex;
+      gap: 4px;
+      padding: 4px;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      width: fit-content;
+    }
+
+    .switcher button {
+      border: 0;
+      background: transparent;
+      color: var(--muted);
+      border-radius: 999px;
+      padding: 10px 20px;
+      font: inherit;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all var(--transition);
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .switcher button:hover:not(.active) { color: var(--text-secondary); background: rgba(255, 255, 255, 0.04); }
+    .switcher button .icon { font-size: 18px; }
+    .switcher button.active { background: var(--primary); color: white; box-shadow: 0 4px 16px rgba(237, 38, 48, 0.35); }
+
+    /* ── Forms ── */
+    form {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 20px;
+      padding: 24px;
+      background: rgba(255, 255, 255, 0.018);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+    }
+
+    form.hidden { display: none; }
+
+    label {
+      display: grid;
+      gap: 8px;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .full { grid-column: 1 / -1; }
+
+    input, select, textarea, button { font: inherit; }
+
+    input, select, textarea {
+      width: 100%;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-xs);
+      background: rgba(255, 255, 255, 0.035);
+      color: var(--text);
+      padding: 12px 14px;
+      font-size: 14px;
+      outline: none;
+      transition: border-color var(--transition), box-shadow var(--transition), background var(--transition);
+    }
+
+    input::placeholder, textarea::placeholder { color: rgba(122, 133, 153, 0.6); }
+    input:hover, select:hover, textarea:hover { border-color: rgba(255, 255, 255, 0.14); background: rgba(255, 255, 255, 0.05); }
+    input:focus, select:focus, textarea:focus { border-color: var(--border-focus); box-shadow: 0 0 0 3px var(--primary-glow); background: rgba(255, 255, 255, 0.05); }
+    textarea { min-height: 110px; resize: vertical; }
+
+    /* ── File input custom ── */
+    input[type="file"] {
+      padding: 0;
+      background: transparent;
+      border: 2px dashed rgba(255, 255, 255, 0.1);
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      position: relative;
+      min-height: 80px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: border-color var(--transition), background var(--transition);
+    }
+
+    input[type="file"]:hover { border-color: rgba(237, 38, 48, 0.4); background: var(--primary-soft); }
+    input[type="file"]:focus { border-color: var(--border-focus); box-shadow: 0 0 0 3px var(--primary-glow); }
+
+    input[type="file"]::file-selector-button {
+      border: none;
+      background: var(--primary);
+      color: white;
+      padding: 8px 16px;
+      border-radius: 8px;
+      font-weight: 700;
+      font-size: 13px;
+      cursor: pointer;
+      margin-right: 12px;
+      transition: background var(--transition);
+    }
+
+    input[type="file"]::file-selector-button:hover { background: #d42029; }
+
+    /* ── Helper text ── */
+    .helper { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.6; display: flex; align-items: center; gap: 6px; }
+    .helper .icon { font-size: 16px; color: rgba(122, 133, 153, 0.7); }
+
+    /* ── Actions row ── */
+    .actions {
+      grid-column: 1 / -1;
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      gap: 16px;
+      align-items: center;
+      padding-top: 4px;
+    }
+
+    /* ── Buttons ── */
+    .primary-btn {
+      border: 0;
+      border-radius: var(--radius-xs);
+      background: linear-gradient(135deg, #ed2630, #d42029);
+      color: white;
+      font-weight: 800;
+      font-size: 14px;
+      padding: 13px 24px;
+      cursor: pointer;
+      transition: all var(--transition);
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      letter-spacing: 0.02em;
+      box-shadow: 0 4px 20px rgba(237, 38, 48, 0.25);
+    }
+
+    .primary-btn:hover:not([disabled]) { transform: translateY(-1px); box-shadow: 0 8px 30px rgba(237, 38, 48, 0.4); }
+    .primary-btn:active:not([disabled]) { transform: translateY(0); }
+    .primary-btn[disabled] { opacity: 0.55; cursor: not-allowed; box-shadow: none; }
+    .primary-btn .icon { font-size: 18px; }
+
+    /* ── Stack layout ── */
+    .stack { display: grid; gap: 20px; }
+
+    /* ── Section divider with label ── */
+    .section-divider {
+      grid-column: 1 / -1;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.14em;
+      padding: 4px 0;
+    }
+
+    .section-divider::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+    .section-divider .icon { font-size: 16px; color: rgba(122, 133, 153, 0.5); }
+
+    /* ── Spinner animation ── */
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .spinner {
+      display: inline-block;
+      width: 16px;
+      height: 16px;
+      border: 2px solid rgba(255, 255, 255, 0.3);
+      border-top-color: white;
+      border-radius: 50%;
+      animation: spin 0.6s linear infinite;
+    }
+
+    /* ── Progress bar ── */
+    .progress-bar { grid-column: 1 / -1; height: 4px; background: rgba(255, 255, 255, 0.06); border-radius: 99px; overflow: hidden; display: none; }
+    .progress-bar.visible { display: block; }
+    .progress-bar-fill { height: 100%; background: linear-gradient(90deg, var(--primary), #ff6b6b); border-radius: 99px; width: 0%; transition: width 0.4s ease; animation: progress-shimmer 1.5s ease-in-out infinite; }
+    @keyframes progress-shimmer { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }
+
+    /* ── Responsive ── */
+    @media (max-width: 720px) {
+      .shell { padding: 16px 12px; }
+      .header { padding: 20px; }
+      .body { padding: 20px; }
+      form { grid-template-columns: 1fr; padding: 18px; }
+      .actions { flex-direction: column-reverse; align-items: stretch; }
+      .primary-btn { width: 100%; justify-content: center; }
+      h1 { font-size: 22px; }
+    }
+
+    /* ── Fade-in animation ── */
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+    .fade-in { animation: fadeIn 0.35s ease-out both; }
+  </style>
+</head>
+
+<body class="<?= bootConfig.embedded ? 'embedded' : '' ?>">
+  <div class="shell">
+    <div class="panel fade-in">
+      <div class="header">
+        <div>
+          <p class="eyebrow"><span class="icon">movie_edit</span> Gestión del Catálogo</p>
+          <h1>Panel de Videos</h1>
+          <p class="subtext">
+            Sube videos nuevos al folder de Google Drive y actualiza la metadata del catálogo directamente desde aquí.
+          </p>
+        </div>
+        <div class="user-card">
+          <span class="icon">account_circle</span>
+          <div class="user-card-text">
+            <span class="user-card-label">Sesión</span>
+            <span id="userMeta" class="user-card-value">Cargando permisos…</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="body">
+        <div id="status" class="status"></div>
+
+        <div class="switcher">
+          <button id="modeCreateBtn" type="button" class="active">
+            <span class="icon">cloud_upload</span> Nuevo video
+          </button>
+          <button id="modeEditBtn" type="button">
+            <span class="icon">edit_note</span> Editar metadata
+          </button>
+        </div>
+
+        <datalist id="styleOptions"></datalist>
+        <datalist id="levelOptions"></datalist>
+
+        <form id="createForm" class="stack">
+          <label class="full">
+            <span><span class="icon" style="font-size:15px;">videocam</span> Archivo de video</span>
+            <input id="createVideoFile" name="videoFile" type="file" accept="video/*" required />
+          </label>
+
+          <div class="progress-bar full" id="uploadProgress">
+            <div class="progress-bar-fill" id="uploadProgressFill"></div>
+          </div>
+
+          <div class="section-divider"><span class="icon">info</span> Información del paso</div>
+
+          <label>
+            Nombre del paso
+            <input id="createStepName" name="step_name" type="text" required
+              placeholder="Ej. Enchufla con doble giro" />
+          </label>
+
+          <label>
+            Fecha de la clase
+            <input id="createDate" name="date" type="date" required />
+          </label>
+
+          <label>
+            Estilo de baile
+            <input id="createStyle" name="style" type="text" list="styleOptions" required placeholder="Ej. Salsa on1" />
+          </label>
+
+          <label>
+            Nivel
+            <input id="createLevel" name="level" type="text" list="levelOptions" required
+              placeholder="Ej. Intermedio" />
+          </label>
+
+          <label class="full">
+            Etiquetas
+            <input id="createTags" name="tags" type="text"
+              placeholder="separadas por coma: giro, dile que no, suelta" />
+          </label>
+
+          <label class="full">
+            Notas adicionales
+            <textarea id="createNotes" name="notes"
+              placeholder="Agrega instrucciones, detalles del paso o comentarios del instructor"></textarea>
+          </label>
+
+          <div class="actions">
+            <p class="helper">
+              <span class="icon">cloud_done</span>
+              El archivo se subirá a Drive y se creará una nueva entrada en el catálogo.
+            </p>
+            <button id="createSubmit" class="primary-btn" type="submit">
+              <span class="icon">upload</span> Subir video
+            </button>
+          </div>
+        </form>
+
+        <form id="editForm" class="stack hidden">
+          <label class="full">
+            <span><span class="icon" style="font-size:15px;">search</span> Buscar video</span>
+            <input id="editSearch" type="search" placeholder="Busca por nombre, ID, estilo, nivel o etiquetas" />
+          </label>
+
+          <label class="full">
+            Seleccionar video
+            <select id="editSelect" name="id" required>
+              <option value="">Selecciona un video</option>
+            </select>
+          </label>
+
+          <div class="section-divider"><span class="icon">edit</span> Editar información</div>
+
+          <label>
+            Nombre del paso
+            <input id="editStepName" name="step_name" type="text" required />
+          </label>
+
+          <label>
+            Fecha de la clase
+            <input id="editDate" name="date" type="date" required />
+          </label>
+
+          <label>
+            Estilo de baile
+            <input id="editStyle" name="style" type="text" list="styleOptions" required />
+          </label>
+
+          <label>
+            Nivel
+            <input id="editLevel" name="level" type="text" list="levelOptions" required />
+          </label>
+
+          <label class="full">
+            Etiquetas
+            <input id="editTags" name="tags" type="text" />
+          </label>
+
+          <label class="full">
+            Notas adicionales
+            <textarea id="editNotes" name="notes"></textarea>
+          </label>
+
+          <div class="actions">
+            <p class="helper">
+              <span class="icon">info</span>
+              Solo se actualiza la metadata. El archivo del video no se reemplaza.
+            </p>
+            <button id="editSubmit" class="primary-btn" type="submit">
+              <span class="icon">save</span> Guardar cambios
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const BOOT = <?!= JSON.stringify(bootConfig) ?>;
+
+    const state = {
+      records: [],
+      activeMode: 'create'
+    };
+
+    const elements = {};
+
+    document.addEventListener('DOMContentLoaded', init);
+    window.addEventListener('resize', requestFrameHeight);
+
+    function init() {
+      elements.status = document.querySelector('#status');
+      elements.userMeta = document.querySelector('#userMeta');
+      elements.modeCreateBtn = document.querySelector('#modeCreateBtn');
+      elements.modeEditBtn = document.querySelector('#modeEditBtn');
+      elements.createForm = document.querySelector('#createForm');
+      elements.createVideoFile = document.querySelector('#createVideoFile');
+      elements.createSubmit = document.querySelector('#createSubmit');
+      elements.editForm = document.querySelector('#editForm');
+      elements.editSearch = document.querySelector('#editSearch');
+      elements.editSelect = document.querySelector('#editSelect');
+      elements.editStepName = document.querySelector('#editStepName');
+      elements.editDate = document.querySelector('#editDate');
+      elements.editStyle = document.querySelector('#editStyle');
+      elements.editLevel = document.querySelector('#editLevel');
+      elements.editTags = document.querySelector('#editTags');
+      elements.editNotes = document.querySelector('#editNotes');
+      elements.editSubmit = document.querySelector('#editSubmit');
+      elements.styleOptions = document.querySelector('#styleOptions');
+      elements.levelOptions = document.querySelector('#levelOptions');
+      elements.uploadProgress = document.querySelector('#uploadProgress');
+      elements.uploadProgressFill = document.querySelector('#uploadProgressFill');
+
+      bindEvents();
+      setMode('create');
+      setStatus('info', 'Cargando panel…');
+      refreshBootstrap('');
+    }
+
+    function bindEvents() {
+      elements.modeCreateBtn.addEventListener('click', function () { setMode('create'); });
+      elements.modeEditBtn.addEventListener('click', function () { setMode('edit'); });
+      elements.createForm.addEventListener('submit', handleCreateSubmit);
+      elements.editForm.addEventListener('submit', handleEditSubmit);
+      elements.editSearch.addEventListener('input', function () {
+        syncEditSelect(elements.editSearch.value, elements.editSelect.value);
+        fillEditForm(findRecord(elements.editSelect.value));
+      });
+      elements.editSelect.addEventListener('change', function () {
+        fillEditForm(findRecord(elements.editSelect.value));
+      });
+    }
+
+    function setMode(mode) {
+      state.activeMode = mode;
+      elements.modeCreateBtn.classList.toggle('active', mode === 'create');
+      elements.modeEditBtn.classList.toggle('active', mode === 'edit');
+      elements.createForm.classList.toggle('hidden', mode !== 'create');
+      elements.editForm.classList.toggle('hidden', mode !== 'edit');
+      requestFrameHeight();
+    }
+
+    function setStatus(variant, message) {
+      const status = elements.status;
+      status.className = 'status';
+      if (!message) { status.textContent = ''; requestFrameHeight(); return; }
+      var iconMap = { info: 'info', success: 'check_circle', error: 'error' };
+      status.classList.add('visible', variant);
+      status.innerHTML = '<span class="icon">' + (iconMap[variant] || 'info') + '</span>' + escapeHtml(message);
+      requestFrameHeight();
+    }
+
+    function escapeHtml(str) {
+      var div = document.createElement('div');
+      div.textContent = str;
+      return div.innerHTML;
+    }
+
+    function setBusy(button, isBusy, idleLabel, busyLabel) {
+      button.disabled = isBusy;
+      if (isBusy) {
+        button.innerHTML = '<span class="spinner"></span> ' + busyLabel;
+      } else {
+        var iconName = button === elements.createSubmit ? 'upload' : 'save';
+        button.innerHTML = '<span class="icon">' + iconName + '</span> ' + idleLabel;
+      }
+    }
+
+    function showProgress(show) {
+      elements.uploadProgress.classList.toggle('visible', show);
+      if (!show) { elements.uploadProgressFill.style.width = '0%'; }
+    }
+
+    function setProgress(percent) {
+      elements.uploadProgressFill.style.width = Math.min(percent, 100) + '%';
+    }
+
+    function refreshBootstrap(selectedId) {
+      google.script.run
+        .withSuccessHandler(function (payload) { applyBootstrap(payload, selectedId || ''); })
+        .withFailureHandler(function (error) {
+          var message = readErrorMessage(error);
+          setStatus('error', message);
+          notifyParent('inmotion-admin-error', { message: message });
+        })
+        .getBootstrap();
+    }
+
+    function applyBootstrap(payload, selectedId) {
+      state.records = Array.isArray(payload.records) ? payload.records : [];
+      elements.userMeta.textContent = payload.userEmail
+        ? payload.userEmail
+        : payload.allowlistEnabled
+          ? 'No se pudo leer el correo.'
+          : 'Autenticado por Apps Script.';
+      populateDatalist(elements.styleOptions, payload.styleOptions || []);
+      populateDatalist(elements.levelOptions, payload.levelOptions || []);
+      syncEditSelect(elements.editSearch.value, selectedId);
+      fillEditForm(findRecord(elements.editSelect.value));
+      setStatus('info', 'Panel listo. Puedes subir un video nuevo o editar metadata.');
+    }
+
+    function populateDatalist(datalist, values) {
+      datalist.innerHTML = '';
+      values.forEach(function (value) {
+        var option = document.createElement('option');
+        option.value = value;
+        datalist.appendChild(option);
+      });
+    }
+
+    function buildRecordSearchText(record) {
+      return [
+        record.id, record.step_name, record.style, record.level, record.date,
+        Array.isArray(record.tags) ? record.tags.join(' ') : '', record.notes
+      ].join(' ').toLowerCase();
+    }
+
+    function syncEditSelect(searchText, selectedId) {
+      var normalizedSearch = String(searchText || '').trim().toLowerCase();
+      var filtered = state.records.filter(function (record) {
+        if (!normalizedSearch) { return true; }
+        return buildRecordSearchText(record).indexOf(normalizedSearch) >= 0;
+      });
+      elements.editSelect.innerHTML = '';
+      var placeholder = document.createElement('option');
+      placeholder.value = '';
+      placeholder.textContent = filtered.length
+        ? 'Selecciona un video (' + filtered.length + ' disponibles)'
+        : 'No hay videos que coincidan';
+      elements.editSelect.appendChild(placeholder);
+      filtered.forEach(function (record) {
+        var option = document.createElement('option');
+        option.value = record.id;
+        option.textContent = record.step_name + ' · ' + record.style + ' · ' + record.level;
+        elements.editSelect.appendChild(option);
+      });
+      var hasSelected = filtered.some(function (record) { return record.id === selectedId; });
+      elements.editSelect.value = hasSelected ? selectedId : '';
+    }
+
+    function findRecord(recordId) {
+      return state.records.find(function (record) { return record.id === recordId; }) || null;
+    }
+
+    function fillEditForm(record) {
+      if (!record) {
+        elements.editStepName.value = '';
+        elements.editDate.value = '';
+        elements.editStyle.value = '';
+        elements.editLevel.value = '';
+        elements.editTags.value = '';
+        elements.editNotes.value = '';
+        return;
+      }
+      elements.editStepName.value = record.step_name || '';
+      elements.editDate.value = normalizeDateForInput(record.date);
+      elements.editStyle.value = record.style || '';
+      elements.editLevel.value = record.level || '';
+      elements.editTags.value = Array.isArray(record.tags) ? record.tags.join(', ') : '';
+      elements.editNotes.value = record.notes || '';
+    }
+
+    function normalizeDateForInput(value) {
+      var text = String(value || '').trim();
+      if (/^\d{4}-\d{2}-\d{2}$/.test(text)) { return text; }
+      if (!text) { return ''; }
+      var parsed = new Date(text);
+      if (Number.isNaN(parsed.getTime())) { return ''; }
+      var year = parsed.getFullYear();
+      var month = String(parsed.getMonth() + 1).padStart(2, '0');
+      var day = String(parsed.getDate()).padStart(2, '0');
+      return year + '-' + month + '-' + day;
+    }
+
+    function handleCreateSubmit(event) {
+      event.preventDefault();
+      if (!elements.createVideoFile.files.length) {
+        setStatus('error', 'Selecciona un archivo de video antes de enviarlo.');
+        return;
+      }
+      setBusy(elements.createSubmit, true, 'Subir video', 'Subiendo…');
+      setStatus('info', 'Subiendo video a Google Drive…');
+      showProgress(true);
+      setProgress(30);
+      google.script.run
+        .withSuccessHandler(function (result) {
+          setProgress(100);
+          setTimeout(function () { showProgress(false); }, 600);
+          setBusy(elements.createSubmit, false, 'Subir video', 'Subiendo…');
+          elements.createForm.reset();
+          setStatus('success', result.message || 'Video subido correctamente.');
+          notifyParent('inmotion-admin-saved', { message: result.message || 'Catálogo actualizado desde Apps Script.' });
+          refreshBootstrap('');
+        })
+        .withFailureHandler(function (error) {
+          showProgress(false);
+          setBusy(elements.createSubmit, false, 'Subir video', 'Subiendo…');
+          var message = readErrorMessage(error);
+          setStatus('error', message);
+          notifyParent('inmotion-admin-error', { message: message });
+        })
+        .createCatalogItem(elements.createForm);
+    }
+
+    function handleEditSubmit(event) {
+      event.preventDefault();
+      if (!elements.editSelect.value) {
+        setStatus('error', 'Selecciona un video antes de guardar cambios.');
+        return;
+      }
+      setBusy(elements.editSubmit, true, 'Guardar cambios', 'Guardando…');
+      setStatus('info', 'Guardando metadata en Google Sheets…');
+      google.script.run
+        .withSuccessHandler(function (result) {
+          setBusy(elements.editSubmit, false, 'Guardar cambios', 'Guardando…');
+          setStatus('success', result.message || 'Metadata actualizada.');
+          notifyParent('inmotion-admin-saved', { message: result.message || 'Catálogo actualizado desde Apps Script.' });
+          refreshBootstrap(elements.editSelect.value);
+        })
+        .withFailureHandler(function (error) {
+          setBusy(elements.editSubmit, false, 'Guardar cambios', 'Guardando…');
+          var message = readErrorMessage(error);
+          setStatus('error', message);
+          notifyParent('inmotion-admin-error', { message: message });
+        })
+        .updateCatalogItem(elements.editForm);
+    }
+
+    function readErrorMessage(error) {
+      if (error && typeof error === 'object' && error.message) { return String(error.message); }
+      return String(error || 'Ocurrió un error en Apps Script.');
+    }
+
+    function notifyParent(type, payload) {
+      if (window.parent && window.parent !== window) {
+        window.parent.postMessage(Object.assign({ type: type }, payload || {}), '*');
+      }
+    }
+
+    function requestFrameHeight() {
+      window.setTimeout(function () {
+        notifyParent('inmotion-admin-height', { height: document.documentElement.scrollHeight + 16 });
+      }, 0);
+    }
+  </script>
+</body>
+
+</html>
