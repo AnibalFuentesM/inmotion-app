@@ -1,49 +1,75 @@
-# Salsa Recap Video Catalog (Static Web App)
+# Salsa Recap Video Catalog
 
-A static single-page web app that loads salsa recap video metadata from a published Google Sheet GViz JSON endpoint.
+A static single-page catalog that reads video metadata from a published Google Sheet and now embeds a simpler Apps Script staff panel for uploads and metadata edits.
 
 ## Features
 
-- Fetches Google Visualization JSON (`gviz/tq?tqx=out:json`) and parses the `setResponse(...)` wrapper.
-- Search across `step_name`, `tags`, `style`, and `level`.
-- Style and level dropdown filters.
-- Responsive video card catalog with thumbnails.
-- Detail modal with video playback/preview and full metadata.
-- Error handling for network/API failures and empty states.
+- Loads public catalog data from a Google Sheets GViz endpoint.
+- Search plus style and level filters.
+- Responsive video cards with thumbnails and modal playback.
+- Embedded Apps Script panel for:
+  - uploading a new video to Google Drive
+  - appending a new row to the catalog sheet
+  - editing metadata for an existing catalog item
 
 ## Project Structure
 
 ```text
-/Users/anibal/Documents/New project/
+/Users/anibal/Documents/Inmotion/
   index.html
   /assets/
     /css/
       app.css
     /js/
+      app.js
+      admin-panel.js
       config.js
       data-source.js
-      gviz-parser.js
-      video-model.js
       filters.js
+      gviz-parser.js
       ui-cards.js
       ui-modal.js
-      app.js
+      video-model.js
+  /apps-script/
+    Code.gs
+    Index.html
+    appsscript.json
   README.md
 ```
 
-## Configuration
+## Website Config
 
-Edit `/Users/anibal/Documents/New project/assets/js/config.js`:
+Edit [assets/js/config.js](/Users/anibal/Documents/Inmotion/assets/js/config.js).
 
-- Set `APP_CONFIG.gvizUrl` to your endpoint.
-- Keep `APP_CONFIG.gid` aligned with your selected sheet tab.
+Required fields:
 
-Supported URL patterns:
+- `APP_CONFIG.gvizUrl`
+- `APP_CONFIG.gid`
+- `APP_CONFIG.appsScriptWebAppUrl`
 
-1. `https://docs.google.com/spreadsheets/d/<SHEET_ID>/gviz/tq?tqx=out:json&gid=0`
-2. `https://docs.google.com/spreadsheets/d/e/<PUBLISHED_ID>/gviz/tq?tqx=out:json&gid=0`
+Example:
 
-Required sheet columns:
+```js
+export const APP_CONFIG = {
+  gvizUrl:
+    'https://docs.google.com/spreadsheets/d/1F5vMhZXHYvsc179HOdRWyml1lqeN-uxiSQv_AwZVqvg/gviz/tq?tqx=out:json&gid=0',
+  gid: 0,
+  appsScriptWebAppUrl: 'https://script.google.com/macros/s/YOUR_DEPLOYMENT_ID/exec',
+  requiredColumns: [
+    'id',
+    'step_name',
+    'style',
+    'level',
+    'date',
+    'video_url',
+    'thumbnail_url',
+    'tags',
+    'notes'
+  ]
+};
+```
+
+The public catalog still depends on the same sheet columns:
 
 - `id`
 - `step_name`
@@ -55,62 +81,104 @@ Required sheet columns:
 - `tags`
 - `notes`
 
+## Apps Script Setup
+
+The simpler admin flow lives in [apps-script/Code.gs](/Users/anibal/Documents/Inmotion/apps-script/Code.gs), [apps-script/Index.html](/Users/anibal/Documents/Inmotion/apps-script/Index.html), and [apps-script/appsscript.json](/Users/anibal/Documents/Inmotion/apps-script/appsscript.json).
+
+### 1. Create the Apps Script project
+
+1. Go to [script.new](https://script.new).
+2. Replace the default files with the contents of:
+   - [apps-script/Code.gs](/Users/anibal/Documents/Inmotion/apps-script/Code.gs)
+   - [apps-script/Index.html](/Users/anibal/Documents/Inmotion/apps-script/Index.html)
+   - [apps-script/appsscript.json](/Users/anibal/Documents/Inmotion/apps-script/appsscript.json)
+
+### 2. Adjust the script config
+
+In `Code.gs`, these values are already prefilled:
+
+- `spreadsheetId`
+- `driveFolderId`
+
+You only need to adjust these if necessary:
+
+- `sheetName`
+  - leave it blank to use the first sheet tab
+- `allowedEmails`
+  - optional
+  - leave empty for the simplest setup
+  - fill it only if you want an explicit allowlist
+
+### 3. Deploy the web app
+
+1. Click `Deploy` > `New deployment`.
+2. Choose type `Web app`.
+3. For the simplest setup:
+   - `Execute as`: `Me`
+   - `Who has access`: `Anyone with Google account`
+4. Click `Deploy`.
+5. Authorize Drive and Sheets access when Google asks.
+6. Copy the deployment URL that ends in `/exec`.
+
+If you want strict per-user allowlisting later:
+
+- set `allowedEmails` in `Code.gs`
+- redeploy as `Execute as: User accessing the web app`
+
+### 4. Connect the website
+
+Paste the `/exec` URL into `APP_CONFIG.appsScriptWebAppUrl` in [assets/js/config.js](/Users/anibal/Documents/Inmotion/assets/js/config.js), then reload the site.
+
 ## Local Run
 
 No build step is required.
 
-1. Open `/Users/anibal/Documents/New project/index.html` directly in a browser, or
-2. Serve locally with a static server. Example:
-
 ```bash
-cd "/Users/anibal/Documents/New project"
+cd "/Users/anibal/Documents/Inmotion"
 python3 -m http.server 5500
 ```
 
-Then visit [http://localhost:5500](http://localhost:5500).
+Then open [http://localhost:5500/index.html](http://localhost:5500/index.html).
 
-## Deploy to GitHub Pages
+## Upload Flow
 
-1. Push this folder to your GitHub repository root.
-2. Open repository Settings > Pages.
-3. Set source to `main` branch and root (`/`).
-4. Save. GitHub Pages serves the app as static files.
-
-## Deploy to Netlify
-
-1. Connect your repository (or drag and drop this folder).
-2. Build command: leave blank.
-3. Publish directory: `.`
-4. Deploy.
-
-## Video Playback Behavior
-
-The modal player uses this priority:
-
-1. Google Drive URL: converts to `https://drive.google.com/file/d/<id>/preview` and embeds an iframe.
-2. Direct media file URL (`.mp4`, `.webm`, `.ogg`): renders native `<video controls>`.
-3. Any other URL: shows external link fallback.
+- The website embeds the Apps Script web app in an iframe.
+- The Apps Script form uploads the file into the configured Drive folder.
+- Apps Script writes the metadata into the spreadsheet.
+- After a successful upload or edit, the iframe notifies the parent page and the public catalog reloads automatically.
 
 ## Troubleshooting
 
-### App shows “Unable to load videos”
+### The public catalog does not load
 
 Check:
 
 1. The sheet is published to web.
 2. `APP_CONFIG.gvizUrl` uses `/gviz/tq?tqx=out:json`.
 3. The `gid` points to the correct tab.
-4. The sheet is public (no authentication required).
+4. The sheet is public.
 
-### App loads but no videos appear
+### The embedded staff panel does not appear
 
 Check:
 
-1. There are rows in the target tab.
-2. Header names match expected columns.
-3. Style/level filters are not excluding all rows (use “Clear filters”).
+1. `APP_CONFIG.appsScriptWebAppUrl` is set.
+2. The URL is the deployed `/exec` URL, not `/dev`.
+3. The Apps Script deployment is still active.
 
-### Thumbnails or videos fail to render
+### The embedded panel loads but save/upload fails
 
-- Keep URLs publicly accessible.
-- For Drive videos, ensure sharing permissions allow public viewing.
+Check:
+
+1. The Apps Script project was authorized after deployment.
+2. The `spreadsheetId` and `driveFolderId` in `Code.gs` are correct.
+3. The deployment account can edit the sheet and write to that Drive folder.
+4. If you enabled `allowedEmails`, the current user matches one of those emails.
+
+### Videos upload but do not play in the catalog
+
+Check:
+
+1. The Drive folder or files are shared in a way that allows viewers to open them.
+2. The saved `video_url` points to a Drive file URL.
+3. The uploaded files are compatible video formats.
