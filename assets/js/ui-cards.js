@@ -96,6 +96,9 @@ function buildCard(record, onCardClick) {
   playOverlay.innerHTML =
     '<span class="material-symbols-outlined text-white text-5xl drop-shadow-lg" style="font-variation-settings: \'FILL\' 1">play_circle</span>';
 
+  mediaWrap.appendChild(image);
+  mediaWrap.appendChild(playOverlay);
+
   // Style badge
   if (record.style && record.style !== 'Unspecified') {
     const badge = document.createElement('div');
@@ -113,9 +116,6 @@ function buildCard(record, onCardClick) {
     levelBadge.textContent = record.level;
     mediaWrap.appendChild(levelBadge);
   }
-
-  mediaWrap.appendChild(image);
-  mediaWrap.appendChild(playOverlay);
 
   const content = document.createElement('div');
   content.className = 'space-y-2 p-4';

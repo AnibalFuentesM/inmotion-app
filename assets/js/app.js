@@ -1,4 +1,5 @@
 import { APP_CONFIG } from './config.js';
+import { createAdminPanel } from './admin-panel.js';
 import { fetchSheetData } from './data-source.js';
 import { buildFilterState, applyFilters, getUniqueFieldValues } from './filters.js';
 import { renderVideoCards } from './ui-cards.js';
@@ -31,6 +32,10 @@ const state = {
 };
 
 const modal = createVideoModal(elements.videoModal);
+const adminPanel = createAdminPanel({
+  config: APP_CONFIG,
+  onCatalogReload: loadVideos
+});
 
 /**
  * @param {boolean} isLoading
@@ -167,6 +172,7 @@ async function loadVideos() {
 
     state.records = records;
     state.missingColumns = missingColumns;
+    adminPanel.syncRecords(records);
 
     populateSelect(elements.styleFilter, getUniqueFieldValues(records, 'style'), 'Todos los estilos');
     populateSelect(elements.levelFilter, getUniqueFieldValues(records, 'level'), 'Todos los niveles');
@@ -175,6 +181,7 @@ async function loadVideos() {
   } catch (error) {
     state.records = [];
     state.filtered = [];
+    adminPanel.syncRecords([]);
     renderVideoCards({
       container: elements.cardsGrid,
       records: [],
@@ -232,7 +239,8 @@ function bindEvents() {
 
 function init() {
   bindEvents();
-  loadVideos();
+  void adminPanel.init();
+  void loadVideos();
 }
 
 init();
