@@ -57,7 +57,7 @@ function createCatalogItem(formObject) {
   }
 
   const metadata = normalizeMetadata_(formObject);
-  const uploadedFile = createDriveFile_(formObject.videoFile, metadata.step_name);
+  const upload = createDriveFile_(formObject.videoFile, metadata.step_name);
   const recordId = Utilities.getUuid();
   const context = getSheetContext_();
 
@@ -68,7 +68,7 @@ function createCatalogItem(formObject) {
       style: metadata.style,
       level: metadata.level,
       date: metadata.date,
-      video_url: buildDriveFileUrl_(uploadedFile.getId()),
+      video_url: buildDriveFileUrl_(upload.file.getId()),
       thumbnail_url: '',
       tags: metadata.tags,
       notes: metadata.notes
@@ -77,7 +77,7 @@ function createCatalogItem(formObject) {
 
   return {
     ok: true,
-    message: 'Video subido y catalogo actualizado.'
+    message: ['Video subido y catalogo actualizado.'].concat(upload.warnings).join(' ')
   };
 }
 
@@ -121,18 +121,52 @@ function getAuthorizedUser_() {
 }
 
 function createDriveFile_(blob, stepName) {
-  const folder = DriveApp.getFolderById(CONFIG.driveFolderId);
-  const file = folder.createFile(blob);
   const nextName = buildUploadFileName_(stepName, blob.getName());
+  const warnings = [];
+  let file;
+
+  try {
+    const folder = DriveApp.getFolderById(CONFIG.driveFolderId);
+    file = folder.createFile(blob);
+  } catch (error) {
+    try {
+      file = DriveApp.createFile(blob);
+      warnings.push(
+        'No se pudo usar la carpeta configurada; el archivo se guardo en Mi unidad del propietario del script.'
+      );
+    } catch (fallbackError) {
+      throw new Error(
+        'No se pudo crear el archivo en Google Drive. Reautoriza el deployment de Apps Script con permisos de Drive y verifica que la cuenta ejecutora tenga acceso a la carpeta configurada. Detalle: ' +
+          getErrorMessage_(fallbackError || error)
+      );
+    }
+  }
 
   if (nextName) {
     file.setName(nextName);
   }
 
-  // Permite que la vista en iframe y la miniatura externa funcionen sin permisos de Drive
-  file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+  try {
+    // Permite que la vista en iframe y la miniatura externa funcionen sin permisos de Drive.
+    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+  } catch (error) {
+    warnings.push(
+      'El archivo se subio, pero no se pudo activar "cualquier persona con el enlace"; ajusta el permiso en Drive si el video no reproduce.'
+    );
+  }
 
-  return file;
+  return {
+    file: file,
+    warnings: warnings
+  };
+}
+
+function getErrorMessage_(error) {
+  if (error && error.message) {
+    return String(error.message);
+  }
+
+  return String(error || 'error desconocido');
 }
 
 function buildUploadFileName_(stepName, originalName) {
