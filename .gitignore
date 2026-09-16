@@ -1,3 +1,6 @@
 .DS_Store
 .vercel
 .env*.local
+_to_delete/
+Academia-ElBaileDelRobot/
+Claude outputs/
