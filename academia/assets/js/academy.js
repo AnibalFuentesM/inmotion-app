@@ -1,5 +1,5 @@
 const STORAGE_KEY = 'inmotion-academy-demo-v1';
-const STATE_VERSION = 1;
+const STATE_VERSION = 2;
 const TODAY = new Date();
 const WEEKDAY_SHORT = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
 
@@ -40,6 +40,14 @@ const roleConfig = {
       ['alumnos', 'Alumnos', 'users'],
       ['pagos', 'Pagos', 'money'],
       ['asistencia', 'Asistencia', 'list']
+    ]
+  },
+  guardian: {
+    label: 'Portal de tutor',
+    initials: 'CR',
+    routes: [
+      ['inicio', 'Inicio', 'home'],
+      ['carnet', 'Carnés', 'card']
     ]
   }
 };
@@ -170,13 +178,101 @@ function capacityText(item) {
   return `${item.enrolled} / ${item.capacity}`;
 }
 
+// Clave local YYYY-MM-DD: toISOString daria el dia en UTC y en Guatemala (UTC-6)
+// una clase de la noche quedaria registrada al dia siguiente.
+function dayKey(date) {
+  const day = startOfDay(date);
+  return `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, '0')}-${String(day.getDate()).padStart(2, '0')}`;
+}
+
+function parseDayKey(value) {
+  const [year, month, day] = String(value).split('-').map(Number);
+  return new Date(year, (month || 1) - 1, day || 1);
+}
+
+function previousDateFor(weekday) {
+  return addDays(nextDateFor(weekday), -7);
+}
+
+function pastDayLabel(date) {
+  const diff = daysBetween(date);
+  if (diff === 0) return 'Hoy';
+  if (diff === -1) return 'Ayer';
+  return `${WEEKDAY_SHORT[date.getDay()]} ${shortDate(date)}`;
+}
+
+function membershipValidity() {
+  const last = new Date(TODAY.getFullYear(), TODAY.getMonth() + 1, 0);
+  const month = new Intl.DateTimeFormat('es-GT', { month: 'short' }).format(last).replace('.', '');
+  return `${last.getDate()} · ${month.toUpperCase()} · ${last.getFullYear()}`;
+}
+
+function studentById(studentId) {
+  return state.students.find((item) => item.id === studentId);
+}
+
+function classesForStudent(studentId) {
+  const ids = studentById(studentId)?.classIds || [];
+  return scheduledClasses().filter((item) => ids.includes(item.id));
+}
+
+function nextClassForStudent(studentId) {
+  return classesForStudent(studentId)[0] || null;
+}
+
+function lastAttendanceFor(studentId) {
+  const entries = state.attendanceLog
+    .filter((entry) => entry.studentId === studentId)
+    .sort((a, b) => String(b.at).localeCompare(String(a.at)));
+  const last = entries[0];
+  if (!last) return null;
+  const date = parseDayKey(last.at);
+  return {
+    label: pastDayLabel(date),
+    className: classData.find((item) => item.id === last.classId)?.name || 'Clase'
+  };
+}
+
+function monthlyPaymentFor(studentId) {
+  return state.payments.find((item) => item.studentId === studentId && item.month === monthLabel(TODAY));
+}
+
+function currentGuardian() {
+  return guardians[0];
+}
+
+function childrenOf(guardian) {
+  return (guardian?.childrenIds || []).map(studentById).filter(Boolean);
+}
+
+// La bitacora guarda una sesion por clase y dia.
+function logAttendance(classId, studentIds, { replaceDay = false } = {}) {
+  const today = dayKey(TODAY);
+  const sameSession = (entry) => entry.classId === classId && entry.at === today;
+  if (replaceDay) state.attendanceLog = state.attendanceLog.filter((entry) => !sameSession(entry));
+  studentIds.forEach((studentId) => {
+    if (state.attendanceLog.some((entry) => sameSession(entry) && entry.studentId === studentId)) return;
+    state.attendanceLog.push({ studentId, classId, at: today });
+  });
+}
+
+const GUARDIAN_ID = 'TU-0031';
+
+// classIds es la inscripcion real del alumno: sin ella no se puede saber cual es
+// la proxima clase de un hijo, solo la proxima clase de la academia.
 const baseStudents = [
-  { id: 'IM-0241', name: 'Valeria Ruiz', initials: 'VR', plan: 'Plan 8 clases', phone: '5555-0142', status: 'Pendiente' },
-  { id: 'IM-0218', name: 'Luis Méndez', initials: 'LM', plan: 'Plan ilimitado', phone: '5555-0188', status: 'Al día' },
-  { id: 'IM-0194', name: 'Andrea Pérez', initials: 'AP', plan: 'Plan 8 clases', phone: '5555-0120', status: 'Al día' },
-  { id: 'IM-0250', name: 'Santiago Cruz', initials: 'SC', plan: 'Plan 4 clases', phone: '5555-0176', status: 'Pendiente' },
-  { id: 'IM-0207', name: 'Camila Soto', initials: 'CS', plan: 'Plan ilimitado', phone: '5555-0159', status: 'Al día' },
-  { id: 'IM-0229', name: 'María Fernanda León', initials: 'ML', plan: 'Plan 8 clases', phone: '5555-0134', status: 'Al día' }
+  { id: 'IM-0241', name: 'Valeria Ruiz', initials: 'VR', plan: 'Plan 8 clases', phone: '5555-0142', status: 'Pendiente', level: 'Nivel intermedio', classIds: ['bachata-inter', 'kpop-teens'], guardianId: GUARDIAN_ID },
+  { id: 'IM-0262', name: 'Diego Ruiz', initials: 'DR', plan: 'Plan 4 clases', phone: '5555-0177', status: 'Al día', level: '7 a 11 años', classIds: ['latino-kids'], guardianId: GUARDIAN_ID },
+  { id: 'IM-0218', name: 'Luis Méndez', initials: 'LM', plan: 'Plan ilimitado', phone: '5555-0188', status: 'Al día', level: 'Nivel avanzado', classIds: ['salsa-on2', 'bachata-inter'] },
+  { id: 'IM-0194', name: 'Andrea Pérez', initials: 'AP', plan: 'Plan 8 clases', phone: '5555-0120', status: 'Al día', level: 'Nivel intermedio', classIds: ['bachata-inter', 'latino'] },
+  { id: 'IM-0250', name: 'Santiago Cruz', initials: 'SC', plan: 'Plan 4 clases', phone: '5555-0176', status: 'Pendiente', level: 'Nivel inicial', classIds: ['salsa-basico'] },
+  { id: 'IM-0207', name: 'Camila Soto', initials: 'CS', plan: 'Plan ilimitado', phone: '5555-0159', status: 'Al día', level: 'Nivel intermedio', classIds: ['bachata-inter', 'latino', 'salsa-on2'] },
+  { id: 'IM-0229', name: 'María Fernanda León', initials: 'ML', plan: 'Plan 8 clases', phone: '5555-0134', status: 'Al día', level: 'Nivel inicial', classIds: ['salsa-basico', 'latino'] }
+];
+
+// Los tutores no se editan desde la app: solo se consultan.
+const guardians = [
+  { id: GUARDIAN_ID, name: 'Carmen Ruiz', initials: 'CR', phone: '5555-0177', childrenIds: ['IM-0241', 'IM-0262'], consentSignedAt: dayKey(addDays(TODAY, -35)) }
 ];
 
 const basePayments = [
@@ -184,7 +280,8 @@ const basePayments = [
   { id: 'P-1043', studentId: 'IM-0218', student: 'Luis Méndez', month: monthLabel(TODAY), amount: 625, method: 'POS', date: shortDate(addDays(TODAY, -1)), status: 'Pagado' },
   { id: 'P-1042', studentId: 'IM-0194', student: 'Andrea Pérez', month: monthLabel(TODAY), amount: 450, method: 'Transferencia', date: shortDate(addDays(TODAY, -3)), status: 'Pagado' },
   { id: 'P-1041', studentId: 'IM-0250', student: 'Santiago Cruz', month: monthLabel(TODAY), amount: 300, method: 'Pendiente', date: `Venció ${shortDate(addDays(TODAY, -6))}`, status: 'En mora' },
-  { id: 'P-1040', studentId: 'IM-0207', student: 'Camila Soto', month: monthLabel(TODAY), amount: 625, method: 'Efectivo', date: shortDate(addDays(TODAY, -8)), status: 'Pagado' }
+  { id: 'P-1040', studentId: 'IM-0207', student: 'Camila Soto', month: monthLabel(TODAY), amount: 625, method: 'Efectivo', date: shortDate(addDays(TODAY, -8)), status: 'Pagado' },
+  { id: 'P-1039', studentId: 'IM-0262', student: 'Diego Ruiz', month: monthLabel(TODAY), amount: 300, method: 'Efectivo', date: shortDate(addDays(TODAY, -9)), status: 'Pagado' }
 ];
 
 const roster = [
@@ -200,10 +297,19 @@ const defaultState = {
   role: null,
   students: baseStudents,
   payments: basePayments,
+  // attendance es la sesion en curso de cada clase (lo que ve marcado el maestro).
+  // attendanceLog es el historial con fecha, que es de donde sale "ultima asistencia".
   attendance: {
     'bachata-inter': ['IM-0218', 'IM-0194', 'IM-0207'],
     'salsa-basico': ['IM-0218', 'IM-0229']
   },
+  attendanceLog: [
+    { studentId: 'IM-0241', classId: 'bachata-inter', at: dayKey(previousDateFor(3)) },
+    { studentId: 'IM-0218', classId: 'bachata-inter', at: dayKey(previousDateFor(3)) },
+    { studentId: 'IM-0194', classId: 'bachata-inter', at: dayKey(previousDateFor(3)) },
+    { studentId: 'IM-0241', classId: 'kpop-teens', at: dayKey(previousDateFor(4)) },
+    { studentId: 'IM-0262', classId: 'latino-kids', at: dayKey(previousDateFor(6)) }
+  ],
   studentCheckIn: false
 };
 
@@ -217,7 +323,8 @@ function loadState() {
       ...saved,
       students: Array.isArray(saved?.students) ? saved.students : baseStudents,
       payments: Array.isArray(saved?.payments) ? saved.payments : basePayments,
-      attendance: { ...defaultState.attendance, ...(saved?.attendance || {}) }
+      attendance: { ...defaultState.attendance, ...(saved?.attendance || {}) },
+      attendanceLog: Array.isArray(saved?.attendanceLog) ? saved.attendanceLog : defaultState.attendanceLog
     };
   } catch {
     return structuredClone(defaultState);
@@ -229,6 +336,7 @@ let activeRole = state.role || 'student';
 let activeRoute = 'inicio';
 let activeClassId = classData[0].id;
 let lastFocusedElement = null;
+let activeChildId = null;
 
 const elements = {
   access: document.querySelector('#accessView'),
@@ -438,13 +546,51 @@ function renderStudentClasses() {
   `;
 }
 
-function qrMarkup() {
-  const pattern = [
-    '111111101010101111111','100000101101101000001','101110101010101011101','101110100111001011101','101110101001101011101','100000100110001000001','111111101010101111111','000000001110100000000','110011111011011010111','001110001100100111000','101011101011111001101','011100011110001110010','110101101001111011101','000000001010100010010','111111101111101010111','100000101000001110001','101110101111101011111','101110100100101100010','101110101111111011101','100000101001001001010','111111101101111011111'
-  ];
-  return `<svg viewBox="0 0 21 21" aria-label="Código QR de demostración" role="img" shape-rendering="crispEdges">
+// Patron de 21x21 derivado del carne. No es un QR legible -el rotulo lo dice-,
+// pero dos alumnos distintos no muestran el mismo codigo en pantalla.
+function qrPattern(seed) {
+  let hash = 2166136261 >>> 0;
+  const text = String(seed);
+  for (let i = 0; i < text.length; i += 1) {
+    hash ^= text.charCodeAt(i);
+    hash = Math.imul(hash, 16777619) >>> 0;
+  }
+  const next = () => {
+    hash ^= (hash << 13) >>> 0;
+    hash >>>= 0;
+    hash ^= hash >>> 17;
+    hash ^= (hash << 5) >>> 0;
+    hash >>>= 0;
+    return hash / 4294967296;
+  };
+  const size = 21;
+  const grid = Array.from({ length: size }, () => new Array(size).fill(0));
+  const reserved = (x, y) => (x < 8 && y < 8) || (x > 12 && y < 8) || (x < 8 && y > 12) || x === 6 || y === 6;
+  for (let y = 0; y < size; y += 1) {
+    for (let x = 0; x < size; x += 1) {
+      if (!reserved(x, y)) grid[y][x] = next() < 0.45 ? 1 : 0;
+    }
+  }
+  [[0, 0], [14, 0], [0, 14]].forEach(([ox, oy]) => {
+    for (let y = 0; y < 7; y += 1) {
+      for (let x = 0; x < 7; x += 1) {
+        const edge = x === 0 || x === 6 || y === 0 || y === 6;
+        const core = x >= 2 && x <= 4 && y >= 2 && y <= 4;
+        grid[oy + y][ox + x] = edge || core ? 1 : 0;
+      }
+    }
+  });
+  for (let i = 8; i < 13; i += 1) {
+    grid[6][i] = i % 2 === 0 ? 1 : 0;
+    grid[i][6] = i % 2 === 0 ? 1 : 0;
+  }
+  return grid;
+}
+
+function qrMarkup(seed = 'IM-0241') {
+  return `<svg viewBox="0 0 21 21" aria-label="Código QR de demostración ${escapeHtml(seed)}" role="img" shape-rendering="crispEdges">
     <rect width="21" height="21" fill="#fff"/>
-    ${pattern.flatMap((row, y) => [...row].map((cell, x) => cell === '1' ? `<rect x="${x}" y="${y}" width="1" height="1" fill="#0b0b0c"/>` : '')).join('')}
+    ${qrPattern(seed).flatMap((row, y) => row.map((cell, x) => cell ? `<rect x="${x}" y="${y}" width="1" height="1" fill="#0b0b0c"/>` : '')).join('')}
   </svg>`;
 }
 
@@ -457,7 +603,7 @@ function renderStudentCard() {
         <p class="member-card-label">Miembro activo · Plan 8 clases</p>
         <h2>Valeria<br/>Ruiz</h2>
         <span class="member-id">IM-0241 · Nivel intermedio</span>
-        <div class="member-validity"><span>Vigencia</span><strong>30 · SEP · 2026</strong></div>
+        <div class="member-validity"><span>Vigencia</span><strong>${membershipValidity()}</strong></div>
       </article>
       <aside class="qr-panel">
         <h2>Registro rápido</h2>
@@ -629,6 +775,109 @@ function renderAdminAttendance() {
   `;
 }
 
+// ---------------------------------------------------------------------------
+// Tutor: vista de solo lectura. Ve a sus propios hijos y nada mas. Sin pagar,
+// sin justificar ausencias y sin estadisticas: eso no esta en el arranque.
+// ---------------------------------------------------------------------------
+
+function childCardMarkup(child) {
+  const next = nextClassForStudent(child.id);
+  const last = lastAttendanceFor(child.id);
+  const payment = monthlyPaymentFor(child.id);
+  const paid = payment?.status === 'Pagado';
+  return `
+    <article class="surface-card">
+      <div class="person-cell">
+        <span class="avatar">${escapeHtml(initials(child.name))}</span>
+        <span><strong>${escapeHtml(child.name)}</strong><small>${escapeHtml(child.id)} · ${escapeHtml(child.level)}</small></span>
+      </div>
+      <p class="eyebrow" style="margin-top:22px">Próxima clase</p>
+      ${next
+        ? `<h3>${escapeHtml(next.name)}</h3><p class="payment-meta">${escapeHtml(next.day)} · ${escapeHtml(next.time)} · ${escapeHtml(next.room)}<br/>${escapeHtml(next.teacher)}</p>`
+        : '<p class="payment-meta">Sin clases asignadas en esta demostración.</p>'}
+      <p class="eyebrow" style="margin-top:20px">Última asistencia</p>
+      <p class="payment-meta">${last ? `${escapeHtml(last.label)} · ${escapeHtml(last.className)}` : 'Sin registros todavía.'}</p>
+      <p class="eyebrow" style="margin-top:20px">Mensualidad · ${escapeHtml(monthName(TODAY))}</p>
+      <h3>Q ${payment ? escapeHtml(payment.amount) : '—'} <span class="status-pill ${paid ? 'is-paid' : 'is-due'}">${escapeHtml(payment?.status || 'Sin registro')}</span></h3>
+      <div class="form-actions">
+        <button class="button button--light button--small" type="button" data-child-payment="${escapeHtml(child.id)}">Ver mensualidad</button>
+        <button class="button button--small" type="button" data-child-carnet="${escapeHtml(child.id)}">Ver carné</button>
+      </div>
+    </article>
+  `;
+}
+
+function consentCardMarkup(guardian) {
+  const signed = parseDayKey(guardian.consentSignedAt);
+  return `
+    <article class="surface-card">
+      <p class="eyebrow">Manejo de datos de menores</p>
+      <h3>Consentimiento firmado</h3>
+      <p class="payment-meta">${escapeHtml(guardian.name)}<br/>Firmado el ${escapeHtml(shortDate(signed))} ${signed.getFullYear()}</p>
+      <p class="payment-meta" style="margin-top:16px">Como tutor accedés únicamente a la información de tus propios hijos.</p>
+      <div class="form-actions"><button class="button button--light button--small" type="button" data-open-consent>Ver documento</button></div>
+    </article>
+  `;
+}
+
+function renderGuardianHome() {
+  const guardian = currentGuardian();
+  const children = childrenOf(guardian);
+  return `
+    <header class="page-heading">
+      <div>
+        <p class="eyebrow">${escapeHtml(shortDayLabel(TODAY))}</p>
+        <h1>${escapeHtml(greeting())},<br/><span>${escapeHtml(guardian.name.split(' ')[0])}.</span></h1>
+        <p>${children.length === 1 ? 'Seguimiento de tu hijo' : 'Seguimiento de tus hijos'} en la academia. Esta vista es de solo consulta.</p>
+      </div>
+      <button class="button" type="button" data-go="carnet">Ver carnés</button>
+    </header>
+    <section class="section">
+      <div class="section-head"><div><h2>A tu cargo</h2><p>Próxima clase, última asistencia y mensualidad del mes.</p></div><span class="tag">${children.length} alumno${children.length === 1 ? '' : 's'}</span></div>
+      <div class="cards-grid">
+        ${children.map(childCardMarkup).join('')}
+        ${consentCardMarkup(guardian)}
+      </div>
+    </section>
+  `;
+}
+
+function guardianCarnetMarkup() {
+  const child = studentById(activeChildId);
+  if (!child) return '<div class="empty-state"><strong>Sin alumnos a cargo</strong>Esta demostración no tiene hijos asignados.</div>';
+  const [firstName, ...rest] = child.name.split(' ');
+  const next = nextClassForStudent(child.id);
+  return `
+    <div class="member-card-wrap">
+      <article class="member-card">
+        <img class="member-logo" src="./assets/inmotion-logo.svg" alt="In Motion Dance Academy" />
+        <p class="member-card-label">Miembro activo · ${escapeHtml(child.plan)}</p>
+        <h2>${escapeHtml(firstName)}<br/>${escapeHtml(rest.join(' '))}</h2>
+        <span class="member-id">${escapeHtml(child.id)} · ${escapeHtml(child.level)}</span>
+        <div class="member-validity"><span>Vigencia</span><strong>${membershipValidity()}</strong></div>
+      </article>
+      <aside class="qr-panel">
+        <h2>Registro en recepción</h2>
+        <p>${next ? `Mostrá este código al llegar a ${escapeHtml(next.name)}, ${escapeHtml(next.day.toLowerCase())} a las ${escapeHtml(next.time)}.` : 'Mostrá este código al llegar a la academia.'}</p>
+        <div class="qr-code">${qrMarkup(child.id)}</div>
+        <p class="qr-demo-label">QR de demostración · ${escapeHtml(child.id)}</p>
+      </aside>
+    </div>
+  `;
+}
+
+function renderGuardianCard() {
+  const children = childrenOf(currentGuardian());
+  if (!children.some((child) => child.id === activeChildId)) activeChildId = children[0]?.id || null;
+  return `
+    <header class="page-heading"><div><p class="eyebrow">Identificación digital</p><h1>El carné<br/>de tus hijos.</h1><p>Se muestra en recepción para registrar la llegada. El tutor no marca la asistencia.</p></div></header>
+    <div class="filter-row" aria-label="Elegir alumno">
+      ${children.map((child) => `<button class="filter-chip ${child.id === activeChildId ? 'is-active' : ''}" type="button" data-child-select="${escapeHtml(child.id)}">${escapeHtml(child.name)}</button>`).join('')}
+    </div>
+    <div id="guardianCarnet">${guardianCarnetMarkup()}</div>
+  `;
+}
+
 const renderers = {
   'student:inicio': renderStudentHome,
   'student:clases': renderStudentClasses,
@@ -639,7 +888,9 @@ const renderers = {
   'admin:inicio': renderAdminHome,
   'admin:alumnos': renderAdminStudents,
   'admin:pagos': renderAdminPayments,
-  'admin:asistencia': renderAdminAttendance
+  'admin:asistencia': renderAdminAttendance,
+  'guardian:inicio': renderGuardianHome,
+  'guardian:carnet': renderGuardianCard
 };
 
 function initials(name) {
@@ -751,6 +1002,41 @@ function openStudentPayment() {
   });
 }
 
+function openConsentModal() {
+  const guardian = currentGuardian();
+  const signed = parseDayKey(guardian.consentSignedAt);
+  openModal({
+    title: 'Consentimiento de manejo de datos',
+    eyebrow: 'Menores de edad',
+    body: `
+      <article class="surface-card">
+        <p class="eyebrow">Firmado el ${escapeHtml(shortDate(signed))} ${signed.getFullYear()}</p>
+        <p class="payment-meta">Los tutores acceden únicamente a la información de sus propios hijos. La academia firma con cada tutor un consentimiento de manejo de datos, cuyo formato se entrega como parte del proyecto.</p>
+      </article>
+      <p class="modal-note" style="margin-top:16px">El consentimiento se firma con la academia fuera del sistema. Esta pantalla solo deja constancia de que existe.</p>
+    `
+  });
+}
+
+function openChildPayment(studentId) {
+  const child = studentById(studentId);
+  if (!child) return;
+  const payment = monthlyPaymentFor(child.id);
+  const paid = payment?.status === 'Pagado';
+  openModal({
+    title: `Mensualidad · ${child.name}`,
+    eyebrow: monthLabel(TODAY),
+    body: `
+      <article class="surface-card">
+        <p class="eyebrow">${paid ? 'Pago registrado' : 'Saldo por registrar'}</p>
+        <p class="payment-amount">Q ${payment ? escapeHtml(payment.amount) : '—'}</p>
+        <p class="payment-meta">${payment ? `${escapeHtml(payment.method)} · ${escapeHtml(payment.date)}` : 'Sin registro para este mes.'}</p>
+      </article>
+      <p class="modal-note" style="margin-top:16px">La academia cobra por sus medios habituales. La app solo refleja el registro interno; no hay pasarela ni pago con tarjeta.</p>
+    `
+  });
+}
+
 function openReceipt(paymentId) {
   const payment = state.payments.find((item) => item.id === paymentId);
   if (!payment) return;
@@ -781,9 +1067,10 @@ function openProfile() {
   const profiles = {
     student: ['Valeria Ruiz', 'Alumno · Plan 8 clases', 'IM-0241'],
     teacher: ['Alex Aquino', 'Maestro', '6 clases asignadas'],
-    admin: ['Majo Borrayo', 'Administración', 'Acceso de demostración']
+    admin: ['Majo Borrayo', 'Administración', 'Acceso de demostración'],
+    guardian: ['Carmen Ruiz', 'Tutor', 'Valeria Ruiz y Diego Ruiz a su cargo']
   };
-  const [name, role, meta] = profiles[activeRole];
+  const [name, role, meta] = profiles[activeRole] || profiles.student;
   openModal({
     title: name,
     eyebrow: roleConfig[activeRole].label,
@@ -799,6 +1086,7 @@ function simulateScan() {
   const list = new Set(state.attendance[target.id] || []);
   list.add('IM-0241');
   state.attendance[target.id] = [...list];
+  logAttendance(target.id, ['IM-0241']);
   state.studentCheckIn = true;
   saveState();
   closeModal();
@@ -935,6 +1223,7 @@ function registerWebMcpTools() {
       const present = new Set(state.attendance[classItem.id] || []);
       present.add(student.id);
       state.attendance[classItem.id] = [...present];
+      logAttendance(classItem.id, [student.id]);
       if (student.id === 'IM-0241') state.studentCheckIn = true;
       saveState();
       if (!elements.app.classList.contains('is-hidden')) renderApp();
@@ -988,6 +1277,7 @@ function handleAttendanceSubmit(event) {
   const form = event.target;
   const classId = form.dataset.classId;
   state.attendance[classId] = [...form.querySelectorAll('input[name="attendance"]:checked')].map((input) => input.value);
+  logAttendance(classId, state.attendance[classId], { replaceDay: true });
   saveState();
   showToast('Asistencia guardada', `${state.attendance[classId].length} alumnos marcados como presentes.`);
   renderApp();
@@ -1010,6 +1300,14 @@ function applyClassFilter(button) {
     : filter === 'advanced' ? classes.filter((item) => item.level.toLowerCase().includes('avanzado'))
     : classes;
   elements.content.querySelector('#studentSchedule').innerHTML = scheduleList(filtered);
+}
+
+// Se redibuja solo el carne para no perder la posicion de scroll al cambiar de hijo.
+function applyChildSelect(button) {
+  activeChildId = button.dataset.childSelect;
+  elements.content.querySelectorAll('[data-child-select]').forEach((chip) => chip.classList.toggle('is-active', chip === button));
+  const panel = elements.content.querySelector('#guardianCarnet');
+  if (panel) panel.innerHTML = guardianCarnetMarkup();
 }
 
 function applyPaymentFilter(button) {
@@ -1041,6 +1339,17 @@ function handleContentClick(event) {
   if (receipt) return openReceipt(receipt.dataset.receipt);
   const studentDetail = find('[data-student-detail]');
   if (studentDetail) return openStudentDetail(studentDetail.dataset.studentDetail);
+
+  const childCarnet = find('[data-child-carnet]');
+  if (childCarnet) {
+    activeChildId = childCarnet.dataset.childCarnet;
+    return routeTo('carnet');
+  }
+  const childSelect = find('[data-child-select]');
+  if (childSelect) return applyChildSelect(childSelect);
+  const childPayment = find('[data-child-payment]');
+  if (childPayment) return openChildPayment(childPayment.dataset.childPayment);
+  if (find('[data-open-consent]')) return openConsentModal();
 
   const classFilter = find('[data-class-filter]');
   if (classFilter) return applyClassFilter(classFilter);

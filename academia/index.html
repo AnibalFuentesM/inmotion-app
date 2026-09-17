@@ -53,7 +53,7 @@
       <img class="access-logo" src="./assets/inmotion-logo.svg" alt="In Motion Dance Academy" />
       <p class="eyebrow">Prototipo navegable · Datos demo</p>
       <h1 id="accessTitle">Entrá a tu ritmo.</h1>
-      <p class="access-copy">Explorá la experiencia de alumnos, maestros y administración. Los cambios se guardan solo en este navegador.</p>
+      <p class="access-copy">Explorá la experiencia de alumnos, maestros, tutores y administración. Los cambios se guardan solo en este navegador.</p>
       <div class="role-options" role="group" aria-label="Elegir acceso de demostración">
         <button class="role-option is-primary" type="button" data-enter-role="student">
           <span class="role-number">01</span>
@@ -68,6 +68,11 @@
         <button class="role-option" type="button" data-enter-role="admin">
           <span class="role-number">03</span>
           <span><strong>Administración</strong><small>Alumnos, pagos y mora</small></span>
+          <span class="role-arrow" aria-hidden="true">↗</span>
+        </button>
+        <button class="role-option" type="button" data-enter-role="guardian">
+          <span class="role-number">04</span>
+          <span><strong>Tutor</strong><small>Solo la información de sus hijos</small></span>
           <span class="role-arrow" aria-hidden="true">↗</span>
         </button>
       </div>
@@ -111,6 +116,7 @@
               <option value="student">Alumno · Valeria</option>
               <option value="teacher">Maestro · Alex</option>
               <option value="admin">Admin · Majo</option>
+              <option value="guardian">Tutor · Carmen</option>
             </select>
           </label>
           <button class="profile-chip" type="button" id="profileButton" aria-label="Perfil de demostración">

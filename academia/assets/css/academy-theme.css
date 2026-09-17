@@ -77,7 +77,10 @@
   border-radius: 20px;
   border-color: var(--line);
 }
-.member-card::after { border-color: var(--brand-red); }
+/* El brochazo es decorativo: isolation crea el contexto de apilamiento para que
+   el ::after quede detras del texto sin tocar el posicionamiento de la vigencia. */
+.member-card { isolation: isolate; }
+.member-card::after { border-color: var(--brand-red); z-index: -1; }
 .member-logo { mix-blend-mode: normal; }
 
 /* ---- Estados ---- */
@@ -87,6 +90,16 @@
 
 /* ---- Movil: barra inferior clara con indicador del tab activo ---- */
 @media (max-width: 780px) {
+  /* El brochazo esta dimensionado para la tarjeta ancha de escritorio: a 375px
+     cruzaba el nombre y el plan. Aqui se achica y se queda en la esquina. */
+  .member-card::after {
+    width: 360px;
+    height: 170px;
+    right: -170px;
+    bottom: -58px;
+    border-width: 22px;
+  }
+
   .topbar { min-height: 62px; gap: 10px; padding-inline: 14px; }
   .topbar > div:not(.topbar-actions) { display: none; }   /* kicker y fecha: ya salen en el encabezado de la pagina */
   .topbar-logo { display: block; margin-right: auto; }
