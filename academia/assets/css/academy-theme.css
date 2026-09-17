@@ -22,6 +22,13 @@
 
 :focus-visible { outline-color: rgba(226, 12, 20, 0.45); }
 
+/* Acciones que aun no corresponden a esta sesion o a este pago. */
+.button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+  transform: none;
+}
+
 /* ---- Intro / bienvenida ----
    Ahora es el logo animado: el brochazo rojo se pinta solo y despues entra
    el wordmark. La animacion vive dentro de inmotion-logo-animado.svg, por eso
@@ -91,6 +98,28 @@
 .menu-button { background: transparent; border-color: rgba(255, 255, 255, 0.24); }
 .menu-button span { background: #fff; }
 
+/* ---- Inicio del alumno ----
+   El aro decorativo estaba dimensionado cuando el acento era rosado: ahora que
+   comparte el rojo del titulo, cruzaba "¿Bailamos?" y el texto de ayuda y se
+   leia como parte de las letras. Se corre a la esquina y baja de peso. */
+.student-hero-copy::after {
+  top: auto;
+  right: -300px;
+  bottom: -90px;
+  width: 460px;
+  height: 190px;
+  border-width: 18px;
+  opacity: 0.4;
+}
+
+/* ---- Buscador de alumnos ----
+   La base apaga el outline del input; el anillo de foco se dibuja en el
+   contenedor para que el teclado no quede sin indicador visible. */
+.search-box:focus-within {
+  border-color: var(--red);
+  box-shadow: 0 0 0 3px rgba(226, 12, 20, 0.2);
+}
+
 /* ---- Superficies ---- */
 .class-card,
 .surface-card,
@@ -120,6 +149,9 @@
     bottom: -58px;
     border-width: 22px;
   }
+
+  /* A 375px no hay lugar libre en el hero: el aro solo estorba. */
+  .student-hero-copy::after { display: none; }
 
   .topbar { min-height: 62px; gap: 10px; padding-inline: 14px; }
   .topbar > div:not(.topbar-actions) { display: none; }   /* kicker y fecha: ya salen en el encabezado de la pagina */

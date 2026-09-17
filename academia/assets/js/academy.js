@@ -1,6 +1,6 @@
 const STORAGE_KEY = 'inmotion-academy-demo-v1';
-const STATE_VERSION = 2;
-const TODAY = new Date();
+const STATE_VERSION = 3;
+let TODAY = new Date();
 const WEEKDAY_SHORT = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
 
 const icons = {
@@ -141,7 +141,16 @@ function todayClasses() {
 }
 
 function nextClass() {
-  return todayClasses()[0] || scheduledClasses()[0];
+  return upcomingClasses(scheduledClasses())[0];
+}
+
+function upcomingClasses(classes) {
+  return classes.map((item) => {
+    const startsAt = new Date(item.date);
+    startsAt.setMinutes(timeValue(item.time));
+    const date = startsAt <= TODAY ? addDays(item.date, 7) : item.date;
+    return { ...item, date, day: dayLabel(date), dateLabel: shortDate(date) };
+  }).sort((a, b) => (a.date - b.date) || (timeValue(a.time) - timeValue(b.time)));
 }
 
 const TEACHER_NAME = 'Alex Aquino';
@@ -217,7 +226,7 @@ function classesForStudent(studentId) {
 }
 
 function nextClassForStudent(studentId) {
-  return classesForStudent(studentId)[0] || null;
+  return upcomingClasses(classesForStudent(studentId))[0] || null;
 }
 
 function lastAttendanceFor(studentId) {
@@ -234,7 +243,35 @@ function lastAttendanceFor(studentId) {
 }
 
 function monthlyPaymentFor(studentId) {
-  return state.payments.find((item) => item.studentId === studentId && item.month === monthLabel(TODAY));
+  return state.payments.find((item) => item.studentId === studentId && item.period === monthKey(TODAY));
+}
+
+function monthKey(date) {
+  return dayKey(date).slice(0, 7);
+}
+
+function paymentStatus(payment) {
+  if (!payment) return 'Sin registro';
+  if (payment.status === 'Pagado') return 'Pagado';
+  return payment.dueDate && payment.dueDate < dayKey(TODAY) ? 'En mora' : 'Pendiente';
+}
+
+function paymentDateText(payment) {
+  if (!payment) return 'Sin registro para este mes.';
+  if (payment.status === 'Pagado') return payment.paidAt ? shortDate(parseDayKey(payment.paidAt)) : payment.date;
+  if (!payment.dueDate) return 'Sin fecha de vencimiento';
+  return `${paymentStatus(payment) === 'En mora' ? 'Venció' : 'Vence'} ${shortDate(parseDayKey(payment.dueDate))}`;
+}
+
+function studentPaymentStatus(studentId) {
+  const due = state.payments.filter((item) => item.studentId === studentId && item.period <= monthKey(TODAY) && item.status !== 'Pagado');
+  if (due.some((item) => paymentStatus(item) === 'En mora')) return 'En mora';
+  if (due.length) return 'Pendiente';
+  return monthlyPaymentFor(studentId)?.status === 'Pagado' ? 'Al día' : 'Sin registro';
+}
+
+function planAmount(studentId) {
+  return ({ 'Plan 4 clases': 300, 'Plan 8 clases': 450, 'Plan ilimitado': 625 })[studentById(studentId)?.plan] || 450;
 }
 
 function currentGuardian() {
@@ -245,15 +282,26 @@ function childrenOf(guardian) {
   return (guardian?.childrenIds || []).map(studentById).filter(Boolean);
 }
 
-// La bitacora guarda una sesion por clase y dia.
-function logAttendance(classId, studentIds, { replaceDay = false } = {}) {
-  const today = dayKey(TODAY);
-  const sameSession = (entry) => entry.classId === classId && entry.at === today;
-  if (replaceDay) state.attendanceLog = state.attendanceLog.filter((entry) => !sameSession(entry));
+function attendanceFor(classId, date = TODAY) {
+  return state.attendanceLog.filter((entry) => entry.classId === classId && entry.at === dayKey(date)).map((entry) => entry.studentId);
+}
+
+// Una unica bitacora identifica cada sesion por clase y fecha local.
+function recordAttendance(classId, studentIds, sessionDate, { replaceDay = false } = {}) {
+  TODAY = new Date();
+  const item = classData.find((entry) => entry.id === classId);
+  if (!item || sessionDate !== dayKey(TODAY) || item.weekday !== TODAY.getDay()) {
+    throw new Error('Solo podés registrar una clase programada para hoy. Volvé a abrir la sesión.');
+  }
+  if (studentIds.some((studentId) => !studentById(studentId))) throw new Error('Alumno no encontrado.');
+  const sameSession = (entry) => entry.classId === classId && entry.at === sessionDate;
+  const nextState = structuredClone(state);
+  if (replaceDay) nextState.attendanceLog = nextState.attendanceLog.filter((entry) => !sameSession(entry));
   studentIds.forEach((studentId) => {
-    if (state.attendanceLog.some((entry) => sameSession(entry) && entry.studentId === studentId)) return;
-    state.attendanceLog.push({ studentId, classId, at: today });
+    if (nextState.attendanceLog.some((entry) => sameSession(entry) && entry.studentId === studentId)) return;
+    nextState.attendanceLog.push({ studentId, classId, at: sessionDate });
   });
+  persistState(nextState);
 }
 
 const GUARDIAN_ID = 'TU-0031';
@@ -282,7 +330,12 @@ const basePayments = [
   { id: 'P-1041', studentId: 'IM-0250', student: 'Santiago Cruz', month: monthLabel(TODAY), amount: 300, method: 'Pendiente', date: `Venció ${shortDate(addDays(TODAY, -6))}`, status: 'En mora' },
   { id: 'P-1040', studentId: 'IM-0207', student: 'Camila Soto', month: monthLabel(TODAY), amount: 625, method: 'Efectivo', date: shortDate(addDays(TODAY, -8)), status: 'Pagado' },
   { id: 'P-1039', studentId: 'IM-0262', student: 'Diego Ruiz', month: monthLabel(TODAY), amount: 300, method: 'Efectivo', date: shortDate(addDays(TODAY, -9)), status: 'Pagado' }
-];
+].map((payment, index) => ({
+  ...payment,
+  period: monthKey(TODAY),
+  dueDate: payment.status === 'Pagado' ? null : dayKey(addDays(TODAY, index === 0 ? 2 : -6)),
+  paidAt: payment.status === 'Pagado' ? dayKey(addDays(TODAY, [0, -1, -3, 0, -8, -9][index])) : null
+}));
 
 const roster = [
   { id: 'IM-0241', name: 'Valeria Ruiz', initials: 'VR', plan: '8 clases' },
@@ -297,36 +350,205 @@ const defaultState = {
   role: null,
   students: baseStudents,
   payments: basePayments,
-  // attendance es la sesion en curso de cada clase (lo que ve marcado el maestro).
-  // attendanceLog es el historial con fecha, que es de donde sale "ultima asistencia".
-  attendance: {
-    'bachata-inter': ['IM-0218', 'IM-0194', 'IM-0207'],
-    'salsa-basico': ['IM-0218', 'IM-0229']
-  },
+  // La bitacora es la fuente de la lista diaria y de la consulta de cada alumno.
   attendanceLog: [
     { studentId: 'IM-0241', classId: 'bachata-inter', at: dayKey(previousDateFor(3)) },
     { studentId: 'IM-0218', classId: 'bachata-inter', at: dayKey(previousDateFor(3)) },
     { studentId: 'IM-0194', classId: 'bachata-inter', at: dayKey(previousDateFor(3)) },
     { studentId: 'IM-0241', classId: 'kpop-teens', at: dayKey(previousDateFor(4)) },
     { studentId: 'IM-0262', classId: 'latino-kids', at: dayKey(previousDateFor(6)) }
-  ],
-  studentCheckIn: false
+  ]
 };
 
-function loadState() {
+// La version 2 guardaba fechas como texto. Conservamos sus registros al migrar;
+// las marcas sin fecha no se trasladan a una sesion inventada.
+function migratePayment(payment) {
+  if (payment.period) return payment;
+  const year = Number(String(payment.month).match(/\d{4}/)?.[0]);
+  const month = Array.from({ length: 12 }, (_, index) => monthName(new Date(year, index, 1)))
+    .findIndex((name) => String(payment.month).toLowerCase().startsWith(name));
+  if (!year || month < 0) throw new Error('Período de pago inválido.');
+  const periodDate = new Date(year, month, 1);
+  const match = String(payment.date).match(/(\d{1,2})\s+([a-záéíóú]+)/i);
+  let storedDate = null;
+  if (match) {
+    const dateMonth = Array.from({ length: 12 }, (_, index) => shortDate(new Date(year, index, 1)).split(' ').pop())
+      .findIndex((name) => name === match[2].toLowerCase());
+    if (dateMonth >= 0) {
+      // Enero/diciembre: elegimos el año mas cercano al período aplicado.
+      const dateYear = year + (dateMonth - month > 6 ? -1 : month - dateMonth > 6 ? 1 : 0);
+      storedDate = dayKey(new Date(dateYear, dateMonth, Number(match[1])));
+    }
+  }
+  return { ...payment, period: monthKey(periodDate), dueDate: payment.status === 'Pagado' ? null : storedDate, paidAt: payment.status === 'Pagado' ? storedDate : null };
+}
+
+// ---------------------------------------------------------------------------
+// Validacion del estado guardado. Un registro ilegible se descarta solo: no
+// tumba el arranque ni se lleva consigo los registros que si son validos.
+// Lo descartado se cuenta y se le avisa al usuario al abrir.
+// ---------------------------------------------------------------------------
+
+const DAY_KEY_PATTERN = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
+const PERIOD_PATTERN = /^\d{4}-(0[1-9]|1[0-2])$/;
+const PAYMENT_METHODS = ['POS', 'Transferencia', 'Efectivo', 'Depósito'];
+let recoveryReport = null;
+
+function isPlainObject(value) {
+  return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+function isValidDayKey(value) {
+  if (typeof value !== 'string' || !DAY_KEY_PATTERN.test(value)) return false;
+  // Rechaza 2026-02-30: la fecha reconstruida tiene que coincidir con el texto.
+  return dayKey(parseDayKey(value)) === value;
+}
+
+function cleanText(value, max = 120) {
+  return typeof value === 'string' ? value.trim().slice(0, max) : '';
+}
+
+function sanitizeStudent(raw) {
+  if (!isPlainObject(raw)) return null;
+  const id = cleanText(raw.id, 24);
+  const name = cleanText(raw.name, 80);
+  if (!/^IM-\d{3,6}$/.test(id) || !name) return null;
+  const knownClassIds = classData.map((item) => item.id);
+  const plan = ['Plan 4 clases', 'Plan 8 clases', 'Plan ilimitado'].includes(raw.plan) ? raw.plan : 'Plan 8 clases';
+  return {
+    id,
+    name,
+    initials: cleanText(raw.initials, 4) || initials(name),
+    plan,
+    phone: cleanText(raw.phone, 24) || 'Sin registrar',
+    status: cleanText(raw.status, 20) || 'Pendiente',
+    level: cleanText(raw.level, 40) || 'Sin nivel',
+    classIds: Array.isArray(raw.classIds) ? [...new Set(raw.classIds.filter((value) => knownClassIds.includes(value)))] : [],
+    guardianId: guardians.some((item) => item.id === raw.guardianId) ? raw.guardianId : undefined,
+    notes: cleanText(raw.notes, 280)
+  };
+}
+
+function sanitizePayment(raw, studentIds) {
+  if (!isPlainObject(raw)) return null;
+  let payment;
   try {
-    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
-    // Un esquema viejo guardado en el navegador rompe la demo en silencio: se descarta.
-    if (!saved || saved.version !== STATE_VERSION) return structuredClone(defaultState);
-    return {
-      ...defaultState,
-      ...saved,
-      students: Array.isArray(saved?.students) ? saved.students : baseStudents,
-      payments: Array.isArray(saved?.payments) ? saved.payments : basePayments,
-      attendance: { ...defaultState.attendance, ...(saved?.attendance || {}) },
-      attendanceLog: Array.isArray(saved?.attendanceLog) ? saved.attendanceLog : defaultState.attendanceLog
-    };
+    payment = migratePayment(raw);
   } catch {
+    return null;
+  }
+  const studentId = cleanText(payment.studentId, 24);
+  const amount = Number(payment.amount);
+  if (!studentIds.has(studentId)) return null;
+  if (!PERIOD_PATTERN.test(String(payment.period))) return null;
+  if (!Number.isFinite(amount) || amount <= 0) return null;
+  const isPaid = payment.status === 'Pagado';
+  const paidAt = isValidDayKey(payment.paidAt) ? payment.paidAt : null;
+  // Un pago liquidado sin fecha utilizable no puede quedar como pagado a ciegas.
+  if (isPaid && !paidAt) return null;
+  return {
+    id: cleanText(payment.id, 24) || `P-${Math.round(amount)}-${payment.period}`,
+    studentId,
+    student: cleanText(payment.student, 80) || studentId,
+    month: cleanText(payment.month, 40) || monthLabel(parseDayKey(`${payment.period}-01`)),
+    period: payment.period,
+    amount,
+    method: PAYMENT_METHODS.includes(payment.method) ? payment.method : (isPaid ? 'Efectivo' : 'Pendiente'),
+    date: cleanText(payment.date, 40),
+    paidAt: isPaid ? paidAt : null,
+    dueDate: isPaid ? null : (isValidDayKey(payment.dueDate) ? payment.dueDate : null),
+    status: isPaid ? 'Pagado' : 'Pendiente',
+    reference: cleanText(payment.reference, 60)
+  };
+}
+
+function sanitizeAttendance(raw, studentIds) {
+  if (!isPlainObject(raw)) return null;
+  const studentId = cleanText(raw.studentId, 24);
+  const classId = cleanText(raw.classId, 40);
+  const at = cleanText(raw.at, 10);
+  if (!studentIds.has(studentId)) return null;
+  const item = classData.find((entry) => entry.id === classId);
+  if (!item || !isValidDayKey(at)) return null;
+  const date = parseDayKey(at);
+  // Ni sesiones futuras ni sesiones en un dia en que esa clase no se dicta.
+  if (daysBetween(date) > 0 || date.getDay() !== item.weekday) return null;
+  return { studentId, classId, at };
+}
+
+function sanitizeState(saved) {
+  const dropped = { students: 0, payments: 0, attendance: 0 };
+
+  const rawStudents = Array.isArray(saved.students) ? saved.students : [];
+  const students = [];
+  const seenStudents = new Set();
+  rawStudents.forEach((raw) => {
+    const student = sanitizeStudent(raw);
+    if (!student || seenStudents.has(student.id)) {
+      dropped.students += 1;
+      return;
+    }
+    seenStudents.add(student.id);
+    students.push(student);
+  });
+  // Sin alumnos la app no tiene nada que mostrar: se vuelve al padron base.
+  const usableStudents = students.length ? students : structuredClone(baseStudents);
+  if (!students.length && rawStudents.length) dropped.students = rawStudents.length;
+  const studentIds = new Set(usableStudents.map((item) => item.id));
+
+  const rawPayments = Array.isArray(saved.payments) ? saved.payments : [];
+  const payments = [];
+  const seenPeriods = new Set();
+  rawPayments.forEach((raw) => {
+    const payment = sanitizePayment(raw, studentIds);
+    const fingerprint = payment && `${payment.studentId}|${payment.period}`;
+    if (!payment || seenPeriods.has(fingerprint)) {
+      dropped.payments += 1;
+      return;
+    }
+    seenPeriods.add(fingerprint);
+    payments.push(payment);
+  });
+
+  const rawLog = Array.isArray(saved.attendanceLog) ? saved.attendanceLog : [];
+  const attendanceLog = [];
+  const seenSessions = new Set();
+  rawLog.forEach((raw) => {
+    const entry = sanitizeAttendance(raw, studentIds);
+    const fingerprint = entry && `${entry.studentId}|${entry.classId}|${entry.at}`;
+    if (!entry || seenSessions.has(fingerprint)) {
+      dropped.attendance += 1;
+      return;
+    }
+    seenSessions.add(fingerprint);
+    attendanceLog.push(entry);
+  });
+
+  const total = dropped.students + dropped.payments + dropped.attendance;
+  if (total) recoveryReport = { total, ...dropped };
+
+  return {
+    // Un rol desconocido no rompe el arranque: se cae a la pantalla de acceso.
+    role: Object.keys(roleConfig).includes(saved.role) ? saved.role : null,
+    students: usableStudents,
+    payments,
+    attendanceLog
+  };
+}
+
+function loadState() {
+  let saved;
+  try {
+    saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
+  } catch {
+    // Almacenamiento bloqueado o JSON corrupto: arrancamos con la demo limpia.
+    return structuredClone(defaultState);
+  }
+  if (!isPlainObject(saved) || ![2, STATE_VERSION].includes(saved.version)) return structuredClone(defaultState);
+  try {
+    return sanitizeState(saved);
+  } catch {
+    recoveryReport = { total: 0, students: 0, payments: 0, attendance: 0, fatal: true };
     return structuredClone(defaultState);
   }
 }
@@ -338,9 +560,15 @@ let activeClassId = classData[0].id;
 let lastFocusedElement = null;
 let activeChildId = null;
 
+const MOBILE_QUERY = window.matchMedia('(max-width: 780px)');
+const REDUCED_MOTION = window.matchMedia('(prefers-reduced-motion: reduce)');
+const FOCUSABLE_SELECTOR = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
 const elements = {
   access: document.querySelector('#accessView'),
   app: document.querySelector('#appShell'),
+  sidebar: document.querySelector('.sidebar'),
+  modal: document.querySelector('#modalLayer .modal'),
   sideNav: document.querySelector('#sideNav'),
   bottomNav: document.querySelector('#bottomNav'),
   content: document.querySelector('#mainContent'),
@@ -356,8 +584,26 @@ const elements = {
   toastRegion: document.querySelector('#toastRegion')
 };
 
-function saveState() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...state, role: activeRole, version: STATE_VERSION }));
+function persistState(nextState) {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...nextState, version: STATE_VERSION }));
+  } catch {
+    throw new Error('No se pudo guardar en este navegador. Revisá el almacenamiento e intentá de nuevo.');
+  }
+  state = nextState;
+}
+
+// Los flujos que solo cambian preferencias persisten primero. Si el navegador no
+// puede guardar, el cambio se aplica en memoria y se avisa: nunca se anuncia exito.
+function persistOrWarn(nextState) {
+  try {
+    persistState(nextState);
+    return true;
+  } catch (error) {
+    state = nextState;
+    showToast('No se pudo guardar', error.message);
+    return false;
+  }
 }
 
 function escapeHtml(value) {
@@ -375,9 +621,9 @@ function icon(name) {
 
 function navMarkup(config) {
   return config.routes.map(([route, label, iconName], index) => `
-    <a class="nav-item ${activeRoute === route ? 'is-active' : ''}" href="#/${route}" data-route="${route}">
+    <a class="nav-item ${activeRoute === route ? 'is-active' : ''}" href="#/${escapeHtml(route)}" data-route="${escapeHtml(route)}">
       <span class="nav-icon">${icon(iconName)}</span>
-      <span>${label}</span>
+      <span>${escapeHtml(label)}</span>
       <span class="nav-index">0${index + 1}</span>
     </a>
   `).join('');
@@ -395,10 +641,10 @@ function updateShell() {
 }
 
 function enterDemo(role) {
+  if (!roleConfig[role]) return;
   activeRole = role;
   activeRoute = 'inicio';
-  state.role = role;
-  saveState();
+  persistOrWarn({ ...state, role });
   elements.access.classList.add('is-hidden');
   elements.app.classList.remove('is-hidden');
   history.replaceState(null, '', '#/inicio');
@@ -406,8 +652,7 @@ function enterDemo(role) {
 }
 
 function leaveDemo() {
-  state.role = null;
-  saveState();
+  persistOrWarn({ ...state, role: null });
   elements.app.classList.add('is-hidden');
   elements.access.classList.remove('is-hidden');
   elements.app.classList.remove('menu-open');
@@ -415,14 +660,32 @@ function leaveDemo() {
   document.querySelector('[data-enter-role="student"]')?.focus();
 }
 
+// El menu lateral queda fuera de pantalla en movil: mientras este cerrado no debe
+// recibir foco ni anunciarse, o el tabulador se va a enlaces invisibles.
+function syncMenuState() {
+  const open = elements.app.classList.contains('menu-open');
+  elements.menuButton.setAttribute('aria-expanded', String(open));
+  if (!elements.sidebar) return;
+  const collapsed = MOBILE_QUERY.matches && !open;
+  elements.sidebar.inert = collapsed;
+  if (collapsed) elements.sidebar.setAttribute('aria-hidden', 'true');
+  else elements.sidebar.removeAttribute('aria-hidden');
+}
+
+function setMenuOpen(open, { moveFocus = false } = {}) {
+  elements.app.classList.toggle('menu-open', open);
+  syncMenuState();
+  if (open && moveFocus) elements.sidebar?.querySelector(FOCUSABLE_SELECTOR)?.focus();
+}
+
 function renderApp() {
+  TODAY = new Date();
   updateShell();
   const key = `${activeRole}:${activeRoute}`;
   const renderer = renderers[key] || renderers[`${activeRole}:inicio`];
   elements.content.innerHTML = `<div class="page-enter">${renderer()}</div>`;
-  elements.app.classList.remove('menu-open');
-  elements.menuButton.setAttribute('aria-expanded', 'false');
-  window.scrollTo({ top: 0, behavior: 'smooth' });
+  setMenuOpen(false);
+  window.scrollTo({ top: 0, behavior: REDUCED_MOTION.matches ? 'auto' : 'smooth' });
 }
 
 function routeTo(route) {
@@ -432,9 +695,9 @@ function routeTo(route) {
   elements.content.focus({ preventScroll: true });
 }
 
-function weekStrip() {
+function weekStrip(classes = classData) {
   const monday = addDays(TODAY, -((startOfDay(TODAY).getDay() + 6) % 7));
-  const perWeekday = classData.reduce((acc, item) => {
+  const perWeekday = classes.reduce((acc, item) => {
     acc[item.weekday] = (acc[item.weekday] || 0) + 1;
     return acc;
   }, {});
@@ -443,7 +706,7 @@ function weekStrip() {
     const total = perWeekday[date.getDay()] || 0;
     const note = total ? `${total} clase${total === 1 ? '' : 's'}` : '';
     return `<div class="day-pill ${daysBetween(date) === 0 ? 'is-today' : ''}">
-      <span>${WEEKDAY_SHORT[date.getDay()]}</span><strong>${date.getDate()}</strong><small>${note}</small>
+      <span>${escapeHtml(WEEKDAY_SHORT[date.getDay()])}</span><strong>${escapeHtml(date.getDate())}</strong><small>${escapeHtml(note)}</small>
     </div>`;
   }).join('')}</div>`;
 }
@@ -453,12 +716,12 @@ function classCards(classes = scheduledClasses().slice(0, 3)) {
     <article class="class-card ${index === 0 ? 'is-featured' : ''}">
       <span class="class-card-index">0${index + 1}</span>
       <div class="class-card-top">
-        <span class="tag ${index === 0 ? 'tag--dark' : ''}">${item.day} · ${item.time}</span>
-        ${index === 0 ? '<span class="status-dot">Confirmada</span>' : ''}
+        <span class="tag ${index === 0 ? 'tag--dark' : ''}">${escapeHtml(item.day)} · ${escapeHtml(item.time)}</span>
+        ${index === 0 ? '<span class="status-dot">Inscripta</span>' : ''}
       </div>
-      <h3>${item.name}</h3>
-      <p>${item.teacher}</p>
-      <div class="class-card-foot"><span>${item.level}</span><span>${item.room}</span></div>
+      <h3>${escapeHtml(item.name)}</h3>
+      <p>${escapeHtml(item.teacher)}</p>
+      <div class="class-card-foot"><span>${escapeHtml(item.level)}</span><span>${escapeHtml(item.room)}</span></div>
     </article>
   `).join('')}</div>`;
 }
@@ -466,65 +729,67 @@ function classCards(classes = scheduledClasses().slice(0, 3)) {
 function scheduleList(classes = scheduledClasses()) {
   return `<div class="schedule-list">${classes.map((item) => `
     <div class="schedule-row">
-      <div class="schedule-time">${item.time}<small>${item.day} · ${item.dateLabel}</small></div>
-      <div class="schedule-name"><strong>${item.name}</strong><small>${item.level} · ${item.room}</small></div>
-      <div class="schedule-teacher">${item.teacher}<small>Maestro</small></div>
-      <span class="capacity">${capacityText(item)} inscritos</span>
-      <button class="button button--light button--small" type="button" data-class-detail="${item.id}">Ver clase</button>
+      <div class="schedule-time">${escapeHtml(item.time)}<small>${escapeHtml(item.day)} · ${escapeHtml(item.dateLabel)}</small></div>
+      <div class="schedule-name"><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(item.level)} · ${escapeHtml(item.room)}</small></div>
+      <div class="schedule-teacher">${escapeHtml(item.teacher)}<small>Maestro</small></div>
+      <span class="capacity">${escapeHtml(capacityText(item))} inscritos</span>
+      <button class="button button--light button--small" type="button" data-class-detail="${escapeHtml(item.id)}">Ver clase</button>
     </div>
   `).join('')}</div>`;
 }
 
 function renderStudentHome() {
   const planTotal = 8;
-  const attended = state.studentCheckIn ? 6 : 5;
-  const payment = state.payments.find((item) => item.studentId === 'IM-0241' && item.month === monthLabel(TODAY));
+  const attendance = state.attendanceLog.filter((entry) => entry.studentId === 'IM-0241');
+  const attended = attendance.filter((entry) => entry.at.startsWith(monthKey(TODAY))).length;
+  const checkedIn = attendance.some((entry) => entry.at === dayKey(TODAY));
+  const remaining = Math.max(0, planTotal - attended);
+  const payment = monthlyPaymentFor('IM-0241');
   const paid = payment?.status === 'Pagado';
-  const next = nextClass();
-  const [hour, meridiem] = next.time.split(' ');
-  const percent = Math.round((attended / planTotal) * 100);
+  const own = upcomingClasses(classesForStudent('IM-0241'));
+  const next = own[0];
+  const [hour, meridiem] = next?.time.split(' ') || [];
   return `
     <section class="student-hero">
       <div class="student-hero-copy">
         <div>
-          <p class="eyebrow">${shortDayLabel(TODAY)}</p>
+          <p class="eyebrow">${escapeHtml(shortDayLabel(TODAY))}</p>
           <h1 class="hero-title">Hola, Valeria.<br/><span>¿Bailamos?</span></h1>
         </div>
         <div class="hero-foot">
           <button class="button button--red" type="button" data-open-scan>Marcar asistencia <span aria-hidden="true">↗</span></button>
-          <p>${state.studentCheckIn ? 'Tu asistencia de hoy ya quedó registrada en esta demo.' : 'Mostrá tu carnet QR en recepción al llegar a la academia.'}</p>
+          <p>${checkedIn ? 'Tu asistencia de hoy ya quedó registrada en esta demo.' : 'Mostrá tu carnet QR en recepción al llegar a la academia.'}</p>
         </div>
       </div>
       <aside class="next-class">
         <div class="next-class-label"><span>Próxima clase</span><span>01</span></div>
-        <time><strong>${hour}</strong><span>${meridiem} · ${next.day}</span></time>
-        <div><h2>${next.name}</h2><p>${next.teacher} · ${next.room}</p></div>
+        ${next ? `<time><strong>${escapeHtml(hour)}</strong><span>${escapeHtml(meridiem)} · ${escapeHtml(next.day)}</span></time>
+        <div><h2>${escapeHtml(next.name)}</h2><p>${escapeHtml(next.teacher)} · ${escapeHtml(next.room)}</p></div>` : '<p>Sin clases asignadas.</p>'}
       </aside>
     </section>
 
     <section class="section">
-      <div class="section-head"><div><h2>Esta semana</h2><p>Tu agenda de clases del ${weekRange()}.</p></div><button class="text-button" type="button" data-go="clases">Ver calendario →</button></div>
-      ${weekStrip()}
+      <div class="section-head"><div><h2>Esta semana</h2><p>Tu agenda de clases del ${escapeHtml(weekRange())}.</p></div><button class="text-button" type="button" data-go="clases">Ver calendario →</button></div>
+      ${weekStrip(classesForStudent('IM-0241'))}
     </section>
 
     <section class="section">
-      <div class="section-head"><div><h2>Tus próximas clases</h2><p>Plan ${planTotal} clases · ${planTotal - attended} disponibles este mes</p></div></div>
-      ${classCards()}
+      <div class="section-head"><div><h2>Tus próximas clases</h2><p>Plan ${planTotal} clases · ${remaining} disponibles este mes</p></div></div>
+      ${classCards(own)}
     </section>
 
     <section class="section split-grid">
       <article class="surface-card">
-        <p class="eyebrow">Mensualidad · ${monthName(TODAY)}</p>
+        <p class="eyebrow">Mensualidad · ${escapeHtml(monthName(TODAY))}</p>
         <div class="payment-status">
-          <div><p class="payment-amount">Q ${payment?.amount || 450}</p><p class="payment-meta">${paid ? `Registrado · ${payment.date}` : `Vence el ${shortDate(addDays(TODAY, 2))}`}</p></div>
+          <div><p class="payment-amount">Q ${escapeHtml(payment?.amount ?? '—')}</p><p class="payment-meta">${escapeHtml(paymentStatus(payment))} · ${escapeHtml(paymentDateText(payment))}</p></div>
           <button class="button ${paid ? 'button--light' : ''}" type="button" data-student-payment>${paid ? 'Ver comprobante' : 'Ver detalle'}</button>
         </div>
       </article>
       <article class="surface-card">
         <p class="eyebrow">Asistencia del mes</p>
         <h2>${attended} de ${planTotal} clases</h2>
-        <div class="attendance-line"><span style="width:${percent}%"></span></div>
-        <div class="attendance-copy"><span>${percent}% completado</span><span>${planTotal - attended} pendiente${planTotal - attended === 1 ? '' : 's'}</span></div>
+        <p class="payment-meta">${remaining} clases disponibles este mes.</p>
       </article>
     </section>
   `;
@@ -533,8 +798,8 @@ function renderStudentHome() {
 function renderStudentClasses() {
   return `
     <header class="page-heading">
-      <div><p class="eyebrow">Calendario de clases</p><h1>Elegí tu próximo<br/>movimiento.</h1><p>Horarios de demostración. La reserva de cupo no está conectada a un servidor.</p></div>
-      <button class="button" type="button" data-open-scan>Mostrar mi QR</button>
+      <div><p class="eyebrow">Calendario de clases</p><h1>Elegí tu próximo<br/>movimiento.</h1><p>Consultá horarios y cupos de demostración. Las reservas no están habilitadas en este prototipo.</p></div>
+      <button class="button" type="button" data-go="carnet">Mostrar mi QR</button>
     </header>
     <div class="filter-row" aria-label="Filtrar clases">
       <button class="filter-chip is-active" type="button" data-class-filter="all">Todas</button>
@@ -619,9 +884,9 @@ function renderStudentCard() {
 function teacherCards() {
   return `<div class="teacher-day-grid">${teacherClasses().slice(0, 4).map((item, index) => `
     <article class="teacher-class">
-      <div class="teacher-class-time">${item.time.replace(' ', '<br/>')}</div>
-      <div><span class="tag ${index === 0 ? 'tag--red' : ''}">${item.day}</span><h3>${item.name}</h3><p>${item.room} · ${capacityText(item)} inscritos</p></div>
-      <button class="button button--small ${index === 0 ? 'button--red' : 'button--light'}" type="button" data-take-attendance="${item.id}">${index === 0 ? 'Pasar asistencia' : 'Abrir clase'}</button>
+      <div class="teacher-class-time">${escapeHtml(item.time).replace(' ', '<br/>')}</div>
+      <div><span class="tag ${index === 0 ? 'tag--red' : ''}">${escapeHtml(item.day)}</span><h3>${escapeHtml(item.name)}</h3><p>${escapeHtml(item.room)} · ${escapeHtml(capacityText(item))} inscritos</p></div>
+      <button class="button button--small ${index === 0 ? 'button--red' : 'button--light'}" type="button" data-take-attendance="${escapeHtml(item.id)}">${index === 0 ? 'Pasar asistencia' : 'Abrir clase'}</button>
     </article>
   `).join('')}</div>`;
 }
@@ -629,15 +894,15 @@ function teacherCards() {
 function renderTeacherHome() {
   const own = teacherClasses();
   const today = own.filter((item) => item.day === 'Hoy');
-  const next = today[0] || own[0];
+  const next = upcomingClasses(own)[0];
   const count = today.length;
   return `
     <section class="teacher-hero">
-      <p class="eyebrow">${shortDayLabel(TODAY)} · ${count ? `${count} clase${count === 1 ? '' : 's'} programada${count === 1 ? '' : 's'}` : 'sin clases hoy'}</p>
-      <h1>${greeting()},<br/><span>Alex.</span></h1>
+      <p class="eyebrow">${escapeHtml(shortDayLabel(TODAY))} · ${count ? `${count} clase${count === 1 ? '' : 's'} programada${count === 1 ? '' : 's'}` : 'sin clases hoy'}</p>
+      <h1>${escapeHtml(greeting())},<br/><span>Alex.</span></h1>
       <div class="teacher-hero-foot">
-        ${next ? `<button class="button button--red" type="button" data-take-attendance="${next.id}">${count ? 'Iniciar asistencia' : 'Abrir próxima clase'}</button>` : ''}
-        <p>${next ? `Tu ${count ? 'próxima clase empieza' : 'siguiente clase es'} ${next.day.toLowerCase()} a las ${next.time}<br/>en el ${next.room}.` : 'No tenés clases asignadas en esta demostración.'}</p>
+        ${next ? `<button class="button button--red" type="button" data-take-attendance="${escapeHtml((today[0] || next).id)}">${count ? 'Abrir asistencia de hoy' : 'Abrir próxima clase'}</button>` : ''}
+        <p>${next ? `Tu siguiente clase es ${escapeHtml(next.day.toLowerCase())} a las ${escapeHtml(next.time)}<br/>en el ${escapeHtml(next.room)}.` : 'No tenés clases asignadas en esta demostración.'}</p>
       </div>
     </section>
     <section class="section"><div class="section-head"><div><h2>Tu agenda</h2><p>Próximas clases asignadas.</p></div><button class="text-button" type="button" data-go="agenda">Ver semana →</button></div>${teacherCards()}</section>
@@ -647,18 +912,18 @@ function renderTeacherHome() {
 function renderTeacherAgenda() {
   return `
     <header class="page-heading"><div><p class="eyebrow">Agenda docente</p><h1>Una semana<br/>en movimiento.</h1><p>Clases asignadas a Alex Aquino en esta demostración.</p></div></header>
-    ${weekStrip()}
+    ${weekStrip(teacherClasses())}
     <section class="section">${teacherCards()}</section>
   `;
 }
 
-function rosterMarkup(classId = activeClassId) {
-  const selected = state.attendance[classId] || [];
+function rosterMarkup(classId = activeClassId, date = TODAY) {
+  const selected = attendanceFor(classId, date);
   return `<div class="attendance-roster">${roster.map((student) => `
     <label class="student-check">
-      <input type="checkbox" name="attendance" value="${student.id}" ${selected.includes(student.id) ? 'checked' : ''} />
-      <span class="avatar">${student.initials}</span>
-      <span><strong>${student.name}</strong><small>${student.id} · ${student.plan}</small></span>
+      <input type="checkbox" name="attendance" value="${escapeHtml(student.id)}" ${selected.includes(student.id) ? 'checked' : ''} ${dayKey(date) !== dayKey(TODAY) ? 'disabled' : ''} />
+      <span class="avatar">${escapeHtml(student.initials)}</span>
+      <span><strong>${escapeHtml(student.name)}</strong><small>${escapeHtml(student.id)} · ${escapeHtml(student.plan)}</small></span>
       <span>${selected.includes(student.id) ? 'Presente' : 'Sin marcar'}</span>
     </label>
   `).join('')}</div>`;
@@ -671,10 +936,11 @@ function renderTeacherAttendance() {
     <header class="page-heading"><div><p class="eyebrow">Control de asistencia</p><h1>¿Quién vino<br/>a bailar?</h1><p>Marcá la lista y guardá esta sesión localmente.</p></div></header>
     <section class="split-grid">
       <article class="surface-card">
-        <div class="section-head"><div><h2>${item.name}</h2><p>${item.day} · ${item.time} · ${item.room}</p></div><span class="tag ${live ? 'tag--red' : ''}">${live ? 'En curso' : 'Programada'}</span></div>
-        <form id="attendanceForm" data-class-id="${item.id}">
-          ${rosterMarkup(item.id)}
-          <div class="form-actions"><button class="button button--red" type="submit">Guardar asistencia</button></div>
+        <div class="section-head"><div><h2>${escapeHtml(item.name)}</h2><p>${escapeHtml(item.day)} · ${escapeHtml(item.time)} · ${escapeHtml(item.room)}</p></div><span class="tag ${live ? 'tag--red' : ''}">${live ? 'Programada para hoy' : 'Programada'}</span></div>
+        <form id="attendanceForm" data-class-id="${escapeHtml(item.id)}" data-session-date="${escapeHtml(dayKey(item.date))}">
+          ${rosterMarkup(item.id, item.date)}
+          ${!live ? '<p class="modal-note">La asistencia se habilita el día de esta clase.</p>' : ''}
+          <div class="form-actions"><button class="button button--red" type="submit" ${!live ? 'disabled' : ''}>Guardar asistencia</button></div>
         </form>
       </article>
       <aside class="surface-card">
@@ -693,13 +959,13 @@ function pendingPayments() {
 function adminPaymentRows(payments = state.payments) {
   if (!payments.length) return '<tr><td colspan="6"><div class="empty-state"><strong>No hay registros</strong>Probá con otro filtro.</div></td></tr>';
   return payments.map((item) => `
-    <tr data-payment-row="${item.id}">
-      <td><div class="person-cell"><span class="avatar">${initials(item.student)}</span><span><strong>${escapeHtml(item.student)}</strong><small>${item.studentId}</small></span></div></td>
+    <tr data-payment-row="${escapeHtml(item.id)}">
+      <td><div class="person-cell"><span class="avatar">${escapeHtml(initials(item.student))}</span><span><strong>${escapeHtml(item.student)}</strong><small>${escapeHtml(item.studentId)}</small></span></div></td>
       <td>${escapeHtml(item.month)}</td>
-      <td><strong>Q ${item.amount}</strong></td>
+      <td><strong>Q ${escapeHtml(item.amount)}</strong></td>
       <td>${escapeHtml(item.method)}</td>
-      <td><span class="status-pill ${item.status === 'Pagado' ? 'is-paid' : 'is-due'}">${escapeHtml(item.status)}</span></td>
-      <td>${item.status === 'Pagado' ? `<button class="table-action" type="button" data-receipt="${item.id}">Comprobante</button>` : `<button class="table-action" type="button" data-register-for="${item.studentId}">Registrar</button>`}</td>
+      <td><span class="status-pill ${item.status === 'Pagado' ? 'is-paid' : 'is-due'}">${escapeHtml(paymentStatus(item))}</span></td>
+      <td>${item.status === 'Pagado' ? `<button class="table-action" type="button" data-receipt="${escapeHtml(item.id)}">Comprobante</button>` : `<button class="table-action" type="button" data-register-for="${escapeHtml(item.studentId)}" data-payment-period="${escapeHtml(item.period)}">Registrar</button>`}</td>
     </tr>
   `).join('');
 }
@@ -708,11 +974,11 @@ function studentRows(students = state.students) {
   if (!students.length) return '<tr><td colspan="5"><div class="empty-state"><strong>Sin coincidencias</strong>Revisá el nombre o número de carnet.</div></td></tr>';
   return students.map((student) => `
     <tr>
-      <td><div class="person-cell"><span class="avatar">${initials(student.name)}</span><span><strong>${escapeHtml(student.name)}</strong><small>${student.id}</small></span></div></td>
+      <td><div class="person-cell"><span class="avatar">${escapeHtml(initials(student.name))}</span><span><strong>${escapeHtml(student.name)}</strong><small>${escapeHtml(student.id)}</small></span></div></td>
       <td>${escapeHtml(student.plan)}</td>
       <td>${escapeHtml(student.phone)}</td>
-      <td><span class="status-pill ${student.status === 'Al día' ? 'is-paid' : 'is-due'}">${escapeHtml(student.status)}</span></td>
-      <td><button class="table-action" type="button" data-student-detail="${student.id}">Ver ficha</button></td>
+      <td><span class="status-pill ${studentPaymentStatus(student.id) === 'Al día' ? 'is-paid' : 'is-due'}">${escapeHtml(studentPaymentStatus(student.id))}</span></td>
+      <td><button class="table-action" type="button" data-student-detail="${escapeHtml(student.id)}">Ver ficha</button></td>
     </tr>
   `).join('');
 }
@@ -721,7 +987,7 @@ function renderAdminHome() {
   const due = pendingPayments();
   return `
     <section class="admin-intro">
-      <div><p class="eyebrow">Administración · ${shortDayLabel(TODAY)}</p><h1>La academia,<br/>en orden.</h1></div>
+      <div><p class="eyebrow">Administración · ${escapeHtml(shortDayLabel(TODAY))}</p><h1>La academia,<br/>en orden.</h1></div>
       <div class="admin-intro-meta"><div><strong>50</strong><span>alumnos activos</span></div><div><strong>6</strong><span>maestros</span></div></div>
     </section>
     <section class="section">
@@ -738,19 +1004,19 @@ function renderAdminHome() {
 function renderAdminStudents() {
   return `
     <header class="page-heading"><div><p class="eyebrow">Base de alumnos</p><h1>Personas,<br/>no expedientes.</h1><p>Datos ficticios para validar la experiencia de gestión.</p></div><button class="button button--red" type="button" data-open-student>+ Nuevo alumno</button></header>
-    <div class="section-head"><label class="search-box"><span>⌕</span><input id="studentSearch" type="search" placeholder="Buscar por nombre o carnet" autocomplete="off" /></label><span class="tag">${state.students.length} registros demo</span></div>
+    <div class="section-head"><label class="search-box"><span>⌕</span><input id="studentSearch" type="search" placeholder="Buscar por nombre o carnet" autocomplete="off" /></label><span class="tag">${escapeHtml(state.students.length)} registros demo</span></div>
     <div class="table-wrap"><table class="data-table"><thead><tr><th>Alumno</th><th>Plan</th><th>Teléfono</th><th>Estado</th><th>Acción</th></tr></thead><tbody id="studentTableBody">${studentRows()}</tbody></table></div>
   `;
 }
 
 function renderAdminPayments() {
-  const paid = state.payments.filter((item) => item.status === 'Pagado').reduce((sum, item) => sum + item.amount, 0);
+  const paid = state.payments.filter((item) => item.status === 'Pagado' && item.paidAt?.startsWith(monthKey(TODAY))).reduce((sum, item) => sum + item.amount, 0);
   const due = pendingPayments().reduce((sum, item) => sum + item.amount, 0);
   return `
     <header class="page-heading"><div><p class="eyebrow">Control de pagos</p><h1>Registrar.<br/>Conciliar. Listo.</h1><p>Solo registra cobros realizados fuera del sistema. No procesa tarjetas ni emite FEL.</p></div><button class="button button--red" type="button" data-open-payment>+ Registrar pago</button></header>
     <section class="split-grid" style="margin-bottom:28px">
-      <article class="surface-card"><p class="eyebrow">Registrado en ${monthName(TODAY)}</p><p class="payment-amount">Q ${paid.toLocaleString('es-GT')}</p><p class="payment-meta">Monto visible en esta demo local.</p></article>
-      <article class="surface-card"><p class="eyebrow">Pendiente / mora</p><p class="payment-amount">Q ${due.toLocaleString('es-GT')}</p><p class="payment-meta">Requiere seguimiento administrativo.</p></article>
+      <article class="surface-card"><p class="eyebrow">Registrado en ${escapeHtml(monthName(TODAY))}</p><p class="payment-amount">Q ${escapeHtml(paid.toLocaleString('es-GT'))}</p><p class="payment-meta">Monto visible en esta demo local.</p></article>
+      <article class="surface-card"><p class="eyebrow">Pendiente / mora</p><p class="payment-amount">Q ${escapeHtml(due.toLocaleString('es-GT'))}</p><p class="payment-meta">Requiere seguimiento administrativo.</p></article>
     </section>
     <div class="filter-row" id="paymentFilters"><button class="filter-chip is-active" type="button" data-payment-filter="all">Todos</button><button class="filter-chip" type="button" data-payment-filter="Pagado">Pagados</button><button class="filter-chip" type="button" data-payment-filter="Pendiente">Pendientes</button><button class="filter-chip" type="button" data-payment-filter="En mora">En mora</button></div>
     <div class="table-wrap"><table class="data-table"><thead><tr><th>Alumno</th><th>Mes</th><th>Monto</th><th>Método</th><th>Estado</th><th>Acción</th></tr></thead><tbody id="paymentTableBody">${adminPaymentRows()}</tbody></table></div>
@@ -758,19 +1024,19 @@ function renderAdminPayments() {
 }
 
 function renderAdminAttendance() {
-  const sessions = scheduledClasses().slice(0, 4).map((item) => {
-    const marked = state.attendance[item.id]?.length || 0;
+  const sessions = scheduledClasses().map((item) => {
+    const marked = attendanceFor(item.id, item.date).length;
     const live = item.day === 'Hoy';
     return [
       `${item.day} · ${item.time}`,
       item.name,
       item.teacher,
       `${marked} marcado${marked === 1 ? '' : 's'} de ${item.enrolled}`,
-      live ? 'En curso' : 'Programada'
+      live ? 'Programada para hoy' : 'Programada'
     ];
   });
   return `
-    <header class="page-heading"><div><p class="eyebrow">Registro de asistencia</p><h1>Cada llegada<br/>cuenta.</h1><p>Consulta operativa de sesiones. No incluye gráficas ni analítica avanzada.</p></div><button class="button" type="button" data-open-scan>Simular escáner QR</button></header>
+    <header class="page-heading"><div><p class="eyebrow">Registro de asistencia</p><h1>Cada llegada<br/>cuenta.</h1><p>Las ${classData.length} clases de la semana. Consulta operativa, sin gráficas ni analítica avanzada.</p></div><button class="button" type="button" data-open-scan>Simular escáner QR</button></header>
     <div class="table-wrap"><table class="data-table"><thead><tr><th>Fecha y hora</th><th>Clase</th><th>Maestro</th><th>Asistencia</th><th>Estado</th></tr></thead><tbody>${sessions.map((row, index) => `<tr>${row.map((cell, cellIndex) => `<td>${cellIndex === 4 ? `<span class="status-pill ${index ? 'is-paid' : 'is-due'}">${escapeHtml(cell)}</span>` : escapeHtml(cell)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>
   `;
 }
@@ -798,7 +1064,7 @@ function childCardMarkup(child) {
       <p class="eyebrow" style="margin-top:20px">Última asistencia</p>
       <p class="payment-meta">${last ? `${escapeHtml(last.label)} · ${escapeHtml(last.className)}` : 'Sin registros todavía.'}</p>
       <p class="eyebrow" style="margin-top:20px">Mensualidad · ${escapeHtml(monthName(TODAY))}</p>
-      <h3>Q ${payment ? escapeHtml(payment.amount) : '—'} <span class="status-pill ${paid ? 'is-paid' : 'is-due'}">${escapeHtml(payment?.status || 'Sin registro')}</span></h3>
+      <h3>Q ${payment ? escapeHtml(payment.amount) : '—'} <span class="status-pill ${paid ? 'is-paid' : 'is-due'}">${escapeHtml(paymentStatus(payment))}</span></h3>
       <div class="form-actions">
         <button class="button button--light button--small" type="button" data-child-payment="${escapeHtml(child.id)}">Ver mensualidad</button>
         <button class="button button--small" type="button" data-child-carnet="${escapeHtml(child.id)}">Ver carné</button>
@@ -815,7 +1081,7 @@ function consentCardMarkup(guardian) {
       <h3>Consentimiento firmado</h3>
       <p class="payment-meta">${escapeHtml(guardian.name)}<br/>Firmado el ${escapeHtml(shortDate(signed))} ${signed.getFullYear()}</p>
       <p class="payment-meta" style="margin-top:16px">Como tutor accedés únicamente a la información de tus propios hijos.</p>
-      <div class="form-actions"><button class="button button--light button--small" type="button" data-open-consent>Ver documento</button></div>
+      <div class="form-actions"><button class="button button--light button--small" type="button" data-open-consent>Ver constancia</button></div>
     </article>
   `;
 }
@@ -897,6 +1163,21 @@ function initials(name) {
   return String(name).split(/\s+/).slice(0, 2).map((part) => part[0] || '').join('').toUpperCase();
 }
 
+function modalFocusables() {
+  return [...elements.modalLayer.querySelectorAll(FOCUSABLE_SELECTOR)].filter((node) => !node.hasAttribute('inert') && node.offsetParent !== null);
+}
+
+// Mientras el dialogo esta abierto el resto de la pagina no recibe foco ni se
+// anuncia: inert cubre puntero y teclado, aria-hidden cubre el lector.
+function setBackgroundInert(active) {
+  [elements.app, elements.access].forEach((node) => {
+    if (!node) return;
+    node.inert = active;
+    if (active) node.setAttribute('aria-hidden', 'true');
+    else node.removeAttribute('aria-hidden');
+  });
+}
+
 function openModal({ title, eyebrow = 'Acción demo', body }) {
   lastFocusedElement = document.activeElement;
   elements.modalTitle.textContent = title;
@@ -904,15 +1185,57 @@ function openModal({ title, eyebrow = 'Acción demo', body }) {
   elements.modalBody.innerHTML = body;
   elements.modalLayer.classList.remove('is-hidden');
   elements.modalLayer.setAttribute('aria-hidden', 'false');
+  setBackgroundInert(true);
   document.body.classList.add('modal-open');
-  elements.modalLayer.querySelector('[data-close-modal]')?.focus();
+  const firstInBody = elements.modalBody.querySelector(FOCUSABLE_SELECTOR);
+  (firstInBody || elements.modalLayer.querySelector('.icon-button[data-close-modal]') || elements.modal)?.focus();
+}
+
+// El render puede reemplazar el elemento que abrio el dialogo: si ya no existe,
+// el foco vuelve a un destino valido en vez de caer al fondo de la pagina.
+function restoreFocus() {
+  const previous = lastFocusedElement;
+  lastFocusedElement = null;
+  if (previous?.isConnected && typeof previous.focus === 'function' && !previous.disabled) {
+    previous.focus({ preventScroll: true });
+    return;
+  }
+  const fallback = elements.app.classList.contains('is-hidden')
+    ? document.querySelector('[data-enter-role="student"]')
+    : elements.content;
+  fallback?.focus?.({ preventScroll: true });
 }
 
 function closeModal() {
+  // Cerrar por Escape, por el fondo o por la X equivale a cancelar la solicitud.
+  const pending = webMcpResolver;
+  webMcpResolver = null;
   elements.modalLayer.classList.add('is-hidden');
   elements.modalLayer.setAttribute('aria-hidden', 'true');
+  setBackgroundInert(false);
   document.body.classList.remove('modal-open');
-  lastFocusedElement?.focus?.();
+  restoreFocus();
+  pending?.(false);
+}
+
+function trapModalTab(event) {
+  const targets = modalFocusables();
+  if (!targets.length) {
+    event.preventDefault();
+    elements.modal?.focus();
+    return;
+  }
+  const first = targets[0];
+  const last = targets[targets.length - 1];
+  const active = document.activeElement;
+  const outside = !elements.modalLayer.contains(active);
+  if (event.shiftKey && (outside || active === first)) {
+    event.preventDefault();
+    last.focus();
+  } else if (!event.shiftKey && (outside || active === last)) {
+    event.preventDefault();
+    first.focus();
+  }
 }
 
 function showToast(title, detail) {
@@ -923,37 +1246,95 @@ function showToast(title, detail) {
   window.setTimeout(() => toast.remove(), 4200);
 }
 
+let webMcpResolver = null;
+
+// WebMCP no escribe nada sin que la solicitud se vea y se apruebe en pantalla.
+function confirmWebMcpWrite({ title, lines, confirmLabel }) {
+  return new Promise((resolve) => {
+    if (webMcpResolver) {
+      resolve(false);
+      return;
+    }
+    webMcpResolver = resolve;
+    openModal({
+      title,
+      eyebrow: 'Solicitud de un asistente de IA',
+      body: `
+        <article class="surface-card">
+          <p class="eyebrow">Se va a registrar</p>
+          ${lines.map((line) => `<p class="payment-meta">${escapeHtml(line)}</p>`).join('')}
+        </article>
+        <p class="modal-note" style="margin-top:16px">Nada se guarda hasta que confirmés. Si cancelás, la solicitud se rechaza y el estado no cambia.</p>
+        <div class="form-actions"><button class="button button--light" type="button" data-close-modal>Cancelar</button><button class="button button--red" type="button" id="confirmWebMcp">${escapeHtml(confirmLabel)}</button></div>
+      `
+    });
+  });
+}
+
+function resolveWebMcp(value) {
+  const resolver = webMcpResolver;
+  webMcpResolver = null;
+  closeModal();
+  resolver?.(value);
+}
+
+function scanClasses() {
+  return classesForStudent('IM-0241').filter((item) => item.day === 'Hoy' &&
+    (activeRole !== 'teacher' || (item.id === activeClassId && item.teacher === TEACHER_NAME)));
+}
+
 function openScanModal() {
+  TODAY = new Date();
+  const classes = scanClasses();
   openModal({
     title: 'Escanear carnet',
     eyebrow: 'Asistencia QR · Simulación',
     body: `
       <div class="scan-stage"><span class="scan-line"></span><p class="scan-copy">Alineá el código dentro del recuadro</p></div>
       <p class="modal-note">Demo local: no se activa la cámara. El botón simula la lectura del carnet IM-0241.</p>
-      <div class="form-actions"><button class="button button--red" type="button" id="simulateScan">Simular lectura</button></div>
+      ${classes.length ? `<label class="field"><span>Clase de hoy · Valeria Ruiz</span><select id="scanClass">${classes.map((item) => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.name)} · ${escapeHtml(item.time)}</option>`).join('')}</select></label>
+      <div class="form-actions"><button class="button button--red" type="button" id="simulateScan" data-session-date="${escapeHtml(dayKey(TODAY))}">Simular lectura</button></div>`
+        : '<p class="modal-note">Valeria no tiene una clase asignada para hoy en esta sesión. No se registrará ninguna asistencia.</p>'}
     `
   });
 }
 
-function openPaymentModal(studentId = 'IM-0241') {
+function openPaymentModal(studentId = 'IM-0241', period = monthKey(TODAY)) {
   const student = state.students.find((item) => item.id === studentId) || state.students[0];
+  const periods = [...new Set([monthKey(TODAY), monthKey(nextMonthDate()), period, ...pendingPayments().map((item) => item.period)])].sort();
   openModal({
     title: 'Registrar pago',
     eyebrow: 'Administración · Registro interno',
     body: `
       <form id="paymentForm">
         <div class="form-grid">
-          <label class="field field--wide"><span>Alumno</span><select name="studentId" required>${state.students.map((item) => `<option value="${item.id}" ${item.id === student.id ? 'selected' : ''}>${escapeHtml(item.name)} · ${item.id}</option>`).join('')}</select></label>
-          <label class="field"><span>Monto (Q)</span><input name="amount" type="number" min="1" step="1" value="450" required /></label>
+          <label class="field field--wide"><span>Alumno</span><select name="studentId" required>${state.students.map((item) => `<option value="${escapeHtml(item.id)}" ${item.id === student.id ? 'selected' : ''}>${escapeHtml(item.name)} · ${escapeHtml(item.id)}</option>`).join('')}</select></label>
+          <label class="field"><span>Monto (Q)</span><input name="amount" type="number" min="0.01" step="0.01" required /></label>
           <label class="field"><span>Método</span><select name="method" required><option>POS</option><option>Transferencia</option><option>Efectivo</option><option>Depósito</option></select></label>
-          <label class="field"><span>Mes aplicado</span><select name="month"><option>${monthLabel(TODAY)}</option><option>${monthLabel(nextMonthDate())}</option></select></label>
+          <label class="field"><span>Mes aplicado</span><select name="period">${periods.map((value) => `<option value="${escapeHtml(value)}" ${value === period ? 'selected' : ''}>${escapeHtml(monthLabel(parseDayKey(`${value}-01`)))}</option>`).join('')}</select></label>
           <label class="field"><span>Referencia</span><input name="reference" placeholder="Ej. voucher 1842" /></label>
         </div>
         <p class="modal-note">Este registro no realiza ningún cobro, no procesa tarjetas y no genera factura FEL.</p>
+        <p class="payment-meta" id="paymentFormMessage" role="status"></p>
         <div class="form-actions"><button class="button button--light" type="button" data-close-modal>Cancelar</button><button class="button button--red" type="submit">Guardar pago</button></div>
       </form>
     `
   });
+  updatePaymentForm();
+}
+
+function updatePaymentForm() {
+  const form = document.querySelector('#paymentForm');
+  if (!form) return;
+  const studentId = form.elements.studentId.value;
+  const existing = state.payments.find((item) => item.studentId === studentId && item.period === form.elements.period.value);
+  const paid = existing?.status === 'Pagado';
+  form.elements.amount.value = existing?.amount ?? planAmount(studentId);
+  form.elements.amount.readOnly = !!existing;
+  form.querySelector('[type="submit"]').disabled = paid;
+  document.querySelector('#paymentFormMessage').textContent = paid
+    ? 'Este mes ya está pagado. El registro existente se conserva y no se puede reemplazar desde este formulario.'
+    : existing ? 'Se registrará la liquidación completa de esta mensualidad pendiente.' : 'Se creará un registro para el período elegido. No cancela deudas de otros meses.';
 }
 
 function openNewStudentModal() {
@@ -969,6 +1350,7 @@ function openNewStudentModal() {
           <label class="field field--wide"><span>Notas internas</span><textarea name="notes" placeholder="Opcional"></textarea></label>
         </div>
         <p class="modal-note">Los datos se guardan únicamente en este navegador para demostrar el flujo.</p>
+        <p class="payment-meta" id="studentFormMessage" role="status"></p>
         <div class="form-actions"><button class="button button--light" type="button" data-close-modal>Cancelar</button><button class="button button--red" type="submit">Crear alumno</button></div>
       </form>
     `
@@ -982,21 +1364,21 @@ function openClassDetail(classId) {
     title: item.name,
     eyebrow: `${item.day} · ${item.dateLabel} · ${item.time}`,
     body: `
-      <div class="surface-card" style="padding:20px;margin-bottom:16px"><p class="eyebrow">Detalle de clase</p><h3>${item.level}</h3><p class="payment-meta">${item.teacher} · ${item.room}<br/>${capacityText(item)} alumnos inscritos</p></div>
-      <p class="modal-note">La agenda es demostrativa. La reserva y los cupos no están conectados a un backend.</p>
-      <div class="form-actions"><button class="button button--red" type="button" id="confirmClass">Confirmar asistencia</button></div>
+      <div class="surface-card" style="padding:20px;margin-bottom:16px"><p class="eyebrow">Detalle de clase</p><h3>${escapeHtml(item.level)}</h3><p class="payment-meta">${escapeHtml(item.teacher)} · ${escapeHtml(item.room)}<br/>${escapeHtml(capacityText(item))} alumnos inscritos</p></div>
+      <p class="modal-note">Esta pantalla permite consultar horarios y cupos de demostración. Las reservas no están habilitadas en este prototipo.</p>
+      <div class="form-actions"><button class="button button--red" type="button" data-close-modal>Entendido</button></div>
     `
   });
 }
 
 function openStudentPayment() {
-  const payment = state.payments.find((item) => item.studentId === 'IM-0241' && item.month === monthLabel(TODAY));
+  const payment = monthlyPaymentFor('IM-0241');
   const paid = payment?.status === 'Pagado';
   openModal({
-    title: paid ? 'Comprobante interno' : 'Mensualidad pendiente',
+    title: paid ? 'Comprobante interno' : payment ? 'Mensualidad pendiente' : 'Mensualidad sin registro',
     eyebrow: monthLabel(TODAY),
     body: `
-      <article class="surface-card"><p class="eyebrow">${paid ? 'Pago registrado' : 'Saldo por registrar'}</p><p class="payment-amount">Q ${payment?.amount || 450}</p><p class="payment-meta">${paid ? `${payment.method} · ${payment.date}` : `Fecha límite · ${shortDate(addDays(TODAY, 2))}`}</p></article>
+      <article class="surface-card"><p class="eyebrow">${escapeHtml(paymentStatus(payment))}</p><p class="payment-amount">Q ${escapeHtml(payment?.amount ?? '—')}</p><p class="payment-meta">${paid ? `${escapeHtml(payment.method)} · ` : ''}${escapeHtml(paymentDateText(payment))}</p></article>
       <p class="modal-note" style="margin-top:16px">La academia cobra por sus medios habituales. La app solo refleja el registro interno; no hay pasarela ni pago con tarjeta.</p>
     `
   });
@@ -1006,14 +1388,15 @@ function openConsentModal() {
   const guardian = currentGuardian();
   const signed = parseDayKey(guardian.consentSignedAt);
   openModal({
-    title: 'Consentimiento de manejo de datos',
+    title: 'Constancia de consentimiento',
     eyebrow: 'Menores de edad',
     body: `
       <article class="surface-card">
         <p class="eyebrow">Firmado el ${escapeHtml(shortDate(signed))} ${signed.getFullYear()}</p>
-        <p class="payment-meta">Los tutores acceden únicamente a la información de sus propios hijos. La academia firma con cada tutor un consentimiento de manejo de datos, cuyo formato se entrega como parte del proyecto.</p>
+        <p class="payment-meta">Como tutor accedés únicamente a la información de tus propios hijos.</p>
       </article>
-      <p class="modal-note" style="margin-top:16px">El consentimiento se firma con la academia fuera del sistema. Esta pantalla solo deja constancia de que existe.</p>
+      <p class="modal-note" style="margin-top:16px">El consentimiento se firma con la academia fuera del sistema. Esta pantalla no contiene el documento: solo deja constancia de que existe y de su fecha.</p>
+      <div class="form-actions"><button class="button button--red" type="button" data-close-modal>Entendido</button></div>
     `
   });
 }
@@ -1028,9 +1411,9 @@ function openChildPayment(studentId) {
     eyebrow: monthLabel(TODAY),
     body: `
       <article class="surface-card">
-        <p class="eyebrow">${paid ? 'Pago registrado' : 'Saldo por registrar'}</p>
+        <p class="eyebrow">${escapeHtml(paymentStatus(payment))}</p>
         <p class="payment-amount">Q ${payment ? escapeHtml(payment.amount) : '—'}</p>
-        <p class="payment-meta">${payment ? `${escapeHtml(payment.method)} · ${escapeHtml(payment.date)}` : 'Sin registro para este mes.'}</p>
+        <p class="payment-meta">${paid ? `${escapeHtml(payment.method)} · ` : ''}${escapeHtml(paymentDateText(payment))}</p>
       </article>
       <p class="modal-note" style="margin-top:16px">La academia cobra por sus medios habituales. La app solo refleja el registro interno; no hay pasarela ni pago con tarjeta.</p>
     `
@@ -1044,7 +1427,7 @@ function openReceipt(paymentId) {
     title: 'Comprobante interno',
     eyebrow: `Registro ${payment.id}`,
     body: `
-      <article class="surface-card"><p class="eyebrow">Pago registrado</p><p class="payment-amount">Q ${payment.amount}</p><h3>${escapeHtml(payment.student)}</h3><p class="payment-meta">${escapeHtml(payment.month)} · ${escapeHtml(payment.method)} · ${escapeHtml(payment.date)}</p></article>
+      <article class="surface-card"><p class="eyebrow">Pago registrado</p><p class="payment-amount">Q ${escapeHtml(payment.amount)}</p><h3>${escapeHtml(payment.student)}</h3><p class="payment-meta">${escapeHtml(payment.month)} · ${escapeHtml(payment.method)} · ${escapeHtml(payment.date)}</p></article>
       <p class="modal-note" style="margin-top:16px">Documento de demostración. No es factura FEL ni comprobante tributario.</p>
     `
   });
@@ -1057,7 +1440,7 @@ function openStudentDetail(studentId) {
     title: student.name,
     eyebrow: `Ficha ${student.id}`,
     body: `
-      <article class="surface-card"><div class="person-cell"><span class="avatar" style="width:54px;height:54px">${initials(student.name)}</span><span><strong>${escapeHtml(student.name)}</strong><small>${escapeHtml(student.plan)}</small></span></div><p class="payment-meta" style="margin-top:22px">Teléfono · ${escapeHtml(student.phone || 'Sin registrar')}<br/>Estado de pago · ${escapeHtml(student.status)}</p></article>
+      <article class="surface-card"><div class="person-cell"><span class="avatar" style="width:54px;height:54px">${escapeHtml(initials(student.name))}</span><span><strong>${escapeHtml(student.name)}</strong><small>${escapeHtml(student.plan)}</small></span></div><p class="payment-meta" style="margin-top:22px">Teléfono · ${escapeHtml(student.phone || 'Sin registrar')}<br/>Estado de pago · ${escapeHtml(studentPaymentStatus(student.id))}</p></article>
       <p class="modal-note" style="margin-top:16px">Ficha demo sin información sensible real.</p>
     `
   });
@@ -1066,7 +1449,7 @@ function openStudentDetail(studentId) {
 function openProfile() {
   const profiles = {
     student: ['Valeria Ruiz', 'Alumno · Plan 8 clases', 'IM-0241'],
-    teacher: ['Alex Aquino', 'Maestro', '6 clases asignadas'],
+    teacher: ['Alex Aquino', 'Maestro', `${teacherClasses().length} clase${teacherClasses().length === 1 ? '' : 's'} asignada${teacherClasses().length === 1 ? '' : 's'}`],
     admin: ['Majo Borrayo', 'Administración', 'Acceso de demostración'],
     guardian: ['Carmen Ruiz', 'Tutor', 'Valeria Ruiz y Diego Ruiz a su cargo']
   };
@@ -1075,20 +1458,22 @@ function openProfile() {
     title: name,
     eyebrow: roleConfig[activeRole].label,
     body: `
-      <article class="surface-card"><div class="person-cell"><span class="avatar" style="width:58px;height:58px">${roleConfig[activeRole].initials}</span><span><strong>${name}</strong><small>${role}</small></span></div><p class="payment-meta" style="margin-top:22px">${meta}</p></article>
+      <article class="surface-card"><div class="person-cell"><span class="avatar" style="width:58px;height:58px">${escapeHtml(roleConfig[activeRole].initials)}</span><span><strong>${escapeHtml(name)}</strong><small>${escapeHtml(role)}</small></span></div><p class="payment-meta" style="margin-top:22px">${escapeHtml(meta)}</p></article>
       <p class="modal-note" style="margin-top:16px">Perfil ficticio para recorrer el prototipo. No existe autenticación ni cuenta real.</p>
     `
   });
 }
 
 function simulateScan() {
-  const target = findClass(activeClassId) || nextClass();
-  const list = new Set(state.attendance[target.id] || []);
-  list.add('IM-0241');
-  state.attendance[target.id] = [...list];
-  logAttendance(target.id, ['IM-0241']);
-  state.studentCheckIn = true;
-  saveState();
+  TODAY = new Date();
+  const target = scanClasses().find((item) => item.id === document.querySelector('#scanClass')?.value);
+  try {
+    if (!target) throw new Error('No hay una clase válida para registrar esta lectura.');
+    recordAttendance(target.id, ['IM-0241'], document.querySelector('#simulateScan').dataset.sessionDate);
+  } catch (error) {
+    showToast('No se registró la asistencia', error.message);
+    return;
+  }
   closeModal();
   showToast('Asistencia registrada', `Valeria Ruiz · ${target.name} · ${target.time}`);
   renderApp();
@@ -1100,35 +1485,37 @@ function openResetModal() {
     eyebrow: 'Datos locales',
     body: `
       <p class="modal-note">Se borran los alumnos, pagos y asistencias creados en este navegador y la demo vuelve a su estado inicial. No afecta ningún dato real.</p>
+      <p class="payment-meta" id="resetMessage" role="status"></p>
       <div class="form-actions"><button class="button button--light" type="button" data-close-modal>Cancelar</button><button class="button button--red" type="button" id="confirmReset">Sí, reiniciar</button></div>
     `
   });
 }
 
 function resetDemo() {
+  // Se escribe el estado inicial encima del guardado: nada se borra antes de
+  // comprobar que el reinicio se puede persistir.
+  const fresh = structuredClone(defaultState);
+  fresh.role = activeRole;
   try {
-    localStorage.removeItem(STORAGE_KEY);
-  } catch {
-    // el navegador puede tener el almacenamiento bloqueado
+    persistState(fresh);
+  } catch (error) {
+    const message = document.querySelector('#resetMessage');
+    if (message) message.textContent = error.message;
+    return;
   }
-  state = structuredClone(defaultState);
-  state.role = activeRole;
   activeClassId = classData[0].id;
   activeRoute = 'inicio';
-  saveState();
+  activeChildId = null;
   closeModal();
   showToast('Demo reiniciada', 'Los datos volvieron a su estado inicial.');
   renderApp();
 }
 
 function handleModalClick(event) {
+  if (event.target.closest('#confirmWebMcp')) return resolveWebMcp(true);
   if (event.target.closest('[data-close-modal]')) return closeModal();
   if (event.target.closest('#simulateScan')) return simulateScan();
   if (event.target.closest('#confirmReset')) return resetDemo();
-  if (event.target.closest('#confirmClass')) {
-    closeModal();
-    showToast('Clase confirmada', 'Tu cupo se marcó en esta demostración.');
-  }
 }
 
 function handleModalSubmit(event) {
@@ -1136,48 +1523,79 @@ function handleModalSubmit(event) {
   if (event.target.id === 'studentForm') handleStudentSubmit(event);
 }
 
-function handlePaymentSubmit(event) {
-  event.preventDefault();
-  const data = new FormData(event.target);
-  const student = state.students.find((item) => item.id === data.get('studentId'));
-  if (!student) return;
-  const existing = state.payments.find((item) => item.studentId === student.id && item.month === data.get('month'));
+function registerPayment({ studentId, period, amount, method, reference = '' }) {
+  TODAY = new Date();
+  const student = studentById(studentId);
+  if (!student) throw new Error('Alumno no encontrado.');
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(period)) throw new Error('Elegí un período válido.');
+  if (!Number.isFinite(amount) || amount <= 0) throw new Error('El monto debe ser mayor que cero.');
+  if (!['POS', 'Transferencia', 'Efectivo', 'Depósito'].includes(method)) throw new Error('Método de pago no válido.');
+  const existing = state.payments.find((item) => item.studentId === student.id && item.period === period);
+  if (existing?.status === 'Pagado') throw new Error('Este mes ya está pagado. El registro existente no se reemplazó.');
+  if (existing && amount !== existing.amount) throw new Error(`La mensualidad pendiente es de Q ${existing.amount}. Este formulario registra su liquidación completa.`);
   const record = {
     id: existing?.id || nextPaymentId(),
     studentId: student.id,
     student: student.name,
-    month: String(data.get('month')),
-    amount: Number(data.get('amount')),
-    method: String(data.get('method')),
+    month: monthLabel(parseDayKey(`${period}-01`)),
+    period,
+    amount,
+    method,
     date: shortDate(TODAY),
+    paidAt: dayKey(TODAY),
+    dueDate: existing?.dueDate || null,
     status: 'Pagado',
-    reference: String(data.get('reference') || '')
+    reference: String(reference)
   };
-  state.payments = existing ? state.payments.map((item) => item.id === existing.id ? record : item) : [record, ...state.payments];
-  state.students = state.students.map((item) => item.id === student.id ? { ...item, status: 'Al día' } : item);
-  saveState();
+  const nextState = { ...state, payments: existing ? state.payments.map((item) => item.id === existing.id ? record : item) : [record, ...state.payments] };
+  persistState(nextState);
+  return record;
+}
+
+function handlePaymentSubmit(event) {
+  event.preventDefault();
+  const data = new FormData(event.target);
+  let record;
+  try {
+    record = registerPayment({ studentId: data.get('studentId'), period: data.get('period'), amount: Number(data.get('amount')), method: data.get('method'), reference: data.get('reference') || '' });
+  } catch (error) {
+    document.querySelector('#paymentFormMessage').textContent = error.message;
+    return;
+  }
   closeModal();
-  showToast('Pago guardado', `${student.name} · Q ${record.amount} · ${record.method}`);
+  showToast('Pago guardado', `${record.student} · Q ${record.amount} · ${record.method}`);
   renderApp();
 }
 
 function handleStudentSubmit(event) {
   event.preventDefault();
   const data = new FormData(event.target);
-  const name = String(data.get('name')).trim();
-  if (!name) return;
-  state.students = [{
+  const message = document.querySelector('#studentFormMessage');
+  const name = String(data.get('name') || '').trim().replace(/\s+/g, ' ');
+  if (name.length < 3) {
+    if (message) message.textContent = 'Escribí el nombre completo del alumno.';
+    return;
+  }
+  const student = {
     id: nextStudentId(),
-    name,
+    name: name.slice(0, 80),
     initials: initials(name),
     plan: String(data.get('plan')),
-    phone: String(data.get('phone') || 'Sin registrar'),
+    phone: String(data.get('phone') || '').trim().slice(0, 24) || 'Sin registrar',
     status: 'Pendiente',
-    notes: String(data.get('notes') || '')
-  }, ...state.students];
-  saveState();
+    level: 'Sin nivel',
+    classIds: [],
+    notes: String(data.get('notes') || '').trim().slice(0, 280)
+  };
+  // Se guarda antes de tocar la memoria: si el navegador no puede, no se creo nada.
+  try {
+    persistState({ ...state, students: [student, ...state.students] });
+  } catch (error) {
+    if (message) message.textContent = error.message;
+    return;
+  }
   closeModal();
-  showToast('Alumno creado', `${name} · registro local`);
+  showToast('Alumno creado', `${student.name} · registro local`);
   renderApp();
 }
 
@@ -1189,7 +1607,7 @@ function registerWebMcpTools() {
     try {
       void Promise.resolve(context.registerTool(tool, { signal: lifecycle.signal })).catch(() => {});
     } catch {
-      // WebMCP is optional; the visible interface remains fully usable.
+      // WebMCP es opcional; la interfaz visible sigue disponible.
     }
   };
 
@@ -1200,6 +1618,7 @@ function registerWebMcpTools() {
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
     annotations: { readOnlyHint: true, untrustedContentHint: false },
     execute() {
+      TODAY = new Date();
       return { classes: scheduledClasses().map(({ id, day, dateLabel, time, name, teacher, room }) => ({ id, day, date: dateLabel, time, name, teacher, room })) };
     }
   });
@@ -1215,17 +1634,18 @@ function registerWebMcpTools() {
       additionalProperties: false
     },
     annotations: { readOnlyHint: false, untrustedContentHint: false },
-    execute(input) {
+    async execute(input) {
       const classItem = classData.find((item) => item.id === input?.classId);
       const student = state.students.find((item) => item.id === input?.studentId);
       if (!classItem) throw new Error('Clase demo no encontrada.');
       if (!student) throw new Error('Alumno demo no encontrado.');
-      const present = new Set(state.attendance[classItem.id] || []);
-      present.add(student.id);
-      state.attendance[classItem.id] = [...present];
-      logAttendance(classItem.id, [student.id]);
-      if (student.id === 'IM-0241') state.studentCheckIn = true;
-      saveState();
+      const approved = await confirmWebMcpWrite({
+        title: 'Confirmar asistencia',
+        lines: [`Alumno · ${student.name} (${student.id})`, `Clase · ${classItem.name} · ${classItem.time}`, `Fecha · ${longDate(new Date())}`],
+        confirmLabel: 'Sí, registrar asistencia'
+      });
+      if (!approved) throw new Error('La confirmación se canceló en pantalla. No se registró ninguna asistencia.');
+      recordAttendance(classItem.id, [student.id], dayKey(new Date()));
       if (!elements.app.classList.contains('is-hidden')) renderApp();
       return { classId: classItem.id, studentId: student.id, status: 'present' };
     }
@@ -1246,28 +1666,18 @@ function registerWebMcpTools() {
       additionalProperties: false
     },
     annotations: { readOnlyHint: false, untrustedContentHint: false },
-    execute(input) {
+    async execute(input) {
       const student = state.students.find((item) => item.id === input?.studentId);
       if (!student) throw new Error('Alumno demo no encontrado.');
-      if (!Number.isFinite(input?.amount) || input.amount <= 0) throw new Error('El monto debe ser mayor que cero.');
-      const methods = ['POS', 'Transferencia', 'Efectivo', 'Depósito'];
-      if (!methods.includes(input?.method)) throw new Error('Método de pago no válido.');
-      const existing = state.payments.find((item) => item.studentId === student.id && item.month === monthLabel(TODAY));
-      const record = {
-        id: existing?.id || nextPaymentId(),
-        studentId: student.id,
-        student: student.name,
-        month: monthLabel(TODAY),
-        amount: input.amount,
-        method: input.method,
-        date: shortDate(TODAY),
-        status: 'Pagado'
-      };
-      state.payments = existing ? state.payments.map((item) => item.id === existing.id ? record : item) : [record, ...state.payments];
-      state.students = state.students.map((item) => item.id === student.id ? { ...item, status: 'Al día' } : item);
-      saveState();
+      const approved = await confirmWebMcpWrite({
+        title: 'Confirmar pago',
+        lines: [`Alumno · ${student.name} (${student.id})`, `Monto · Q ${input?.amount}`, `Método · ${input?.method}`, `Mes aplicado · ${monthLabel(new Date())}`],
+        confirmLabel: 'Sí, registrar pago'
+      });
+      if (!approved) throw new Error('La confirmación se canceló en pantalla. No se registró ningún pago.');
+      const record = registerPayment({ studentId: input?.studentId, amount: input?.amount, method: input?.method, period: monthKey(new Date()) });
       if (!elements.app.classList.contains('is-hidden')) renderApp();
-      return { paymentId: record.id, studentId: student.id, amount: record.amount, status: 'recorded' };
+      return { paymentId: record.id, studentId: record.studentId, amount: record.amount, status: 'recorded' };
     }
   });
 }
@@ -1276,10 +1686,14 @@ function handleAttendanceSubmit(event) {
   event.preventDefault();
   const form = event.target;
   const classId = form.dataset.classId;
-  state.attendance[classId] = [...form.querySelectorAll('input[name="attendance"]:checked')].map((input) => input.value);
-  logAttendance(classId, state.attendance[classId], { replaceDay: true });
-  saveState();
-  showToast('Asistencia guardada', `${state.attendance[classId].length} alumnos marcados como presentes.`);
+  const studentIds = [...form.querySelectorAll('input[name="attendance"]:checked')].map((input) => input.value);
+  try {
+    recordAttendance(classId, studentIds, form.dataset.sessionDate, { replaceDay: true });
+  } catch (error) {
+    showToast('No se guardó la asistencia', error.message);
+    return;
+  }
+  showToast('Asistencia guardada', `${studentIds.length} alumnos marcados como presentes.`);
   renderApp();
 }
 
@@ -1313,13 +1727,14 @@ function applyChildSelect(button) {
 function applyPaymentFilter(button) {
   elements.content.querySelectorAll('[data-payment-filter]').forEach((chip) => chip.classList.toggle('is-active', chip === button));
   const filter = button.dataset.paymentFilter;
-  const filtered = filter === 'all' ? state.payments : state.payments.filter((item) => item.status === filter);
+  const filtered = filter === 'all' ? state.payments : state.payments.filter((item) => paymentStatus(item) === filter);
   elements.content.querySelector('#paymentTableBody').innerHTML = adminPaymentRows(filtered);
 }
 
 // Un solo manejador delegado para toda la página: el contenido se redibuja en cada
 // render y enganchar listeners elemento por elemento los iba duplicando.
 function handleContentClick(event) {
+  TODAY = new Date();
   const find = (selector) => event.target.closest(selector);
 
   const go = find('[data-go]');
@@ -1334,7 +1749,7 @@ function handleContentClick(event) {
   const detail = find('[data-class-detail]');
   if (detail) return openClassDetail(detail.dataset.classDetail);
   const register = find('[data-register-for]');
-  if (register) return openPaymentModal(register.dataset.registerFor);
+  if (register) return openPaymentModal(register.dataset.registerFor, register.dataset.paymentPeriod);
   const receipt = find('[data-receipt]');
   if (receipt) return openReceipt(receipt.dataset.receipt);
   const studentDetail = find('[data-student-detail]');
@@ -1376,22 +1791,27 @@ elements.content.addEventListener('input', handleContentInput);
 elements.content.addEventListener('submit', handleContentSubmit);
 elements.modalLayer.addEventListener('click', handleModalClick);
 elements.modalLayer.addEventListener('submit', handleModalSubmit);
+elements.modalLayer.addEventListener('change', (event) => {
+  if (event.target.closest('#paymentForm') && ['studentId', 'period'].includes(event.target.name)) updatePaymentForm();
+});
 document.querySelector('#profileButton').addEventListener('click', openProfile);
 
 elements.roleSwitcher.addEventListener('change', (event) => {
+  if (!roleConfig[event.target.value]) return;
   activeRole = event.target.value;
   activeRoute = 'inicio';
-  state.role = activeRole;
-  saveState();
+  const saved = persistOrWarn({ ...state, role: activeRole });
   history.pushState(null, '', '#/inicio');
   renderApp();
-  showToast('Vista actualizada', `Ahora estás viendo ${roleConfig[activeRole].label.toLowerCase()}.`);
+  if (saved) showToast('Vista actualizada', `Ahora estás viendo ${roleConfig[activeRole].label.toLowerCase()}.`);
 });
 
 elements.menuButton.addEventListener('click', () => {
-  const open = elements.app.classList.toggle('menu-open');
-  elements.menuButton.setAttribute('aria-expanded', String(open));
+  setMenuOpen(!elements.app.classList.contains('menu-open'), { moveFocus: true });
 });
+
+MOBILE_QUERY.addEventListener('change', syncMenuState);
+syncMenuState();
 
 document.addEventListener('click', (event) => {
   const routeLink = event.target.closest('[data-route]');
@@ -1401,7 +1821,13 @@ document.addEventListener('click', (event) => {
 });
 
 document.addEventListener('keydown', (event) => {
-  if (event.key === 'Escape' && !elements.modalLayer.classList.contains('is-hidden')) closeModal();
+  const modalOpen = !elements.modalLayer.classList.contains('is-hidden');
+  if (modalOpen && event.key === 'Escape') return closeModal();
+  if (modalOpen && event.key === 'Tab') return trapModalTab(event);
+  if (event.key === 'Escape' && elements.app.classList.contains('menu-open')) {
+    setMenuOpen(false);
+    elements.menuButton.focus();
+  }
 });
 
 window.addEventListener('popstate', () => {
@@ -1418,6 +1844,22 @@ if (state.role) {
     elements.app.classList.remove('is-hidden');
     renderApp();
   }, 2450);
+}
+
+// Si al abrir se descartaron registros ilegibles, se dice en pantalla en vez de
+// dejar que el usuario descubra solo que le faltan datos.
+if (recoveryReport) {
+  const parts = [
+    recoveryReport.students ? `${recoveryReport.students} alumno${recoveryReport.students === 1 ? '' : 's'}` : '',
+    recoveryReport.payments ? `${recoveryReport.payments} pago${recoveryReport.payments === 1 ? '' : 's'}` : '',
+    recoveryReport.attendance ? `${recoveryReport.attendance} asistencia${recoveryReport.attendance === 1 ? '' : 's'}` : ''
+  ].filter(Boolean);
+  showToast(
+    recoveryReport.fatal ? 'Demo reiniciada' : 'Datos recuperados',
+    recoveryReport.fatal
+      ? 'Los datos guardados no se pudieron leer y se volvió al estado inicial.'
+      : `Se descartaron registros ilegibles: ${parts.join(', ')}. El resto se conservó.`
+  );
 }
 
 registerWebMcpTools();
