@@ -1,5 +1,7 @@
 const STORAGE_KEY = 'inmotion-academy-demo-v1';
-const DEMO_TODAY = new Date('2026-09-16T12:00:00');
+const STATE_VERSION = 1;
+const TODAY = new Date();
+const WEEKDAY_SHORT = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
 
 const icons = {
   home: '<path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10.5V20h13v-9.5M9.5 20v-6h5v6"/>',
@@ -43,13 +45,130 @@ const roleConfig = {
 };
 
 const classData = [
-  { id: 'bachata-i', day: 'Hoy', date: '16 sep', time: '6:00 PM', name: 'Bachata Sensual I', level: 'Nivel inicial', teacher: 'Alex Aquino', room: 'Salón Rojo', capacity: '9 / 12' },
-  { id: 'salsa-inter', day: 'Hoy', date: '16 sep', time: '7:15 PM', name: 'Salsa Intermedia', level: 'Nivel intermedio', teacher: 'Majo Borrayo', room: 'Salón Principal', capacity: '11 / 14' },
-  { id: 'heels', day: 'Mañana', date: '17 sep', time: '6:30 PM', name: 'Heels Fundamentals', level: 'Todos los niveles', teacher: 'Sofía Castillo', room: 'Salón Rojo', capacity: '8 / 12' },
-  { id: 'salsa-on2', day: 'Vie', date: '18 sep', time: '7:00 PM', name: 'Salsa On2', level: 'Nivel avanzado', teacher: 'Daniel López', room: 'Salón Principal', capacity: '10 / 14' },
-  { id: 'kids', day: 'Sáb', date: '19 sep', time: '10:00 AM', name: 'Kids Dance', level: '7–11 años', teacher: 'Majo Borrayo', room: 'Salón Principal', capacity: '7 / 12' },
-  { id: 'urbano', day: 'Sáb', date: '19 sep', time: '11:30 AM', name: 'Urbano', level: 'Nivel inicial', teacher: 'Leo Méndez', room: 'Salón Rojo', capacity: '12 / 14' }
+  { id: 'bachata-inter', weekday: 3, time: '6:00 PM', name: 'Bachata Intermedio', level: 'Nivel intermedio', teacher: 'Alex Aquino', room: 'Salón 2', enrolled: 14, capacity: 18 },
+  { id: 'salsa-basico', weekday: 3, time: '7:15 PM', name: 'Salsa Principiantes', level: 'Nivel inicial', teacher: 'Luis Ramírez', room: 'Salón 1', enrolled: 9, capacity: 20 },
+  { id: 'kpop-teens', weekday: 4, time: '5:00 PM', name: 'K-Pop Teens', level: '12 a 17 años', teacher: 'Majo Borrayo', room: 'Salón 1', enrolled: 18, capacity: 18 },
+  { id: 'latino', weekday: 4, time: '7:00 PM', name: 'Baile Latino', level: 'Todos los niveles', teacher: 'Alex Aquino', room: 'Salón 2', enrolled: 12, capacity: 20 },
+  { id: 'latino-kids', weekday: 6, time: '10:00 AM', name: 'Baile Latino Kids', level: '7 a 11 años', teacher: 'Sofía Castillo', room: 'Salón 1', enrolled: 7, capacity: 12 },
+  { id: 'salsa-on2', weekday: 6, time: '11:30 AM', name: 'Salsa On2', level: 'Nivel avanzado', teacher: 'Leo Méndez', room: 'Salón 2', enrolled: 10, capacity: 14 }
 ];
+
+function startOfDay(date) {
+  const copy = new Date(date);
+  copy.setHours(0, 0, 0, 0);
+  return copy;
+}
+
+function addDays(date, days) {
+  const copy = startOfDay(date);
+  copy.setDate(copy.getDate() + days);
+  return copy;
+}
+
+function daysBetween(date) {
+  return Math.round((startOfDay(date) - startOfDay(TODAY)) / 86400000);
+}
+
+function nextDateFor(weekday) {
+  return addDays(TODAY, (weekday - startOfDay(TODAY).getDay() + 7) % 7);
+}
+
+function dayLabel(date) {
+  const diff = daysBetween(date);
+  if (diff === 0) return 'Hoy';
+  if (diff === 1) return 'Mañana';
+  return WEEKDAY_SHORT[date.getDay()];
+}
+
+function shortDate(date) {
+  return new Intl.DateTimeFormat('es-GT', { day: 'numeric', month: 'short' }).format(date).replace('.', '');
+}
+
+function longDate(date) {
+  const text = new Intl.DateTimeFormat('es-GT', { weekday: 'long', day: 'numeric', month: 'long' }).format(date);
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+function monthLabel(date) {
+  const month = monthName(date);
+  return `${month.charAt(0).toUpperCase() + month.slice(1)} ${date.getFullYear()}`;
+}
+
+function monthName(date) {
+  return new Intl.DateTimeFormat('es-GT', { month: 'long' }).format(date);
+}
+
+function timeValue(time) {
+  const match = String(time).match(/(\d+):(\d+)\s*(AM|PM)/i);
+  if (!match) return 0;
+  let hour = Number(match[1]) % 12;
+  if (/PM/i.test(match[3])) hour += 12;
+  return hour * 60 + Number(match[2]);
+}
+
+function greeting() {
+  const hour = TODAY.getHours();
+  if (hour < 12) return 'Buenos días';
+  if (hour < 19) return 'Buenas tardes';
+  return 'Buenas noches';
+}
+
+// Cada clase se agenda por día de la semana: las etiquetas Hoy / Mañana se calculan
+// contra la fecha real, para que la demo nunca se vea vencida.
+function scheduledClasses() {
+  return classData
+    .map((item) => {
+      const date = nextDateFor(item.weekday);
+      return { ...item, date, day: dayLabel(date), dateLabel: shortDate(date) };
+    })
+    .sort((a, b) => (a.date - b.date) || (timeValue(a.time) - timeValue(b.time)));
+}
+
+function findClass(classId) {
+  return scheduledClasses().find((item) => item.id === classId);
+}
+
+function todayClasses() {
+  return scheduledClasses().filter((item) => item.day === 'Hoy');
+}
+
+function nextClass() {
+  return todayClasses()[0] || scheduledClasses()[0];
+}
+
+const TEACHER_NAME = 'Alex Aquino';
+
+function teacherClasses() {
+  return scheduledClasses().filter((item) => item.teacher === TEACHER_NAME);
+}
+
+function weekRange() {
+  const monday = addDays(TODAY, -((startOfDay(TODAY).getDay() + 6) % 7));
+  return `${shortDate(monday)} al ${shortDate(addDays(monday, 6))}`;
+}
+
+function shortDayLabel(date) {
+  const weekday = new Intl.DateTimeFormat('es-GT', { weekday: 'long' }).format(date);
+  return `${weekday.charAt(0).toUpperCase() + weekday.slice(1)} ${date.getDate()}`;
+}
+
+function nextMonthDate() {
+  return new Date(TODAY.getFullYear(), TODAY.getMonth() + 1, 1);
+}
+
+function nextPaymentId() {
+  const highest = state.payments.reduce((acc, item) => Math.max(acc, Number(String(item.id).replace(/\D/g, '')) || 0), 1000);
+  return `P-${highest + 1}`;
+}
+
+function nextStudentId() {
+  const highest = state.students.reduce((acc, item) => Math.max(acc, Number(String(item.id).replace(/\D/g, '')) || 0), 240);
+  return `IM-${String(highest + 1).padStart(4, '0')}`;
+}
+
+function capacityText(item) {
+  return `${item.enrolled} / ${item.capacity}`;
+}
 
 const baseStudents = [
   { id: 'IM-0241', name: 'Valeria Ruiz', initials: 'VR', plan: 'Plan 8 clases', phone: '5555-0142', status: 'Pendiente' },
@@ -61,11 +180,11 @@ const baseStudents = [
 ];
 
 const basePayments = [
-  { id: 'P-1044', studentId: 'IM-0241', student: 'Valeria Ruiz', month: 'Septiembre 2026', amount: 450, method: 'Pendiente', date: 'Vence 18 sep', status: 'Pendiente' },
-  { id: 'P-1043', studentId: 'IM-0218', student: 'Luis Méndez', month: 'Septiembre 2026', amount: 625, method: 'POS', date: '15 sep 2026', status: 'Pagado' },
-  { id: 'P-1042', studentId: 'IM-0194', student: 'Andrea Pérez', month: 'Septiembre 2026', amount: 450, method: 'Transferencia', date: '13 sep 2026', status: 'Pagado' },
-  { id: 'P-1041', studentId: 'IM-0250', student: 'Santiago Cruz', month: 'Septiembre 2026', amount: 300, method: 'Pendiente', date: 'Venció 10 sep', status: 'En mora' },
-  { id: 'P-1040', studentId: 'IM-0207', student: 'Camila Soto', month: 'Septiembre 2026', amount: 625, method: 'Efectivo', date: '08 sep 2026', status: 'Pagado' }
+  { id: 'P-1044', studentId: 'IM-0241', student: 'Valeria Ruiz', month: monthLabel(TODAY), amount: 450, method: 'Pendiente', date: `Vence ${shortDate(addDays(TODAY, 2))}`, status: 'Pendiente' },
+  { id: 'P-1043', studentId: 'IM-0218', student: 'Luis Méndez', month: monthLabel(TODAY), amount: 625, method: 'POS', date: shortDate(addDays(TODAY, -1)), status: 'Pagado' },
+  { id: 'P-1042', studentId: 'IM-0194', student: 'Andrea Pérez', month: monthLabel(TODAY), amount: 450, method: 'Transferencia', date: shortDate(addDays(TODAY, -3)), status: 'Pagado' },
+  { id: 'P-1041', studentId: 'IM-0250', student: 'Santiago Cruz', month: monthLabel(TODAY), amount: 300, method: 'Pendiente', date: `Venció ${shortDate(addDays(TODAY, -6))}`, status: 'En mora' },
+  { id: 'P-1040', studentId: 'IM-0207', student: 'Camila Soto', month: monthLabel(TODAY), amount: 625, method: 'Efectivo', date: shortDate(addDays(TODAY, -8)), status: 'Pagado' }
 ];
 
 const roster = [
@@ -82,8 +201,8 @@ const defaultState = {
   students: baseStudents,
   payments: basePayments,
   attendance: {
-    'bachata-i': ['IM-0218', 'IM-0194', 'IM-0207'],
-    'salsa-inter': ['IM-0218', 'IM-0229']
+    'bachata-inter': ['IM-0218', 'IM-0194', 'IM-0207'],
+    'salsa-basico': ['IM-0218', 'IM-0229']
   },
   studentCheckIn: false
 };
@@ -91,6 +210,8 @@ const defaultState = {
 function loadState() {
   try {
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
+    // Un esquema viejo guardado en el navegador rompe la demo en silencio: se descarta.
+    if (!saved || saved.version !== STATE_VERSION) return structuredClone(defaultState);
     return {
       ...defaultState,
       ...saved,
@@ -106,6 +227,7 @@ function loadState() {
 let state = loadState();
 let activeRole = state.role || 'student';
 let activeRoute = 'inicio';
+let activeClassId = classData[0].id;
 let lastFocusedElement = null;
 
 const elements = {
@@ -127,7 +249,7 @@ const elements = {
 };
 
 function saveState() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...state, role: activeRole }));
+  localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...state, role: activeRole, version: STATE_VERSION }));
 }
 
 function escapeHtml(value) {
@@ -161,9 +283,7 @@ function updateShell() {
   elements.roleSwitcher.value = activeRole;
   elements.kicker.textContent = config.label;
   elements.initials.textContent = config.initials;
-  elements.date.textContent = new Intl.DateTimeFormat('es-GT', {
-    weekday: 'long', day: 'numeric', month: 'long'
-  }).format(DEMO_TODAY);
+  elements.date.textContent = longDate(TODAY);
 }
 
 function enterDemo(role) {
@@ -194,7 +314,6 @@ function renderApp() {
   elements.content.innerHTML = `<div class="page-enter">${renderer()}</div>`;
   elements.app.classList.remove('menu-open');
   elements.menuButton.setAttribute('aria-expanded', 'false');
-  bindPageActions();
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
@@ -206,17 +325,22 @@ function routeTo(route) {
 }
 
 function weekStrip() {
-  const days = [
-    ['Lun', '14', ''], ['Mar', '15', ''], ['Mié', '16', '2 clases'],
-    ['Jue', '17', '1 clase'], ['Vie', '18', '1 clase'], ['Sáb', '19', '2 clases'], ['Dom', '20', '']
-  ];
-  return `<div class="week-strip">${days.map(([day, number, note]) => `
-    <div class="day-pill ${number === '16' ? 'is-today' : ''}">
-      <span>${day}</span><strong>${number}</strong><small>${note}</small>
-    </div>`).join('')}</div>`;
+  const monday = addDays(TODAY, -((startOfDay(TODAY).getDay() + 6) % 7));
+  const perWeekday = classData.reduce((acc, item) => {
+    acc[item.weekday] = (acc[item.weekday] || 0) + 1;
+    return acc;
+  }, {});
+  const days = Array.from({ length: 7 }, (_, index) => addDays(monday, index));
+  return `<div class="week-strip">${days.map((date) => {
+    const total = perWeekday[date.getDay()] || 0;
+    const note = total ? `${total} clase${total === 1 ? '' : 's'}` : '';
+    return `<div class="day-pill ${daysBetween(date) === 0 ? 'is-today' : ''}">
+      <span>${WEEKDAY_SHORT[date.getDay()]}</span><strong>${date.getDate()}</strong><small>${note}</small>
+    </div>`;
+  }).join('')}</div>`;
 }
 
-function classCards(classes = classData.slice(0, 3)) {
+function classCards(classes = scheduledClasses().slice(0, 3)) {
   return `<div class="cards-grid">${classes.map((item, index) => `
     <article class="class-card ${index === 0 ? 'is-featured' : ''}">
       <span class="class-card-index">0${index + 1}</span>
@@ -231,27 +355,31 @@ function classCards(classes = classData.slice(0, 3)) {
   `).join('')}</div>`;
 }
 
-function scheduleList(classes = classData) {
+function scheduleList(classes = scheduledClasses()) {
   return `<div class="schedule-list">${classes.map((item) => `
     <div class="schedule-row">
-      <div class="schedule-time">${item.time}<small>${item.day} · ${item.date}</small></div>
+      <div class="schedule-time">${item.time}<small>${item.day} · ${item.dateLabel}</small></div>
       <div class="schedule-name"><strong>${item.name}</strong><small>${item.level} · ${item.room}</small></div>
       <div class="schedule-teacher">${item.teacher}<small>Maestro</small></div>
-      <span class="capacity">${item.capacity} inscritos</span>
+      <span class="capacity">${capacityText(item)} inscritos</span>
       <button class="button button--light button--small" type="button" data-class-detail="${item.id}">Ver clase</button>
     </div>
   `).join('')}</div>`;
 }
 
 function renderStudentHome() {
-  const attended = state.studentCheckIn ? 10 : 9;
-  const payment = state.payments.find((item) => item.studentId === 'IM-0241' && item.month.includes('Septiembre'));
+  const planTotal = 8;
+  const attended = state.studentCheckIn ? 6 : 5;
+  const payment = state.payments.find((item) => item.studentId === 'IM-0241' && item.month === monthLabel(TODAY));
   const paid = payment?.status === 'Pagado';
+  const next = nextClass();
+  const [hour, meridiem] = next.time.split(' ');
+  const percent = Math.round((attended / planTotal) * 100);
   return `
     <section class="student-hero">
       <div class="student-hero-copy">
         <div>
-          <p class="eyebrow">Miércoles · 16 de septiembre</p>
+          <p class="eyebrow">${shortDayLabel(TODAY)}</p>
           <h1 class="hero-title">Hola, Valeria.<br/><span>¿Bailamos?</span></h1>
         </div>
         <div class="hero-foot">
@@ -261,34 +389,34 @@ function renderStudentHome() {
       </div>
       <aside class="next-class">
         <div class="next-class-label"><span>Próxima clase</span><span>01</span></div>
-        <time><strong>6:00</strong><span>PM · Hoy</span></time>
-        <div><h2>Bachata<br/>Sensual I</h2><p>Alex Aquino · Salón Rojo</p></div>
+        <time><strong>${hour}</strong><span>${meridiem} · ${next.day}</span></time>
+        <div><h2>${next.name}</h2><p>${next.teacher} · ${next.room}</p></div>
       </aside>
     </section>
 
     <section class="section">
-      <div class="section-head"><div><h2>Esta semana</h2><p>Tu agenda de clases del 14 al 20 de septiembre.</p></div><button class="text-button" type="button" data-go="clases">Ver calendario →</button></div>
+      <div class="section-head"><div><h2>Esta semana</h2><p>Tu agenda de clases del ${weekRange()}.</p></div><button class="text-button" type="button" data-go="clases">Ver calendario →</button></div>
       ${weekStrip()}
     </section>
 
     <section class="section">
-      <div class="section-head"><div><h2>Tus próximas clases</h2><p>Plan 8 clases · 5 disponibles este mes</p></div></div>
+      <div class="section-head"><div><h2>Tus próximas clases</h2><p>Plan ${planTotal} clases · ${planTotal - attended} disponibles este mes</p></div></div>
       ${classCards()}
     </section>
 
     <section class="section split-grid">
       <article class="surface-card">
-        <p class="eyebrow">Mensualidad · Septiembre</p>
+        <p class="eyebrow">Mensualidad · ${monthName(TODAY)}</p>
         <div class="payment-status">
-          <div><p class="payment-amount">Q ${payment?.amount || 450}</p><p class="payment-meta">${paid ? `Registrado · ${payment.date}` : 'Vence el 18 de septiembre'}</p></div>
+          <div><p class="payment-amount">Q ${payment?.amount || 450}</p><p class="payment-meta">${paid ? `Registrado · ${payment.date}` : `Vence el ${shortDate(addDays(TODAY, 2))}`}</p></div>
           <button class="button ${paid ? 'button--light' : ''}" type="button" data-student-payment>${paid ? 'Ver comprobante' : 'Ver detalle'}</button>
         </div>
       </article>
       <article class="surface-card">
         <p class="eyebrow">Asistencia del mes</p>
-        <h2>${attended} de 10 clases</h2>
-        <div class="attendance-line"><span style="width:${attended * 10}%"></span></div>
-        <div class="attendance-copy"><span>${attended * 10}% completado</span><span>${10 - attended} pendiente${10 - attended === 1 ? '' : 's'}</span></div>
+        <h2>${attended} de ${planTotal} clases</h2>
+        <div class="attendance-line"><span style="width:${percent}%"></span></div>
+        <div class="attendance-copy"><span>${percent}% completado</span><span>${planTotal - attended} pendiente${planTotal - attended === 1 ? '' : 's'}</span></div>
       </article>
     </section>
   `;
@@ -343,21 +471,28 @@ function renderStudentCard() {
 }
 
 function teacherCards() {
-  return `<div class="teacher-day-grid">${classData.slice(0, 4).map((item, index) => `
+  return `<div class="teacher-day-grid">${teacherClasses().slice(0, 4).map((item, index) => `
     <article class="teacher-class">
       <div class="teacher-class-time">${item.time.replace(' ', '<br/>')}</div>
-      <div><span class="tag ${index === 0 ? 'tag--red' : ''}">${item.day}</span><h3>${item.name}</h3><p>${item.room} · ${item.capacity} inscritos</p></div>
+      <div><span class="tag ${index === 0 ? 'tag--red' : ''}">${item.day}</span><h3>${item.name}</h3><p>${item.room} · ${capacityText(item)} inscritos</p></div>
       <button class="button button--small ${index === 0 ? 'button--red' : 'button--light'}" type="button" data-take-attendance="${item.id}">${index === 0 ? 'Pasar asistencia' : 'Abrir clase'}</button>
     </article>
   `).join('')}</div>`;
 }
 
 function renderTeacherHome() {
+  const own = teacherClasses();
+  const today = own.filter((item) => item.day === 'Hoy');
+  const next = today[0] || own[0];
+  const count = today.length;
   return `
     <section class="teacher-hero">
-      <p class="eyebrow">Miércoles · 2 clases programadas</p>
-      <h1>Buenas tardes,<br/><span>Alex.</span></h1>
-      <div class="teacher-hero-foot"><button class="button button--red" type="button" data-take-attendance="bachata-i">Iniciar asistencia</button><p>Tu próxima clase empieza a las 6:00 PM<br/>en el Salón Rojo.</p></div>
+      <p class="eyebrow">${shortDayLabel(TODAY)} · ${count ? `${count} clase${count === 1 ? '' : 's'} programada${count === 1 ? '' : 's'}` : 'sin clases hoy'}</p>
+      <h1>${greeting()},<br/><span>Alex.</span></h1>
+      <div class="teacher-hero-foot">
+        ${next ? `<button class="button button--red" type="button" data-take-attendance="${next.id}">${count ? 'Iniciar asistencia' : 'Abrir próxima clase'}</button>` : ''}
+        <p>${next ? `Tu ${count ? 'próxima clase empieza' : 'siguiente clase es'} ${next.day.toLowerCase()} a las ${next.time}<br/>en el ${next.room}.` : 'No tenés clases asignadas en esta demostración.'}</p>
+      </div>
     </section>
     <section class="section"><div class="section-head"><div><h2>Tu agenda</h2><p>Próximas clases asignadas.</p></div><button class="text-button" type="button" data-go="agenda">Ver semana →</button></div>${teacherCards()}</section>
   `;
@@ -371,7 +506,7 @@ function renderTeacherAgenda() {
   `;
 }
 
-function rosterMarkup(classId = 'bachata-i') {
+function rosterMarkup(classId = activeClassId) {
   const selected = state.attendance[classId] || [];
   return `<div class="attendance-roster">${roster.map((student) => `
     <label class="student-check">
@@ -384,13 +519,15 @@ function rosterMarkup(classId = 'bachata-i') {
 }
 
 function renderTeacherAttendance() {
+  const item = findClass(activeClassId) || scheduledClasses()[0];
+  const live = item.day === 'Hoy';
   return `
     <header class="page-heading"><div><p class="eyebrow">Control de asistencia</p><h1>¿Quién vino<br/>a bailar?</h1><p>Marcá la lista y guardá esta sesión localmente.</p></div></header>
     <section class="split-grid">
       <article class="surface-card">
-        <div class="section-head"><div><h2>Bachata Sensual I</h2><p>Hoy · 6:00 PM · Salón Rojo</p></div><span class="tag tag--red">En curso</span></div>
-        <form id="attendanceForm" data-class-id="bachata-i">
-          ${rosterMarkup('bachata-i')}
+        <div class="section-head"><div><h2>${item.name}</h2><p>${item.day} · ${item.time} · ${item.room}</p></div><span class="tag ${live ? 'tag--red' : ''}">${live ? 'En curso' : 'Programada'}</span></div>
+        <form id="attendanceForm" data-class-id="${item.id}">
+          ${rosterMarkup(item.id)}
           <div class="form-actions"><button class="button button--red" type="submit">Guardar asistencia</button></div>
         </form>
       </article>
@@ -438,7 +575,7 @@ function renderAdminHome() {
   const due = pendingPayments();
   return `
     <section class="admin-intro">
-      <div><p class="eyebrow">Administración · Miércoles 16</p><h1>La academia,<br/>en orden.</h1></div>
+      <div><p class="eyebrow">Administración · ${shortDayLabel(TODAY)}</p><h1>La academia,<br/>en orden.</h1></div>
       <div class="admin-intro-meta"><div><strong>50</strong><span>alumnos activos</span></div><div><strong>6</strong><span>maestros</span></div></div>
     </section>
     <section class="section">
@@ -466,7 +603,7 @@ function renderAdminPayments() {
   return `
     <header class="page-heading"><div><p class="eyebrow">Control de pagos</p><h1>Registrar.<br/>Conciliar. Listo.</h1><p>Solo registra cobros realizados fuera del sistema. No procesa tarjetas ni emite FEL.</p></div><button class="button button--red" type="button" data-open-payment>+ Registrar pago</button></header>
     <section class="split-grid" style="margin-bottom:28px">
-      <article class="surface-card"><p class="eyebrow">Registrado en septiembre</p><p class="payment-amount">Q ${paid.toLocaleString('es-GT')}</p><p class="payment-meta">Monto visible en esta demo local.</p></article>
+      <article class="surface-card"><p class="eyebrow">Registrado en ${monthName(TODAY)}</p><p class="payment-amount">Q ${paid.toLocaleString('es-GT')}</p><p class="payment-meta">Monto visible en esta demo local.</p></article>
       <article class="surface-card"><p class="eyebrow">Pendiente / mora</p><p class="payment-amount">Q ${due.toLocaleString('es-GT')}</p><p class="payment-meta">Requiere seguimiento administrativo.</p></article>
     </section>
     <div class="filter-row" id="paymentFilters"><button class="filter-chip is-active" type="button" data-payment-filter="all">Todos</button><button class="filter-chip" type="button" data-payment-filter="Pagado">Pagados</button><button class="filter-chip" type="button" data-payment-filter="Pendiente">Pendientes</button><button class="filter-chip" type="button" data-payment-filter="En mora">En mora</button></div>
@@ -475,16 +612,20 @@ function renderAdminPayments() {
 }
 
 function renderAdminAttendance() {
-  const presentBachata = state.attendance['bachata-i']?.length || 0;
-  const records = [
-    ['Hoy · 6:00 PM', 'Bachata Sensual I', 'Alex Aquino', `${presentBachata} marcados`, 'En curso'],
-    ['15 sep · 7:15 PM', 'Salsa Intermedia', 'Majo Borrayo', '10 presentes', 'Cerrada'],
-    ['15 sep · 6:30 PM', 'Heels Fundamentals', 'Sofía Castillo', '8 presentes', 'Cerrada'],
-    ['14 sep · 7:00 PM', 'Salsa On2', 'Daniel López', '11 presentes', 'Cerrada']
-  ];
+  const sessions = scheduledClasses().slice(0, 4).map((item) => {
+    const marked = state.attendance[item.id]?.length || 0;
+    const live = item.day === 'Hoy';
+    return [
+      `${item.day} · ${item.time}`,
+      item.name,
+      item.teacher,
+      `${marked} marcado${marked === 1 ? '' : 's'} de ${item.enrolled}`,
+      live ? 'En curso' : 'Programada'
+    ];
+  });
   return `
     <header class="page-heading"><div><p class="eyebrow">Registro de asistencia</p><h1>Cada llegada<br/>cuenta.</h1><p>Consulta operativa de sesiones. No incluye gráficas ni analítica avanzada.</p></div><button class="button" type="button" data-open-scan>Simular escáner QR</button></header>
-    <div class="table-wrap"><table class="data-table"><thead><tr><th>Fecha y hora</th><th>Clase</th><th>Maestro</th><th>Asistencia</th><th>Estado</th></tr></thead><tbody>${records.map((row, index) => `<tr>${row.map((cell, cellIndex) => `<td>${cellIndex === 4 ? `<span class="status-pill ${index ? 'is-paid' : 'is-due'}">${cell}</span>` : cell}</td>`).join('')}</tr>`).join('')}</tbody></table></div>
+    <div class="table-wrap"><table class="data-table"><thead><tr><th>Fecha y hora</th><th>Clase</th><th>Maestro</th><th>Asistencia</th><th>Estado</th></tr></thead><tbody>${sessions.map((row, index) => `<tr>${row.map((cell, cellIndex) => `<td>${cellIndex === 4 ? `<span class="status-pill ${index ? 'is-paid' : 'is-due'}">${escapeHtml(cell)}</span>` : escapeHtml(cell)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>
   `;
 }
 
@@ -514,7 +655,6 @@ function openModal({ title, eyebrow = 'Acción demo', body }) {
   elements.modalLayer.setAttribute('aria-hidden', 'false');
   document.body.classList.add('modal-open');
   elements.modalLayer.querySelector('[data-close-modal]')?.focus();
-  bindModalActions();
 }
 
 function closeModal() {
@@ -555,7 +695,7 @@ function openPaymentModal(studentId = 'IM-0241') {
           <label class="field field--wide"><span>Alumno</span><select name="studentId" required>${state.students.map((item) => `<option value="${item.id}" ${item.id === student.id ? 'selected' : ''}>${escapeHtml(item.name)} · ${item.id}</option>`).join('')}</select></label>
           <label class="field"><span>Monto (Q)</span><input name="amount" type="number" min="1" step="1" value="450" required /></label>
           <label class="field"><span>Método</span><select name="method" required><option>POS</option><option>Transferencia</option><option>Efectivo</option><option>Depósito</option></select></label>
-          <label class="field"><span>Mes aplicado</span><select name="month"><option>Septiembre 2026</option><option>Octubre 2026</option></select></label>
+          <label class="field"><span>Mes aplicado</span><select name="month"><option>${monthLabel(TODAY)}</option><option>${monthLabel(nextMonthDate())}</option></select></label>
           <label class="field"><span>Referencia</span><input name="reference" placeholder="Ej. voucher 1842" /></label>
         </div>
         <p class="modal-note">Este registro no realiza ningún cobro, no procesa tarjetas y no genera factura FEL.</p>
@@ -585,13 +725,13 @@ function openNewStudentModal() {
 }
 
 function openClassDetail(classId) {
-  const item = classData.find((entry) => entry.id === classId);
+  const item = findClass(classId);
   if (!item) return;
   openModal({
     title: item.name,
-    eyebrow: `${item.day} · ${item.date} · ${item.time}`,
+    eyebrow: `${item.day} · ${item.dateLabel} · ${item.time}`,
     body: `
-      <div class="surface-card" style="padding:20px;margin-bottom:16px"><p class="eyebrow">Detalle de clase</p><h3>${item.level}</h3><p class="payment-meta">${item.teacher} · ${item.room}<br/>${item.capacity} alumnos inscritos</p></div>
+      <div class="surface-card" style="padding:20px;margin-bottom:16px"><p class="eyebrow">Detalle de clase</p><h3>${item.level}</h3><p class="payment-meta">${item.teacher} · ${item.room}<br/>${capacityText(item)} alumnos inscritos</p></div>
       <p class="modal-note">La agenda es demostrativa. La reserva y los cupos no están conectados a un backend.</p>
       <div class="form-actions"><button class="button button--red" type="button" id="confirmClass">Confirmar asistencia</button></div>
     `
@@ -599,13 +739,13 @@ function openClassDetail(classId) {
 }
 
 function openStudentPayment() {
-  const payment = state.payments.find((item) => item.studentId === 'IM-0241' && item.month.includes('Septiembre'));
+  const payment = state.payments.find((item) => item.studentId === 'IM-0241' && item.month === monthLabel(TODAY));
   const paid = payment?.status === 'Pagado';
   openModal({
     title: paid ? 'Comprobante interno' : 'Mensualidad pendiente',
-    eyebrow: 'Septiembre 2026',
+    eyebrow: monthLabel(TODAY),
     body: `
-      <article class="surface-card"><p class="eyebrow">${paid ? 'Pago registrado' : 'Saldo por registrar'}</p><p class="payment-amount">Q ${payment?.amount || 450}</p><p class="payment-meta">${paid ? `${payment.method} · ${payment.date}` : 'Fecha límite · 18 de septiembre de 2026'}</p></article>
+      <article class="surface-card"><p class="eyebrow">${paid ? 'Pago registrado' : 'Saldo por registrar'}</p><p class="payment-amount">Q ${payment?.amount || 450}</p><p class="payment-meta">${paid ? `${payment.method} · ${payment.date}` : `Fecha límite · ${shortDate(addDays(TODAY, 2))}`}</p></article>
       <p class="modal-note" style="margin-top:16px">La academia cobra por sus medios habituales. La app solo refleja el registro interno; no hay pasarela ni pago con tarjeta.</p>
     `
   });
@@ -654,40 +794,74 @@ function openProfile() {
   });
 }
 
-function bindModalActions() {
-  elements.modalLayer.querySelectorAll('[data-close-modal]').forEach((button) => button.addEventListener('click', closeModal));
-  elements.modalLayer.querySelector('#simulateScan')?.addEventListener('click', () => {
-    const list = new Set(state.attendance['bachata-i'] || []);
-    list.add('IM-0241');
-    state.attendance['bachata-i'] = [...list];
-    state.studentCheckIn = true;
-    saveState();
-    closeModal();
-    showToast('Asistencia registrada', 'Valeria Ruiz · Bachata Sensual I · 6:00 PM');
-    renderApp();
+function simulateScan() {
+  const target = findClass(activeClassId) || nextClass();
+  const list = new Set(state.attendance[target.id] || []);
+  list.add('IM-0241');
+  state.attendance[target.id] = [...list];
+  state.studentCheckIn = true;
+  saveState();
+  closeModal();
+  showToast('Asistencia registrada', `Valeria Ruiz · ${target.name} · ${target.time}`);
+  renderApp();
+}
+
+function openResetModal() {
+  openModal({
+    title: 'Reiniciar demostración',
+    eyebrow: 'Datos locales',
+    body: `
+      <p class="modal-note">Se borran los alumnos, pagos y asistencias creados en este navegador y la demo vuelve a su estado inicial. No afecta ningún dato real.</p>
+      <div class="form-actions"><button class="button button--light" type="button" data-close-modal>Cancelar</button><button class="button button--red" type="button" id="confirmReset">Sí, reiniciar</button></div>
+    `
   });
-  elements.modalLayer.querySelector('#confirmClass')?.addEventListener('click', () => {
+}
+
+function resetDemo() {
+  try {
+    localStorage.removeItem(STORAGE_KEY);
+  } catch {
+    // el navegador puede tener el almacenamiento bloqueado
+  }
+  state = structuredClone(defaultState);
+  state.role = activeRole;
+  activeClassId = classData[0].id;
+  activeRoute = 'inicio';
+  saveState();
+  closeModal();
+  showToast('Demo reiniciada', 'Los datos volvieron a su estado inicial.');
+  renderApp();
+}
+
+function handleModalClick(event) {
+  if (event.target.closest('[data-close-modal]')) return closeModal();
+  if (event.target.closest('#simulateScan')) return simulateScan();
+  if (event.target.closest('#confirmReset')) return resetDemo();
+  if (event.target.closest('#confirmClass')) {
     closeModal();
     showToast('Clase confirmada', 'Tu cupo se marcó en esta demostración.');
-  });
-  elements.modalLayer.querySelector('#paymentForm')?.addEventListener('submit', handlePaymentSubmit);
-  elements.modalLayer.querySelector('#studentForm')?.addEventListener('submit', handleStudentSubmit);
+  }
+}
+
+function handleModalSubmit(event) {
+  if (event.target.id === 'paymentForm') handlePaymentSubmit(event);
+  if (event.target.id === 'studentForm') handleStudentSubmit(event);
 }
 
 function handlePaymentSubmit(event) {
   event.preventDefault();
-  const data = new FormData(event.currentTarget);
+  const data = new FormData(event.target);
   const student = state.students.find((item) => item.id === data.get('studentId'));
   if (!student) return;
   const existing = state.payments.find((item) => item.studentId === student.id && item.month === data.get('month'));
   const record = {
-    id: existing?.id || `P-${1045 + state.payments.length}`,
+    id: existing?.id || nextPaymentId(),
     studentId: student.id,
     student: student.name,
     month: String(data.get('month')),
     amount: Number(data.get('amount')),
     method: String(data.get('method')),
-    date: '16 sep 2026',
+    date: shortDate(TODAY),
     status: 'Pagado',
     reference: String(data.get('reference') || '')
   };
@@ -701,12 +875,11 @@ function handlePaymentSubmit(event) {
 
 function handleStudentSubmit(event) {
   event.preventDefault();
-  const data = new FormData(event.currentTarget);
+  const data = new FormData(event.target);
   const name = String(data.get('name')).trim();
   if (!name) return;
-  const nextNumber = 250 + state.students.length + 1;
   state.students = [{
-    id: `IM-0${nextNumber}`,
+    id: nextStudentId(),
     name,
     initials: initials(name),
     plan: String(data.get('plan')),
@@ -739,7 +912,7 @@ function registerWebMcpTools() {
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
     annotations: { readOnlyHint: true, untrustedContentHint: false },
     execute() {
-      return { classes: classData.map(({ id, day, date, time, name, teacher, room }) => ({ id, day, date, time, name, teacher, room })) };
+      return { classes: scheduledClasses().map(({ id, day, dateLabel, time, name, teacher, room }) => ({ id, day, date: dateLabel, time, name, teacher, room })) };
     }
   });
 
@@ -790,15 +963,15 @@ function registerWebMcpTools() {
       if (!Number.isFinite(input?.amount) || input.amount <= 0) throw new Error('El monto debe ser mayor que cero.');
       const methods = ['POS', 'Transferencia', 'Efectivo', 'Depósito'];
       if (!methods.includes(input?.method)) throw new Error('Método de pago no válido.');
-      const existing = state.payments.find((item) => item.studentId === student.id && item.month === 'Septiembre 2026');
+      const existing = state.payments.find((item) => item.studentId === student.id && item.month === monthLabel(TODAY));
       const record = {
-        id: existing?.id || `P-${1045 + state.payments.length}`,
+        id: existing?.id || nextPaymentId(),
         studentId: student.id,
         student: student.name,
-        month: 'Septiembre 2026',
+        month: monthLabel(TODAY),
         amount: input.amount,
         method: input.method,
-        date: '16 sep 2026',
+        date: shortDate(TODAY),
         status: 'Pagado'
       };
       state.payments = existing ? state.payments.map((item) => item.id === existing.id ? record : item) : [record, ...state.payments];
@@ -812,58 +985,88 @@ function registerWebMcpTools() {
 
 function handleAttendanceSubmit(event) {
   event.preventDefault();
-  const classId = event.currentTarget.dataset.classId;
-  state.attendance[classId] = [...event.currentTarget.querySelectorAll('input[name="attendance"]:checked')].map((input) => input.value);
+  const form = event.target;
+  const classId = form.dataset.classId;
+  state.attendance[classId] = [...form.querySelectorAll('input[name="attendance"]:checked')].map((input) => input.value);
   saveState();
   showToast('Asistencia guardada', `${state.attendance[classId].length} alumnos marcados como presentes.`);
   renderApp();
 }
 
-function bindPageActions() {
-  elements.content.querySelectorAll('[data-go]').forEach((button) => button.addEventListener('click', () => routeTo(button.dataset.go)));
-  elements.content.querySelectorAll('[data-open-scan]').forEach((button) => button.addEventListener('click', openScanModal));
-  elements.content.querySelectorAll('[data-open-payment]').forEach((button) => button.addEventListener('click', () => openPaymentModal()));
-  elements.content.querySelectorAll('[data-open-student]').forEach((button) => button.addEventListener('click', openNewStudentModal));
-  elements.content.querySelectorAll('[data-class-detail]').forEach((button) => button.addEventListener('click', () => openClassDetail(button.dataset.classDetail)));
-  elements.content.querySelectorAll('[data-take-attendance]').forEach((button) => button.addEventListener('click', () => {
-    activeRole = 'teacher'; activeRoute = 'asistencia'; history.pushState(null, '', '#/asistencia'); renderApp();
-  }));
-  elements.content.querySelectorAll('[data-register-for]').forEach((button) => button.addEventListener('click', () => openPaymentModal(button.dataset.registerFor)));
-  elements.content.querySelectorAll('[data-receipt]').forEach((button) => button.addEventListener('click', () => openReceipt(button.dataset.receipt)));
-  elements.content.querySelectorAll('[data-student-detail]').forEach((button) => button.addEventListener('click', () => openStudentDetail(button.dataset.studentDetail)));
-  elements.content.querySelector('[data-student-payment]')?.addEventListener('click', openStudentPayment);
-  elements.content.querySelector('#attendanceForm')?.addEventListener('submit', handleAttendanceSubmit);
+function openClassAttendance(classId) {
+  if (findClass(classId)) activeClassId = classId;
+  activeRole = 'teacher';
+  activeRoute = 'asistencia';
+  history.pushState(null, '', '#/asistencia');
+  renderApp();
+}
 
-  elements.content.querySelectorAll('[data-class-filter]').forEach((button) => button.addEventListener('click', () => {
-    elements.content.querySelectorAll('[data-class-filter]').forEach((chip) => chip.classList.toggle('is-active', chip === button));
-    const filter = button.dataset.classFilter;
-    const filtered = filter === 'today' ? classData.filter((item) => item.day === 'Hoy')
-      : filter === 'initial' ? classData.filter((item) => item.level.toLowerCase().includes('inicial'))
-      : filter === 'advanced' ? classData.filter((item) => item.level.toLowerCase().includes('avanzado'))
-      : classData;
-    document.querySelector('#studentSchedule').innerHTML = scheduleList(filtered);
-    document.querySelectorAll('[data-class-detail]').forEach((detail) => detail.addEventListener('click', () => openClassDetail(detail.dataset.classDetail)));
-  }));
+function applyClassFilter(button) {
+  elements.content.querySelectorAll('[data-class-filter]').forEach((chip) => chip.classList.toggle('is-active', chip === button));
+  const filter = button.dataset.classFilter;
+  const classes = scheduledClasses();
+  const filtered = filter === 'today' ? classes.filter((item) => item.day === 'Hoy')
+    : filter === 'initial' ? classes.filter((item) => item.level.toLowerCase().includes('inicial'))
+    : filter === 'advanced' ? classes.filter((item) => item.level.toLowerCase().includes('avanzado'))
+    : classes;
+  elements.content.querySelector('#studentSchedule').innerHTML = scheduleList(filtered);
+}
 
-  elements.content.querySelector('#studentSearch')?.addEventListener('input', (event) => {
-    const query = event.target.value.trim().toLowerCase();
-    const filtered = state.students.filter((item) => `${item.name} ${item.id}`.toLowerCase().includes(query));
-    document.querySelector('#studentTableBody').innerHTML = studentRows(filtered);
-    document.querySelectorAll('[data-student-detail]').forEach((button) => button.addEventListener('click', () => openStudentDetail(button.dataset.studentDetail)));
-  });
+function applyPaymentFilter(button) {
+  elements.content.querySelectorAll('[data-payment-filter]').forEach((chip) => chip.classList.toggle('is-active', chip === button));
+  const filter = button.dataset.paymentFilter;
+  const filtered = filter === 'all' ? state.payments : state.payments.filter((item) => item.status === filter);
+  elements.content.querySelector('#paymentTableBody').innerHTML = adminPaymentRows(filtered);
+}
 
-  elements.content.querySelectorAll('[data-payment-filter]').forEach((button) => button.addEventListener('click', () => {
-    elements.content.querySelectorAll('[data-payment-filter]').forEach((chip) => chip.classList.toggle('is-active', chip === button));
-    const filter = button.dataset.paymentFilter;
-    const filtered = filter === 'all' ? state.payments : state.payments.filter((item) => item.status === filter);
-    document.querySelector('#paymentTableBody').innerHTML = adminPaymentRows(filtered);
-    document.querySelectorAll('[data-register-for]').forEach((action) => action.addEventListener('click', () => openPaymentModal(action.dataset.registerFor)));
-    document.querySelectorAll('[data-receipt]').forEach((action) => action.addEventListener('click', () => openReceipt(action.dataset.receipt)));
-  }));
+// Un solo manejador delegado para toda la página: el contenido se redibuja en cada
+// render y enganchar listeners elemento por elemento los iba duplicando.
+function handleContentClick(event) {
+  const find = (selector) => event.target.closest(selector);
+
+  const go = find('[data-go]');
+  if (go) return routeTo(go.dataset.go);
+  if (find('[data-open-scan]')) return openScanModal();
+  if (find('[data-open-payment]')) return openPaymentModal();
+  if (find('[data-open-student]')) return openNewStudentModal();
+  if (find('[data-student-payment]')) return openStudentPayment();
+
+  const attendance = find('[data-take-attendance]');
+  if (attendance) return openClassAttendance(attendance.dataset.takeAttendance);
+  const detail = find('[data-class-detail]');
+  if (detail) return openClassDetail(detail.dataset.classDetail);
+  const register = find('[data-register-for]');
+  if (register) return openPaymentModal(register.dataset.registerFor);
+  const receipt = find('[data-receipt]');
+  if (receipt) return openReceipt(receipt.dataset.receipt);
+  const studentDetail = find('[data-student-detail]');
+  if (studentDetail) return openStudentDetail(studentDetail.dataset.studentDetail);
+
+  const classFilter = find('[data-class-filter]');
+  if (classFilter) return applyClassFilter(classFilter);
+  const paymentFilter = find('[data-payment-filter]');
+  if (paymentFilter) return applyPaymentFilter(paymentFilter);
+}
+
+function handleContentInput(event) {
+  if (!event.target.closest('#studentSearch')) return;
+  const query = event.target.value.trim().toLowerCase();
+  const filtered = state.students.filter((item) => `${item.name} ${item.id}`.toLowerCase().includes(query));
+  elements.content.querySelector('#studentTableBody').innerHTML = studentRows(filtered);
+}
+
+function handleContentSubmit(event) {
+  if (event.target.id === 'attendanceForm') handleAttendanceSubmit(event);
 }
 
 document.querySelectorAll('[data-enter-role]').forEach((button) => button.addEventListener('click', () => enterDemo(button.dataset.enterRole)));
 document.querySelector('#exitDemo').addEventListener('click', leaveDemo);
+document.querySelector('#resetDemo')?.addEventListener('click', openResetModal);
+elements.content.addEventListener('click', handleContentClick);
+elements.content.addEventListener('input', handleContentInput);
+elements.content.addEventListener('submit', handleContentSubmit);
+elements.modalLayer.addEventListener('click', handleModalClick);
+elements.modalLayer.addEventListener('submit', handleModalSubmit);
 document.querySelector('#profileButton').addEventListener('click', openProfile);
 
 elements.roleSwitcher.addEventListener('change', (event) => {
@@ -905,7 +1108,7 @@ if (state.role) {
     elements.access.classList.add('is-hidden');
     elements.app.classList.remove('is-hidden');
     renderApp();
-  }, 1750);
+  }, 2450);
 }
 
 registerWebMcpTools();

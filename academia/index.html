@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="theme-color" content="#0B0B0C" />
   <meta name="description" content="Prototipo navegable de gestión para In Motion Dance Academy." />
+  <meta name="robots" content="noindex, nofollow" />
   <title>In Motion Dance Academy</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -53,7 +54,7 @@
       <p class="eyebrow">Prototipo navegable · Datos demo</p>
       <h1 id="accessTitle">Entrá a tu ritmo.</h1>
       <p class="access-copy">Explorá la experiencia de alumnos, maestros y administración. Los cambios se guardan solo en este navegador.</p>
-      <div class="role-options" role="list" aria-label="Elegir acceso de demostración">
+      <div class="role-options" role="group" aria-label="Elegir acceso de demostración">
         <button class="role-option is-primary" type="button" data-enter-role="student">
           <span class="role-number">01</span>
           <span><strong>Alumno</strong><small>Clases, carnet y asistencia</small></span>
@@ -89,6 +90,7 @@
         <span class="demo-badge"><i></i> Modo demostración</span>
         <a href="../index.html" class="side-link">Catálogo de videos <span>↗</span></a>
         <button class="side-link" type="button" id="exitDemo">Cambiar acceso <span>↙</span></button>
+        <button class="side-link" type="button" id="resetDemo">Reiniciar demo <span>⟲</span></button>
       </div>
     </aside>
 
