@@ -10,15 +10,17 @@
   --mist: #f6f7f9;
   --muted: #6b6e76;
   --line: #eeeff2;
-  --red: #d81e5b;        /* acento de accion: botones, links, estado activo */
-  --red-dark: #a81443;
-  --brand-red: #e20c14;  /* rojo de marca: reservado al logo y a los brochazos */
+  /* Un solo rojo desde el 16/09/2026: el acento de accion se alineo al rojo de
+     marca. Las dos variables se conservan por si alguna vez vuelven a separarse. */
+  --red: #e20c14;        /* acento de accion: botones, links, estado activo */
+  --red-dark: #ab0a0f;
+  --brand-red: #e20c14;  /* rojo de marca: logo y brochazos */
   --radius-lg: 22px;
   --radius-md: 18px;
   --shadow: 0 18px 44px rgba(16, 16, 20, 0.08);
 }
 
-:focus-visible { outline-color: rgba(216, 30, 91, 0.4); }
+:focus-visible { outline-color: rgba(226, 12, 20, 0.45); }
 
 /* ---- Intro / bienvenida ----
    Ahora es el logo animado: el brochazo rojo se pinta solo y despues entra
@@ -49,6 +51,25 @@
   background: #0b0b0c;
   mix-blend-mode: normal;
 }
+
+/* ---- Panel de la pantalla de acceso ----
+   Reemplaza el poster rosado (MOVE + aro) por la foto. El ::before de la base
+   pasa a ser el degradado que hace legible el rotulo de la esquina. */
+.access-poster { background: #0b0b0c; }
+.access-photo {
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+}
+.access-poster::before {
+  z-index: 1;
+  background: linear-gradient(to top, rgba(11, 11, 12, 0.75), transparent 34%);
+}
+.access-poster p { z-index: 2; }
 
 /* ---- Barra superior negra con el logo real ---- */
 .topbar {

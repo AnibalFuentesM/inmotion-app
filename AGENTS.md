@@ -8,6 +8,26 @@ Un sitio estático con dos superficies que comparten dominio pero **no** código
 el **catálogo de videos** (raíz, en producción) y la **app de la academia**
 (`/academia/`, prototipo). Sin build, sin framework, sin backend propio.
 
+## Dónde se trabaja
+
+Se trabaja **siempre sobre esta misma app**: `academia/`, dentro de
+`~/Documents/Inmotion`, sobre `main`. Esto aplica a cualquier agente o LLM.
+
+- **No crear apps, prototipos, maquetas ni "versiones para probar" aparte.**
+  Si algo hay que experimentar, se experimenta acá. El cliente ve una sola app.
+- **No crear ramas, worktrees ni clones** salvo que Mariano lo pida explícitamente.
+  Ya pasó: una sesión dejó un checkout en `~/.codex/worktrees/1755/Inmotion` con un
+  `python3 -m http.server 5500` sirviendo una copia vieja. Antes de dar por bueno lo
+  que ves en el navegador, confirmá desde qué carpeta sirve el puerto:
+  `lsof -nP -iTCP:5500 -sTCP:LISTEN` y `lsof -a -p <pid> -d cwd`.
+- **Los comandos de git los ejecuta Mariano.** El agente los redacta y se los pasa
+  para pegarlos en la Terminal, en una sola tanda y **sin líneas de comentario**
+  (su zsh no las acepta). El agente no hace `commit`, no hace `push` y no borra
+  archivos de la carpeta.
+- Usá `git --no-optional-locks status` para consultar: un `git status` normal puede
+  dejar un `.git/index.lock` que el agente no puede borrar y que bloquea el siguiente
+  comando de Mariano.
+
 ## Dónde tocar qué
 
 | Quiero cambiar… | Archivo |
@@ -28,8 +48,11 @@ el **catálogo de videos** (raíz, en producción) y la **app de la academia**
 2. **El estilo de la app se cambia en `academy-theme.css`, nunca en `academy.css`.**
    El theme es una capa de overrides que se carga después; borrarlo devuelve el diseño base
    intacto. Si un cambio no se puede expresar como override, decilo antes de editar la base.
-3. **Dos rojos, no los mezcles.** `--brand-red` (`#e20c14`) es del logo y los brochazos.
-   `--red` (`#d81e5b`) es el acento de acción: botones, enlaces, estado activo.
+3. **Un solo rojo.** Desde el 16/09/2026 `--red` y `--brand-red` valen ambos `#e20c14`,
+   el rojo de la marca. Antes `--red` era `#d81e5b` (rosado) y la regla era no mezclarlos;
+   se unificaron porque el rosado no era de la academia. Las dos variables siguen
+   existiendo: si alguna vez se vuelven a separar, se cambia solo el valor en
+   `academy-theme.css`, nunca los usos.
 4. **El logo animado de la intro va inline en `academia/index.html`.**
    No lo conviertas a `<img src>`: el navegador renderiza el SVG pero no ejecuta sus
    animaciones CSS, y la intro sale en negro. La cortina sale a los 2.45s, justo después
