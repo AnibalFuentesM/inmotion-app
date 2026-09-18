@@ -478,10 +478,38 @@ function nextClass() {
 
 function upcomingClasses(classes) {
   return classes.map((item) => {
-    const startsAt = new Date(item.date);
+    let sessionDate = item.date ? new Date(item.date) : nextDateFor(item.weekday);
+    let startsAt = new Date(sessionDate);
     startsAt.setMinutes(timeValue(item.time));
-    const date = startsAt <= TODAY ? addDays(item.date, 7) : item.date;
-    return { ...item, date, day: dayLabel(date), dateLabel: shortDate(date) };
+    // Regla explícita de duración: cada clase dura 60 minutos.
+    // Una clase finaliza exactamente 60 minutos después de su hora de inicio.
+    let endsAt = new Date(startsAt.getTime() + 60 * 60 * 1000);
+
+    let isOngoing = false;
+    let hasEnded = false;
+
+    if (TODAY > endsAt) {
+      // Si la sesión de hoy ya concluyó, su siguiente ocurrencia es en 7 días
+      hasEnded = true;
+      sessionDate = addDays(sessionDate, 7);
+      startsAt = new Date(sessionDate);
+      startsAt.setMinutes(timeValue(item.time));
+      endsAt = new Date(startsAt.getTime() + 60 * 60 * 1000);
+    } else if (TODAY >= startsAt && TODAY <= endsAt) {
+      isOngoing = true;
+    }
+
+    return {
+      ...item,
+      date: sessionDate,
+      startsAt,
+      endsAt,
+      isOngoing,
+      hasEnded,
+      day: dayLabel(sessionDate),
+      dateLabel: shortDate(sessionDate),
+      fullDateLabel: longDate(sessionDate)
+    };
   }).sort((a, b) => (a.date - b.date) || (timeValue(a.time) - timeValue(b.time)));
 }
 
@@ -1434,9 +1462,11 @@ function weekStrip(classes = classData) {
   return `<div class="week-strip">${days.map((date) => {
     const total = perWeekday[date.getDay()] || 0;
     const note = total ? `${total} clase${total === 1 ? '' : 's'}` : '';
-    return `<div class="day-pill ${daysBetween(date) === 0 ? 'is-today' : ''}">
+    const isToday = daysBetween(date) === 0;
+    const dateKeyStr = dayKey(date);
+    return `<button class="day-pill is-clickable ${isToday ? 'is-today' : ''}" type="button" data-calendar-jump="${escapeHtml(dateKeyStr)}" aria-label="Ver clases del ${escapeHtml(longDate(date))}: ${total ? `${total} clase${total === 1 ? '' : 's'}` : 'sin clases'}">
       <span>${escapeHtml(WEEKDAY_SHORT[date.getDay()])}</span><strong>${escapeHtml(date.getDate())}</strong><small>${escapeHtml(note)}</small>
-    </div>`;
+    </button>`;
   }).join('')}</div>`;
 }
 
@@ -1444,7 +1474,10 @@ function classCards(classes = scheduledClasses().slice(0, 3), empty = null) {
   if (!classes.length) {
     return `<div class="empty-state"><strong>${escapeHtml(empty?.title || 'Sin clases')}</strong>${escapeHtml(empty?.detail || 'No hay clases programadas en esta demostración.')}</div>`;
   }
-  return `<div class="cards-grid">${classes.map((item, index) => `
+  return `<div class="cards-grid">${classes.map((item, index) => {
+    const contextDateKey = item.date ? dayKey(item.date) : '';
+    const dateLabelStr = item.fullDateLabel || (item.date ? longDate(item.date) : item.dateLabel);
+    return `
     <article class="class-card ${index === 0 ? 'is-featured' : ''}">
       <span class="class-card-index">0${index + 1}</span>
       <div class="class-card-top">
@@ -1452,13 +1485,18 @@ function classCards(classes = scheduledClasses().slice(0, 3), empty = null) {
         ${index === 0 ? '<span class="status-dot">Inscripta</span>' : ''}
       </div>
       <h3>${escapeHtml(item.name)}</h3>
-      <p>${escapeHtml(item.teacher)}</p>
+      <p class="class-card-date">${escapeHtml(dateLabelStr)}</p>
+      <p>${escapeHtml(item.teacher)} · ${escapeHtml(item.room)}</p>
       <div class="class-card-foot">
         <span>${escapeHtml(item.level)}</span>
-        <button class="button button--small button--light" type="button" data-open-music-modal="${escapeHtml(item.id)}" aria-label="Sugerir rola para ${escapeHtml(item.name)}">Sugerir rola 🎶</button>
+        <div class="class-card-actions">
+          <button class="button button--small button--light" type="button" data-class-detail="${escapeHtml(item.id)}" data-context-date="${escapeHtml(contextDateKey)}" aria-label="Ver detalles de ${escapeHtml(item.name)}">Ver detalles</button>
+          <button class="button button--small button--light" type="button" data-open-music-modal="${escapeHtml(item.id)}" aria-label="Sugerir rola para ${escapeHtml(item.name)}">Rola 🎶</button>
+        </div>
       </div>
     </article>
-  `).join('')}</div>`;
+  `;
+  }).join('')}</div>`;
 }
 
 function scheduleList(classes = scheduledClasses()) {
@@ -1846,10 +1884,31 @@ function renderStudentHome() {
           <p>${checkedIn ? 'Tu asistencia de hoy ya quedó registrada en esta demo.' : 'Mostrá tu carné en recepción al llegar a la academia.'}</p>
         </div>
       </div>
-      <aside class="next-class">
-        <div class="next-class-label"><span>Próxima clase</span><span>01</span></div>
-        ${next ? `<time><strong>${escapeHtml(hour)}</strong><span>${escapeHtml(meridiem)} · ${escapeHtml(next.day)}</span></time>
-        <div><h2>${escapeHtml(next.name)}</h2><p>${escapeHtml(next.teacher)} · ${escapeHtml(next.room)}</p></div>` : '<p>Sin clases asignadas.</p>'}
+      <aside class="next-class ${next ? 'is-clickable' : 'is-empty'}" ${next ? `data-class-detail="${escapeHtml(next.id)}" data-context-date="${escapeHtml(dayKey(next.date))}" role="button" tabindex="0" aria-label="Ver detalles de la próxima clase: ${escapeHtml(next.name)}, ${escapeHtml(next.fullDateLabel)} a las ${escapeHtml(next.time)}"` : ''}>
+        <div class="next-class-label">
+          <span>Próxima clase</span>
+          <span>${next?.isOngoing ? 'En curso' : '01'}</span>
+        </div>
+        ${next ? `
+          <time>
+            <strong>${escapeHtml(hour)}</strong>
+            <span>${escapeHtml(meridiem)} · ${escapeHtml(next.day)}</span>
+          </time>
+          <div class="next-class-info">
+            <h2>${escapeHtml(next.name)}</h2>
+            <p class="next-class-date">📅 ${escapeHtml(next.fullDateLabel)}</p>
+            <p>${escapeHtml(next.teacher)} · ${escapeHtml(next.room)}</p>
+            <div class="next-class-btn-wrap">
+              <span class="next-class-cta">Ver detalles de la clase <span aria-hidden="true">→</span></span>
+            </div>
+          </div>
+        ` : `
+          <div class="next-class-empty-box">
+            <p class="next-class-empty-title">Sin próximas clases programadas</p>
+            <p class="next-class-empty-text">No tenés clases asignadas para los próximos días. Consultá el calendario para ver los horarios de la academia.</p>
+            <button class="button button--small button--light" type="button" data-go="clases">Ver calendario de clases →</button>
+          </div>
+        `}
       </aside>
     </section>
 
@@ -2230,20 +2289,199 @@ function openPlanDetail(id) {
   openModal({ title: `Plan ${plan.name}`, eyebrow: 'Conocé tu opción · Demo', body: `<p class="plan-price">Q ${escapeHtml(formatAmount(plan.price))}<span>/ mes</span></p><p>${escapeHtml(plan.description)}</p><ul class="plan-detail-list"><li>${escapeHtml(planRhythmText(plan))}, como orientación.</li><li>${escapeHtml(planAllowanceText(plan))}.</li><li>${escapeHtml(planUnitText(plan))}.</li><li>La inscripción y otros cargos deben confirmarse con recepción.</li></ul><p class="plan-disclaimer">Esta comparación no modifica tu membresía ni registra pagos. Los importes son ficticios.</p><button class="button" type="button" data-close-modal>Seguir comparando</button>` });
 }
 
+let studentCalendarDate = startOfDay(TODAY);
+let studentCalendarFilter = 'all';
+
+function getClassesForDate(date, filter = 'all') {
+  const targetWeekday = date.getDay();
+  const student = currentStudent();
+  const studentClassIds = student?.classIds || [];
+
+  let list = scheduledClasses().filter((item) => item.weekday === targetWeekday);
+
+  if (filter === 'mine') {
+    list = list.filter((item) => studentClassIds.includes(item.id));
+  } else if (filter === 'initial') {
+    list = list.filter((item) => item.level.toLowerCase().includes('inicial'));
+  } else if (filter === 'intermediate') {
+    list = list.filter((item) => item.level.toLowerCase().includes('intermedio'));
+  } else if (filter === 'advanced') {
+    list = list.filter((item) => item.level.toLowerCase().includes('avanzado'));
+  }
+
+  return list.sort((a, b) => timeValue(a.time) - timeValue(b.time));
+}
+
+function nextDayWithClasses(fromDate, filter = 'all') {
+  for (let offset = 1; offset <= 14; offset += 1) {
+    const candidate = addDays(fromDate, offset);
+    const classes = getClassesForDate(candidate, filter);
+    if (classes.length > 0) return candidate;
+  }
+  return null;
+}
+
+function studentCalendarMarkup() {
+  const student = currentStudent();
+  const studentClassIds = student?.classIds || [];
+  const isToday = daysBetween(studentCalendarDate) === 0;
+
+  // Lunes de la semana que contiene a studentCalendarDate
+  const monday = addDays(studentCalendarDate, -((startOfDay(studentCalendarDate).getDay() + 6) % 7));
+  const weekDays = Array.from({ length: 7 }, (_, i) => addDays(monday, i));
+
+  const dayClasses = getClassesForDate(studentCalendarDate, studentCalendarFilter);
+  const nextAvailableDay = nextDayWithClasses(studentCalendarDate, studentCalendarFilter);
+
+  const weekStripHtml = weekDays.map((d) => {
+    const dIsToday = daysBetween(d) === 0;
+    const dIsSelected = dayKey(d) === dayKey(studentCalendarDate);
+    const dClasses = getClassesForDate(d, studentCalendarFilter);
+    const count = dClasses.length;
+    const hasEnrolled = dClasses.some((c) => studentClassIds.includes(c.id));
+
+    let pillClass = 'calendar-day-pill is-clickable';
+    if (dIsToday) pillClass += ' is-today';
+    if (dIsSelected) pillClass += ' is-selected';
+    if (hasEnrolled) pillClass += ' has-enrolled';
+
+    return `
+      <button class="${pillClass}" type="button" data-calendar-select="${escapeHtml(dayKey(d))}" aria-pressed="${dIsSelected}" aria-label="${escapeHtml(longDate(d))}: ${count} clase${count === 1 ? '' : 's'}">
+        <span class="calendar-pill-day">${escapeHtml(WEEKDAY_SHORT[d.getDay()])}</span>
+        <strong class="calendar-pill-num">${escapeHtml(d.getDate())}</strong>
+        <span class="calendar-pill-meta">${count ? `${count} ${count === 1 ? 'clase' : 'clases'}` : '—'}</span>
+      </button>
+    `;
+  }).join('');
+
+  let agendaContentHtml = '';
+  if (dayClasses.length > 0) {
+    agendaContentHtml = `
+      <div class="calendar-agenda-list">
+        ${dayClasses.map((item) => {
+          const isEnrolled = studentClassIds.includes(item.id);
+
+          let statusTag = '';
+          if (isToday) {
+            const startsAt = new Date(studentCalendarDate);
+            startsAt.setMinutes(timeValue(item.time));
+            const endsAt = new Date(startsAt.getTime() + 60 * 60 * 1000);
+            if (TODAY > endsAt) {
+              statusTag = '<span class="tag tag--ended">Finalizada</span>';
+            } else if (TODAY >= startsAt && TODAY <= endsAt) {
+              statusTag = '<span class="tag tag--red">En curso</span>';
+            } else {
+              statusTag = '<span class="tag tag--dark">Hoy</span>';
+            }
+          }
+
+          return `
+            <article class="calendar-agenda-card ${isEnrolled ? 'is-enrolled' : ''}">
+              <div class="calendar-agenda-time-col">
+                <span class="calendar-agenda-time">${escapeHtml(item.time)}</span>
+                ${statusTag}
+              </div>
+              <div class="calendar-agenda-main">
+                <div class="calendar-agenda-top">
+                  <h3 class="calendar-agenda-title">${escapeHtml(item.name)}</h3>
+                  ${isEnrolled ? '<span class="tag tag--red">Inscrito</span>' : ''}
+                </div>
+                <p class="calendar-agenda-meta">
+                  <span class="agenda-meta-item">${escapeHtml(item.level)}</span> · 
+                  <span class="agenda-meta-item">Salón: ${escapeHtml(item.room)}</span> · 
+                  <span class="agenda-meta-item">Profesor: ${escapeHtml(item.teacher)}</span>
+                </p>
+                <div class="calendar-agenda-foot">
+                  <span class="capacity">${escapeHtml(capacityText(item))} cupos</span>
+                  <div class="calendar-agenda-actions">
+                    <button class="button button--small ${isEnrolled ? 'button--red' : 'button--light'}" type="button" data-class-detail="${escapeHtml(item.id)}" data-context-date="${escapeHtml(dayKey(studentCalendarDate))}" aria-label="Ver detalles de ${escapeHtml(item.name)}">Ver detalles</button>
+                    <button class="button button--small button--light" type="button" data-open-music-modal="${escapeHtml(item.id)}" aria-label="Sugerir rola para ${escapeHtml(item.name)}">Rola 🎶</button>
+                  </div>
+                </div>
+              </div>
+            </article>
+          `;
+        }).join('')}
+      </div>
+    `;
+  } else {
+    let emptyDescription = 'No hay clases programadas para este día.';
+    if (studentCalendarFilter === 'mine') {
+      emptyDescription = 'No tenés clases inscritas para este día.';
+    } else if (studentCalendarFilter !== 'all') {
+      emptyDescription = 'No hay clases de este nivel para la fecha seleccionada.';
+    }
+
+    agendaContentHtml = `
+      <div class="calendar-empty-card surface-card">
+        <p class="calendar-empty-icon" aria-hidden="true">📅</p>
+        <h3>Día sin clases programadas</h3>
+        <p class="calendar-empty-desc">${escapeHtml(emptyDescription)}</p>
+        <div class="calendar-empty-actions">
+          ${nextAvailableDay ? `<button class="button button--red button--small" type="button" data-calendar-select="${escapeHtml(dayKey(nextAvailableDay))}">Próximo día con actividad (${escapeHtml(shortDayLabel(nextAvailableDay))}) →</button>` : ''}
+          ${!isToday ? `<button class="button button--light button--small" type="button" data-calendar-today>Volver a Hoy</button>` : ''}
+          ${studentCalendarFilter !== 'all' ? `<button class="button button--light button--small" type="button" data-calendar-filter="all">Ver todas las clases</button>` : ''}
+        </div>
+      </div>
+    `;
+  }
+
+  return `
+    <div class="calendar-nav-bar">
+      <button class="calendar-nav-arrow" type="button" data-calendar-nav="-1" aria-label="Día anterior">
+        <span aria-hidden="true">←</span>
+      </button>
+      <div class="calendar-nav-center">
+        <h2 class="calendar-nav-heading">${escapeHtml(longDate(studentCalendarDate))}</h2>
+        <div class="calendar-nav-sub">
+          ${isToday ? '<span class="calendar-nav-badge-today">Hoy</span>' : `<button class="calendar-nav-btn-today" type="button" data-calendar-today>Volver a Hoy</button>`}
+        </div>
+      </div>
+      <button class="calendar-nav-arrow" type="button" data-calendar-nav="1" aria-label="Día siguiente">
+        <span aria-hidden="true">→</span>
+      </button>
+    </div>
+
+    <div class="calendar-week-strip" role="group" aria-label="Días de la semana">
+      ${weekStripHtml}
+    </div>
+
+    <div class="filter-row" role="group" aria-label="Filtrar clases">
+      <button class="filter-chip ${studentCalendarFilter === 'all' ? 'is-active' : ''}" type="button" aria-pressed="${studentCalendarFilter === 'all'}" data-calendar-filter="all">Todas</button>
+      <button class="filter-chip ${studentCalendarFilter === 'mine' ? 'is-active' : ''}" type="button" aria-pressed="${studentCalendarFilter === 'mine'}" data-calendar-filter="mine">Mis clases</button>
+      <button class="filter-chip ${studentCalendarFilter === 'initial' ? 'is-active' : ''}" type="button" aria-pressed="${studentCalendarFilter === 'initial'}" data-calendar-filter="initial">Inicial</button>
+      <button class="filter-chip ${studentCalendarFilter === 'intermediate' ? 'is-active' : ''}" type="button" aria-pressed="${studentCalendarFilter === 'intermediate'}" data-calendar-filter="intermediate">Intermedio</button>
+      <button class="filter-chip ${studentCalendarFilter === 'advanced' ? 'is-active' : ''}" type="button" aria-pressed="${studentCalendarFilter === 'advanced'}" data-calendar-filter="advanced">Avanzado</button>
+    </div>
+
+    <div class="calendar-agenda-container" aria-live="polite">
+      ${agendaContentHtml}
+    </div>
+  `;
+}
+
+function updateStudentCalendarUI() {
+  const container = elements.content.querySelector('#studentScheduleContainer');
+  if (container) {
+    container.innerHTML = studentCalendarMarkup();
+  } else {
+    renderApp();
+  }
+}
+
 function renderStudentClasses() {
   return `
     <header class="page-heading">
-      <div><p class="eyebrow">Calendario de clases</p><h1>Elegí tu próximo<br/>movimiento.</h1><p>Consultá horarios y cupos de demostración. Las reservas no están habilitadas en este prototipo.</p></div>
-      <button class="button" type="button" data-go="carnet">Mostrar mi QR</button>
+      <div>
+        <p class="eyebrow">Agenda y horarios</p>
+        <h1>Tu calendario<br/>de clases.</h1>
+        <p>Consultá tus clases y horarios disponibles. Abrí los detalles de cualquier sesión para ver salón, profesor y cupos.</p>
+      </div>
+      <button class="button" type="button" data-go="carnet">Mostrar mi carné</button>
     </header>
-    <div class="filter-row" role="group" aria-label="Filtrar clases por nivel">
-      <button class="filter-chip is-active" type="button" aria-pressed="true" data-class-filter="all">Todas</button>
-      <button class="filter-chip" type="button" aria-pressed="false" data-class-filter="today">Hoy</button>
-      <button class="filter-chip" type="button" aria-pressed="false" data-class-filter="initial">Nivel inicial</button>
-      <button class="filter-chip" type="button" aria-pressed="false" data-class-filter="intermediate">Intermedio</button>
-      <button class="filter-chip" type="button" aria-pressed="false" data-class-filter="advanced">Avanzado</button>
+    <div id="studentScheduleContainer">
+      ${studentCalendarMarkup()}
     </div>
-    <div id="studentSchedule" aria-live="polite">${scheduleList()}</div>
   `;
 }
 
@@ -3079,24 +3317,40 @@ function openNewStudentModal() {
   });
 }
 
-function openClassDetail(classId) {
+function openClassDetail(classId, contextDate = null) {
   const item = findClass(classId);
   if (!item) return;
   const student = currentStudent();
   const isEnrolled = student ? (student.classIds || []).includes(item.id) : false;
   const rosterCount = rosterFor(item.id).length;
+
+  let targetDate = null;
+  if (contextDate) {
+    targetDate = typeof contextDate === 'string' ? parseDayKey(contextDate) : new Date(contextDate);
+  } else if (item.date) {
+    targetDate = new Date(item.date);
+  } else {
+    targetDate = nextDateFor(item.weekday);
+  }
+
+  const dateFormatted = longDate(targetDate);
+  const dayName = dayLabel(targetDate);
+  const eyebrowText = `${dayName} · ${dateFormatted} · ${item.time}`;
+
   openModal({
     title: item.name,
-    eyebrow: `${item.day} · ${item.dateLabel} · ${item.time}`,
+    eyebrow: eyebrowText,
     body: `
       <div class="surface-card" style="padding:20px;margin-bottom:16px">
         <p class="eyebrow">Detalle de clase</p>
         <h3>${escapeHtml(item.level)}</h3>
         <p class="payment-meta">
-          ${escapeHtml(item.teacher)} · ${escapeHtml(item.room)}<br/>
-          ${escapeHtml(capacityText(item))} cupos ocupados · ${escapeHtml(rosterCount)} alumno${rosterCount === 1 ? '' : 's'} inscrito${rosterCount === 1 ? '' : 's'} en la demo
+          <strong>Horario:</strong> ${escapeHtml(item.time)} (${escapeHtml(dateFormatted)})<br/>
+          <strong>Profesor:</strong> ${escapeHtml(item.teacher)}<br/>
+          <strong>Salón:</strong> ${escapeHtml(item.room)}<br/>
+          <strong>Cupos:</strong> ${escapeHtml(capacityText(item))} ocupados · ${escapeHtml(rosterCount)} alumno${rosterCount === 1 ? '' : 's'} inscrito${rosterCount === 1 ? '' : 's'} en la demo
         </p>
-        ${isEnrolled ? '<p style="margin-top:12px"><span class="tag tag--red">Estás inscrito en esta clase</span></p>' : ''}
+        ${isEnrolled ? '<p style="margin-top:12px"><span class="tag tag--red">Estás inscrito en esta clase</span></p>' : '<p style="margin-top:12px"><span class="tag tag--dark">Clase disponible en catálogo</span></p>'}
       </div>
       <p class="modal-note">Esta pantalla es de consulta. La inscripción a una clase la administra la academia; el prototipo no habilita reservas por sesión.</p>
       <div class="form-actions">
@@ -4189,10 +4443,44 @@ function handleContentClick(event) {
     return;
   }
 
+  const calNav = find('[data-calendar-nav]');
+  if (calNav) {
+    const delta = Number(calNav.dataset.calendarNav) || 0;
+    studentCalendarDate = addDays(studentCalendarDate, delta);
+    updateStudentCalendarUI();
+    return;
+  }
+
+  if (find('[data-calendar-today]')) {
+    studentCalendarDate = startOfDay(TODAY);
+    updateStudentCalendarUI();
+    return;
+  }
+
+  const calSelect = find('[data-calendar-select]');
+  if (calSelect) {
+    studentCalendarDate = parseDayKey(calSelect.dataset.calendarSelect);
+    updateStudentCalendarUI();
+    return;
+  }
+
+  const calFilter = find('[data-calendar-filter]');
+  if (calFilter) {
+    studentCalendarFilter = calFilter.dataset.calendarFilter;
+    updateStudentCalendarUI();
+    return;
+  }
+
+  const calJump = find('[data-calendar-jump]');
+  if (calJump) {
+    studentCalendarDate = parseDayKey(calJump.dataset.calendarJump);
+    return routeTo('clases');
+  }
+
   const attendance = find('[data-take-attendance]');
   if (attendance) return openClassAttendance(attendance.dataset.takeAttendance);
   const detail = find('[data-class-detail]');
-  if (detail) return openClassDetail(detail.dataset.classDetail);
+  if (detail) return openClassDetail(detail.dataset.classDetail, detail.dataset.contextDate || null);
   const register = find('[data-register-for]');
   if (register) return openPaymentModal(register.dataset.registerFor, register.dataset.paymentPeriod);
   const receipt = find('[data-receipt]');
@@ -4242,6 +4530,15 @@ document.querySelector('#exitDemo').addEventListener('click', () => {
 });
 document.querySelector('#resetDemo')?.addEventListener('click', openResetModal);
 elements.content.addEventListener('click', handleContentClick);
+elements.content.addEventListener('keydown', (event) => {
+  if (event.key === 'Enter' || event.key === ' ') {
+    const interactive = event.target.closest('[role="button"][data-class-detail]');
+    if (interactive && interactive.tagName !== 'BUTTON') {
+      event.preventDefault();
+      interactive.click();
+    }
+  }
+});
 elements.content.addEventListener('input', handleContentInput);
 elements.content.addEventListener('submit', handleContentSubmit);
 elements.content.addEventListener('change', (event) => {

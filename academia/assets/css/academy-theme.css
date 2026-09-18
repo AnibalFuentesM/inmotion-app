@@ -2359,4 +2359,552 @@
   }
 }
 
+/* ==========================================================================
+   Mejoras Inicio y Calendario del Alumno
+   ========================================================================== */
+
+/* ---- Tarjeta Próxima Clase (Hero) ---- */
+.next-class.is-clickable {
+  cursor: pointer;
+  border-radius: var(--radius-lg);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.next-class.is-clickable:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 14px 32px rgba(226, 12, 20, 0.35);
+}
+
+.next-class.is-clickable:focus-visible {
+  outline: 3px solid #ffffff;
+  outline-offset: 4px;
+}
+
+.next-class-info {
+  margin-top: 12px;
+}
+
+.next-class-date {
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.95);
+  margin: 6px 0 2px;
+}
+
+.next-class-btn-wrap {
+  margin-top: 14px;
+}
+
+.next-class-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background: rgba(255, 255, 255, 0.22);
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 999px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #ffffff;
+  transition: background 0.15s ease, transform 0.15s ease;
+}
+
+.next-class.is-clickable:hover .next-class-cta {
+  background: rgba(255, 255, 255, 0.35);
+  transform: translateX(2px);
+}
+
+.next-class.is-empty {
+  background: #18191d;
+  color: #ffffff;
+  border-radius: var(--radius-lg);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.next-class.is-empty::before {
+  display: none;
+}
+
+.next-class-empty-box {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 0 6px;
+}
+
+.next-class-empty-title {
+  font-size: 1.25rem;
+  font-weight: 700;
+  margin: 0;
+  color: #ffffff;
+}
+
+.next-class-empty-text {
+  font-size: 0.9rem;
+  line-height: 1.45;
+  color: rgba(255, 255, 255, 0.72);
+  margin: 0;
+}
+
+/* ---- Botones de días en "Esta semana" (Inicio) ---- */
+button.day-pill.is-clickable {
+  cursor: pointer;
+  transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+  width: 100%;
+}
+
+button.day-pill.is-clickable:hover {
+  border-color: #0b0b0c;
+  transform: translateY(-2px);
+}
+
+button.day-pill.is-clickable:focus-visible {
+  outline: 3px solid var(--red);
+  outline-offset: 2px;
+}
+
+/* ---- Tarjetas de clases en Inicio ---- */
+.class-card-date {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--red);
+  margin: 2px 0;
+}
+
+.class-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* ---- Calendario del Alumno: Barra de Navegación Diaria ---- */
+.calendar-nav-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 20px 0 16px;
+  padding: 12px 16px;
+  background: #ffffff;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  box-shadow: 0 4px 16px rgba(16, 16, 20, 0.04);
+}
+
+.calendar-nav-arrow {
+  width: 44px;
+  height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--mist);
+  color: #0b0b0c;
+  font-size: 1.25rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+
+.calendar-nav-arrow:hover {
+  background: #ffffff;
+  border-color: #0b0b0c;
+  transform: scale(1.04);
+}
+
+.calendar-nav-arrow:active {
+  transform: scale(0.96);
+}
+
+.calendar-nav-center {
+  text-align: center;
+  flex: 1;
+  min-width: 0;
+}
+
+.calendar-nav-heading {
+  margin: 0;
+  font-size: 1.12rem;
+  font-weight: 700;
+  color: #0b0b0c;
+  line-height: 1.25;
+}
+
+.calendar-nav-sub {
+  margin-top: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.calendar-nav-badge-today {
+  display: inline-block;
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: rgba(226, 12, 20, 0.1);
+  color: var(--red);
+}
+
+.calendar-nav-btn-today {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  background: rgba(226, 12, 20, 0.08);
+  border: 1px solid rgba(226, 12, 20, 0.25);
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--red);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  min-height: 32px;
+}
+
+.calendar-nav-btn-today:hover {
+  background: var(--red);
+  color: #ffffff;
+  border-color: var(--red);
+}
+
+/* ---- Calendario del Alumno: Tira Semanal ---- */
+.calendar-week-strip {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 6px;
+  margin-bottom: 20px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 2px;
+}
+
+.calendar-day-pill {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-width: 40px;
+  min-height: 56px;
+  padding: 10px 4px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: #ffffff;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  text-align: center;
+  position: relative;
+}
+
+.calendar-day-pill:hover {
+  border-color: #0b0b0c;
+}
+
+.calendar-pill-day {
+  display: block;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--muted);
+  letter-spacing: 0.05em;
+  line-height: 1;
+}
+
+.calendar-pill-num {
+  display: block;
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: #0b0b0c;
+  margin: 5px 0 3px;
+  line-height: 1;
+}
+
+.calendar-pill-meta {
+  display: block;
+  font-size: 0.62rem;
+  font-weight: 700;
+  color: var(--muted);
+  line-height: 1;
+}
+
+/* Estado: Hoy (no seleccionado) */
+.calendar-day-pill.is-today:not(.is-selected) {
+  border: 2px solid var(--red);
+  background: #ffffff;
+}
+
+.calendar-day-pill.is-today:not(.is-selected) .calendar-pill-day,
+.calendar-day-pill.is-today:not(.is-selected) .calendar-pill-num {
+  color: var(--red);
+}
+
+/* Estado: Seleccionado (distinto de Hoy) */
+.calendar-day-pill.is-selected:not(.is-today) {
+  background: #0b0b0c;
+  border-color: #0b0b0c;
+  color: #ffffff;
+  box-shadow: 0 4px 14px rgba(11, 11, 12, 0.22);
+}
+
+.calendar-day-pill.is-selected:not(.is-today) .calendar-pill-day,
+.calendar-day-pill.is-selected:not(.is-today) .calendar-pill-meta {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.calendar-day-pill.is-selected:not(.is-today) .calendar-pill-num {
+  color: #ffffff;
+}
+
+/* Estado: Hoy Y Seleccionado */
+.calendar-day-pill.is-today.is-selected {
+  background: var(--red);
+  border-color: var(--red);
+  color: #ffffff;
+  box-shadow: 0 4px 16px rgba(226, 12, 20, 0.38);
+}
+
+.calendar-day-pill.is-today.is-selected .calendar-pill-day,
+.calendar-day-pill.is-today.is-selected .calendar-pill-meta {
+  color: rgba(255, 255, 255, 0.88);
+}
+
+.calendar-day-pill.is-today.is-selected .calendar-pill-num {
+  color: #ffffff;
+}
+
+/* Indicador si el alumno tiene clase inscrita ese día */
+.calendar-day-pill.has-enrolled::after {
+  content: '';
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--red);
+}
+
+.calendar-day-pill.is-selected.has-enrolled::after {
+  background: #ffffff;
+}
+
+/* ---- Agenda del Día: Lista de Clases ---- */
+.calendar-agenda-container {
+  margin-top: 16px;
+}
+
+.calendar-agenda-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.calendar-agenda-card {
+  display: grid;
+  grid-template-columns: 110px 1fr;
+  gap: 16px;
+  padding: 18px 20px;
+  background: #ffffff;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  box-shadow: 0 4px 14px rgba(16, 16, 20, 0.03);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.calendar-agenda-card:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(16, 16, 20, 0.07);
+}
+
+.calendar-agenda-card.is-enrolled {
+  border-left: 5px solid var(--red);
+  background: #fffdfd;
+}
+
+.calendar-agenda-time-col {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  justify-content: flex-start;
+}
+
+.calendar-agenda-time {
+  font-size: 1.15rem;
+  font-weight: 800;
+  color: #0b0b0c;
+  line-height: 1.15;
+}
+
+.tag--ended {
+  background: #ebecef;
+  color: #6b6e76;
+}
+
+.calendar-agenda-main {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.calendar-agenda-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.calendar-agenda-title {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: #0b0b0c;
+  line-height: 1.25;
+}
+
+.calendar-agenda-meta {
+  margin: 0;
+  font-size: 0.88rem;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.agenda-meta-item {
+  display: inline;
+}
+
+.calendar-agenda-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 8px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+  flex-wrap: wrap;
+}
+
+.calendar-agenda-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ---- Estado Vacío de Agenda ---- */
+.calendar-empty-card {
+  padding: 36px 20px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  background: #ffffff;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+}
+
+.calendar-empty-icon {
+  font-size: 2.5rem;
+  line-height: 1;
+  margin: 0;
+}
+
+.calendar-empty-card h3 {
+  margin: 0;
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: #0b0b0c;
+}
+
+.calendar-empty-desc {
+  font-size: 0.92rem;
+  color: var(--muted);
+  max-width: 360px;
+  margin: 0;
+  line-height: 1.45;
+}
+
+.calendar-empty-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+/* ---- Responsive Móvil (375px y 320px) ---- */
+@media (max-width: 600px) {
+  .calendar-agenda-card {
+    grid-template-columns: 1fr;
+    gap: 10px;
+    padding: 16px;
+  }
+
+  .calendar-agenda-time-col {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .calendar-agenda-foot {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .calendar-agenda-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .calendar-agenda-actions .button {
+    flex: 1;
+    min-height: 44px;
+  }
+}
+
+@media (max-width: 380px) {
+  .calendar-week-strip {
+    gap: 3px;
+  }
+
+  .calendar-day-pill {
+    min-width: 38px;
+    padding: 8px 2px;
+  }
+
+  .calendar-pill-day {
+    font-size: 0.62rem;
+  }
+
+  .calendar-pill-num {
+    font-size: 1.1rem;
+    margin: 3px 0 2px;
+  }
+
+  .calendar-pill-meta {
+    font-size: 0.58rem;
+  }
+
+  .calendar-nav-bar {
+    padding: 10px 8px;
+  }
+
+  .calendar-nav-heading {
+    font-size: 0.98rem;
+  }
+
+  .calendar-nav-arrow {
+    width: 40px;
+    height: 40px;
+  }
+}
+
 
