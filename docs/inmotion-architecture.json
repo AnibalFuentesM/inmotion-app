@@ -3,13 +3,13 @@
   "diagram_type": "architecture",
   "meta": {
     "title": "In Motion System Architecture",
-    "subtitle": "Dual-surface static catalog and academy prototype with Google Workspace integration",
+    "subtitle": "Dual-surface static catalog and academy prototype with Google Workspace and Supabase integration",
     "output": "inmotion-architecture.html",
     "quality_profile": "showcase",
     "repository": {
       "url": "https://github.com/AnibalFuentesM/inmotion-video-catalog",
       "provider": "github",
-      "revision": "ff6204aa3f79f89bd65e23225d7d8ad3785728ca"
+      "revision": "2686d5810762da1735a1df4c67db099c7056663e"
     },
     "views": [
       {
@@ -19,13 +19,15 @@
           "users",
           "catalog_app",
           "academy_app",
+          "local_storage",
           "gviz_api",
           "apps_script",
-          "local_storage",
           "google_sheets",
-          "google_drive"
+          "google_drive",
+          "supabase_cloud",
+          "supabase_db"
         ],
-        "note": "Two isolated surfaces sharing domain and brand without shared code or backend."
+        "note": "Dual-surface catalog and academy with Google Workspace metadata and Supabase cloud persistence."
       },
       {
         "id": "catalog-flow",
@@ -33,22 +35,25 @@
         "focus": [
           "users",
           "catalog_app",
+          "local_storage",
           "gviz_api",
           "apps_script",
           "google_sheets",
           "google_drive"
         ],
-        "note": "Public GViz metadata queries and staff Drive/Sheets upload panel."
+        "note": "Public GViz metadata queries, staff Drive/Sheets panel, and client bookmark storage."
       },
       {
-        "id": "academy-flow",
-        "label": "Academy App & Local Demo",
+        "id": "academy-hybrid",
+        "label": "Academy Hybrid Runtime",
         "focus": [
           "users",
           "academy_app",
-          "local_storage"
+          "local_storage",
+          "supabase_cloud",
+          "supabase_db"
         ],
-        "note": "Self-contained multi-role academy demo persisting state in localStorage."
+        "note": "Multi-role academy with client demo mode in localStorage and live cloud persistence in Supabase."
       }
     ]
   },
@@ -60,7 +65,7 @@
       "sublabel": "Browser (Desktop / Mobile)",
       "pos": [
         40,
-        240
+        230
       ],
       "size": [
         140,
@@ -75,7 +80,7 @@
       "tag": "Production",
       "pos": [
         260,
-        130
+        100
       ],
       "size": [
         160,
@@ -91,6 +96,11 @@
           "path": "assets/js/config.js",
           "line": 1,
           "label": "Catalog Config"
+        },
+        {
+          "path": "assets/js/storage.js",
+          "line": 1,
+          "label": "Catalog Storage"
         }
       ]
     },
@@ -102,7 +112,7 @@
       "tag": "Prototype",
       "pos": [
         260,
-        330
+        360
       ],
       "size": [
         160,
@@ -118,6 +128,11 @@
           "path": "academia/assets/js/academy.js",
           "line": 1,
           "label": "Academy Engine"
+        },
+        {
+          "path": "academia/assets/js/supabase.js",
+          "line": 1,
+          "label": "Supabase Client"
         }
       ]
     },
@@ -125,11 +140,11 @@
       "id": "local_storage",
       "type": "database",
       "label": "Browser Storage",
-      "sublabel": "Key: demo-v1",
+      "sublabel": "Saved, Recents & Demo",
       "tag": "Client-Only",
       "pos": [
         490,
-        330
+        210
       ],
       "size": [
         150,
@@ -137,9 +152,14 @@
       ],
       "sources": [
         {
+          "path": "assets/js/storage.js",
+          "line": 1,
+          "label": "Catalog Store Keys"
+        },
+        {
           "path": "docs/academia.md",
           "line": 21,
-          "label": "Storage Contract"
+          "label": "Academy Demo Key"
         }
       ]
     },
@@ -150,8 +170,8 @@
       "sublabel": "Google Visualization API",
       "tag": "Read-Only",
       "pos": [
-        720,
-        80
+        730,
+        70
       ],
       "size": [
         160,
@@ -165,8 +185,8 @@
       "sublabel": "Code.gs / Staff Form",
       "tag": "Serverless",
       "pos": [
-        720,
-        200
+        730,
+        180
       ],
       "size": [
         160,
@@ -187,8 +207,8 @@
       "sublabel": "Video Metadata Database",
       "tag": "Structured",
       "pos": [
-        940,
-        80
+        960,
+        70
       ],
       "size": [
         150,
@@ -202,12 +222,63 @@
       "sublabel": "Video File Storage",
       "tag": "Media",
       "pos": [
-        940,
-        200
+        960,
+        180
       ],
       "size": [
         150,
         60
+      ]
+    },
+    {
+      "id": "supabase_cloud",
+      "type": "backend",
+      "label": "Supabase BaaS",
+      "sublabel": "Auth, RPCs & REST API",
+      "tag": "Cloud BaaS",
+      "brand": "supabase",
+      "pos": [
+        730,
+        360
+      ],
+      "size": [
+        160,
+        60
+      ],
+      "sources": [
+        {
+          "path": "academia/assets/js/supabase.js",
+          "line": 1,
+          "label": "Supabase API Bridge"
+        }
+      ]
+    },
+    {
+      "id": "supabase_db",
+      "type": "database",
+      "label": "PostgreSQL Database",
+      "sublabel": "RLS, Ledger & RPCs",
+      "tag": "Relational",
+      "brand": "postgresql",
+      "pos": [
+        960,
+        360
+      ],
+      "size": [
+        150,
+        60
+      ],
+      "sources": [
+        {
+          "path": "docs/supabase-schema.sql",
+          "line": 1,
+          "label": "Supabase SQL Schema"
+        },
+        {
+          "path": "docs/migrations/004_payment_retry_before_quota.sql",
+          "line": 1,
+          "label": "Transactional RPCs"
+        }
       ]
     }
   ],
@@ -230,6 +301,14 @@
         "google_sheets",
         "google_drive"
       ]
+    },
+    {
+      "kind": "region",
+      "label": "External Cloud: Supabase Backend Infrastructure",
+      "wraps": [
+        "supabase_cloud",
+        "supabase_db"
+      ]
     }
   ],
   "connections": [
@@ -244,8 +323,15 @@
       "id": "users_to_academy",
       "from": "users",
       "to": "academy_app",
-      "label": "demo roles",
+      "label": "roles & passes",
       "variant": "emphasis"
+    },
+    {
+      "id": "catalog_to_storage",
+      "from": "catalog_app",
+      "to": "local_storage",
+      "label": "save & history",
+      "variant": "default"
     },
     {
       "id": "catalog_to_gviz",
@@ -285,8 +371,22 @@
       "id": "academy_to_storage",
       "from": "academy_app",
       "to": "local_storage",
-      "label": "sync state",
+      "label": "demo sync",
+      "variant": "default"
+    },
+    {
+      "id": "academy_to_supabase",
+      "from": "academy_app",
+      "to": "supabase_cloud",
+      "label": "auth & rpc sync",
       "variant": "emphasis"
+    },
+    {
+      "id": "supabase_to_db",
+      "from": "supabase_cloud",
+      "to": "supabase_db",
+      "label": "rls & rpc",
+      "variant": "default"
     }
   ],
   "cards": [
@@ -295,8 +395,8 @@
       "title": "Dual-Surface Architecture",
       "items": [
         "Catalog (/) and Academy (/academia/) share domain and brand, zero code coupling",
-        "Completely static frontend with no bespoke application server",
-        "Independent assets and styles: academy is fully self-contained"
+        "Completely static frontend with independent assets and no build step",
+        "Client-side bookmarks and recents persisted in browser localStorage"
       ]
     },
     {
@@ -310,11 +410,11 @@
     },
     {
       "dot": "violet",
-      "title": "Academy Demo Engine",
+      "title": "Academy & Supabase Hybrid",
       "items": [
-        "4 interactive roles: Student, Teacher, Admin, and Guardian (Tutor)",
-        "State persists locally in browser localStorage (inmotion-academy-demo-v1)",
-        "Attendance model designed around class session context on academy devices"
+        "4 interactive roles: Student, Teacher, Admin, and Guardian (Tutor) with QR passes",
+        "Dual persistence: zero-config localStorage demo vs live authenticated Supabase mode",
+        "PostgreSQL RLS, transactional RPCs for payments and attendance, and WebMCP isolation"
       ]
     }
   ]

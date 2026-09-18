@@ -388,6 +388,14 @@
 }
 
 /* Inputs y controles de formulario */
+.field input,
+.field select,
+.field textarea,
+.search-box input,
+.role-switcher select {
+  font-size: 16px !important; /* Previene auto-zoom forzado en Safari iOS */
+}
+
 .field input:focus,
 .field select:focus,
 .field textarea:focus {
@@ -1752,15 +1760,39 @@
     min-height: 42px;
   }
 
-  /* 6. Modales en pantalla móvil */
+  /* 6. Modales en pantalla móvil: estabilidad ante teclado virtual y scroll interno */
+  body.modal-open {
+    overflow: hidden;
+    touch-action: none;
+  }
+  .modal-layer {
+    padding: 0;
+    align-items: flex-end;
+    overflow: hidden;
+    overscroll-behavior: contain;
+    touch-action: auto;
+  }
   .modal {
-    max-height: 90svh;
+    width: 100%;
+    max-height: var(--modal-max-height, 88dvh);
+    border-radius: 24px 24px 0 0;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    scroll-padding-top: 70px;
+    scroll-padding-bottom: 30px;
+    padding-bottom: env(safe-area-inset-bottom, 16px);
+    touch-action: pan-y;
   }
   .modal-header {
-    padding: 18px 20px 14px;
+    padding: 16px 20px 12px;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background: #fff;
   }
   .modal-body {
-    padding: 20px;
+    padding: 16px 20px 24px;
+    overscroll-behavior: contain;
   }
   .modal .form-actions {
     flex-direction: column-reverse;

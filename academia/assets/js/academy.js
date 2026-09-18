@@ -4739,17 +4739,33 @@ function setBackgroundInert(active) {
   });
 }
 
+function syncModalWithVisualViewport() {
+  if (!elements.modalLayer || elements.modalLayer.classList.contains('is-hidden')) return;
+  if (window.visualViewport) {
+    const vv = window.visualViewport;
+    const maxH = Math.max(220, Math.floor(vv.height - 16));
+    elements.modal.style.setProperty('--modal-max-height', `${maxH}px`);
+  }
+}
+
 function openModal({ title, eyebrow = 'Acción demo', body }) {
-  lastFocusedElement = document.activeElement;
+  if (elements.modalLayer.classList.contains('is-hidden')) lastFocusedElement = document.activeElement;
   elements.modalTitle.textContent = title;
   elements.modalEyebrow.textContent = eyebrow;
   elements.modalBody.innerHTML = body;
   elements.modalLayer.classList.remove('is-hidden');
   elements.modalLayer.setAttribute('aria-hidden', 'false');
-  setBackgroundInert(true);
   document.body.classList.add('modal-open');
-  const firstInBody = elements.modalBody.querySelector(FOCUSABLE_SELECTOR);
-  (firstInBody || elements.modalLayer.querySelector('.icon-button[data-close-modal]') || elements.modal)?.focus();
+  syncModalWithVisualViewport();
+
+  const isTouchMobile = window.matchMedia('(max-width: 768px)').matches || ('ontouchstart' in window);
+  if (isTouchMobile) {
+    elements.modal?.focus?.({ preventScroll: true });
+  } else {
+    const firstInBody = elements.modalBody.querySelector(FOCUSABLE_SELECTOR);
+    (firstInBody || elements.modalLayer.querySelector('.icon-button[data-close-modal]') || elements.modal)?.focus?.({ preventScroll: true });
+  }
+  setBackgroundInert(true);
 }
 
 // El render puede reemplazar el elemento que abrio el dialogo: si ya no existe,
@@ -4773,6 +4789,7 @@ function closeModal() {
   webMcpResolver = null;
   elements.modalLayer.classList.add('is-hidden');
   elements.modalLayer.setAttribute('aria-hidden', 'true');
+  elements.modal.style.removeProperty('--modal-max-height');
   setBackgroundInert(false);
   document.body.classList.remove('modal-open');
   restoreFocus();
@@ -6252,6 +6269,22 @@ elements.modalLayer.addEventListener('change', (event) => {
   if (event.target.closest('#paymentForm') && ['studentId', 'period'].includes(event.target.name)) updatePaymentForm();
   if (event.target.closest('#createPassForm')) updateCreatePassForm();
 });
+
+// Estabilizar inputs en modal al abrir teclado móvil
+elements.modalLayer.addEventListener('focusin', (event) => {
+  const target = event.target;
+  if (target && ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName)) {
+    setTimeout(() => {
+      syncModalWithVisualViewport();
+      target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 120);
+  }
+});
+
+if (window.visualViewport) {
+  window.visualViewport.addEventListener('resize', syncModalWithVisualViewport);
+  window.visualViewport.addEventListener('scroll', syncModalWithVisualViewport);
+}
 document.querySelector('#profileButton').addEventListener('click', openProfile);
 
 elements.roleSwitcher.addEventListener('change', (event) => {
