@@ -6,8 +6,11 @@
 export const SUPABASE_URL = 'https://qwjlixqtbcchyiwynfmv.supabase.co';
 export const SUPABASE_KEY = 'sb_publishable_8rsKaCxrpcr7-7fZ1LKrFg_tUhbiDiu';
 
+const AUTH_STORAGE_KEY = 'inmotion_supabase_auth_session';
+
 // Gestión del token de autenticación (JWT) para peticiones RLS
 let currentAuthToken = null;
+let authenticatedProfile = null;
 
 export function setAuthToken(token) {
   currentAuthToken = token || null;
@@ -15,6 +18,10 @@ export function setAuthToken(token) {
 
 export function getAuthToken() {
   return currentAuthToken;
+}
+
+export function getAuthenticatedProfile() {
+  return authenticatedProfile;
 }
 
 function getHeaders(extra = {}) {
@@ -27,6 +34,38 @@ function getHeaders(extra = {}) {
     headers['Authorization'] = `Bearer ${currentAuthToken}`;
   }
   return headers;
+}
+
+function saveAuthSession(session) {
+  try {
+    localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(session));
+  } catch (e) {
+    console.warn('[Supabase] No se pudo persistir la sesión localmente:', e.message);
+  }
+}
+
+function getStoredAuthSession() {
+  try {
+    const raw = localStorage.getItem(AUTH_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Limpia todas las memorias intermedias y cachés de usuario al cambiar de sesión
+ */
+export function clearLocalAuthCache(purgeStorage = true) {
+  currentAuthToken = null;
+  authenticatedProfile = null;
+  cardToProfileUuid.clear();
+  profileUuidToCard.clear();
+  if (purgeStorage) {
+    try {
+      localStorage.removeItem(AUTH_STORAGE_KEY);
+    } catch {}
+  }
 }
 
 // Mapas en memoria para traducción rápida entre card_number ('IM-0241') y profile.id (UUID)
@@ -116,11 +155,155 @@ export const db = {
     if (!res.ok) {
       const err = await res.text();
       console.error(`[Supabase RPC Error ${res.status}] ${functionName}:`, err);
-      throw new Error(`Error en RPC ${functionName}: ${err || res.statusText}`);
+      let parsedMessage = err || res.statusText;
+      try {
+        const jsonErr = JSON.parse(err);
+        if (jsonErr.message) parsedMessage = jsonErr.message;
+      } catch {}
+      throw new Error(`Error en RPC ${functionName}: ${parsedMessage}`);
     }
     return await res.json();
   }
 };
+
+// ------------------------------------------------------------------------------
+// SUPABASE AUTH (AUTENTICACIÓN REAL)
+// ------------------------------------------------------------------------------
+
+/**
+ * Consulta el perfil del usuario autenticado en la tabla public.profiles
+ */
+async function fetchProfileByUserId(userId) {
+  const rows = await db.get('profiles', `user_id=eq.${userId}&select=*`);
+  if (Array.isArray(rows) && rows.length > 0) {
+    return rows[0];
+  }
+  return null;
+}
+
+/**
+ * Inicio de sesión con correo y contraseña en Supabase Auth
+ */
+export async function signInWithPassword(email, password) {
+  const url = `${SUPABASE_URL}/auth/v1/token?grant_type=password`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'apikey': SUPABASE_KEY,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ email, password })
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error_description || err.msg || err.message || `Error de autenticación (${res.status})`);
+  }
+
+  const session = await res.json();
+  clearLocalAuthCache(false);
+  saveAuthSession(session);
+  setAuthToken(session.access_token);
+
+  const profile = await fetchProfileByUserId(session.user.id);
+  authenticatedProfile = profile;
+
+  return { user: session.user, session, profile };
+}
+
+/**
+ * Refresca la sesión activa de Supabase usando el refresh_token
+ */
+export async function refreshSession(refreshToken) {
+  const stored = getStoredAuthSession();
+  const token = refreshToken || stored?.refresh_token;
+  if (!token) throw new Error('No hay token de refresco disponible.');
+
+  const url = `${SUPABASE_URL}/auth/v1/token?grant_type=refresh_token`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'apikey': SUPABASE_KEY,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ refresh_token: token })
+  });
+
+  if (!res.ok) {
+    clearLocalAuthCache(true);
+    throw new Error('La sesión remota ha expirado. Es necesario iniciar sesión nuevamente.');
+  }
+
+  const session = await res.json();
+  clearLocalAuthCache(false);
+  saveAuthSession(session);
+  setAuthToken(session.access_token);
+
+  const profile = await fetchProfileByUserId(session.user.id);
+  authenticatedProfile = profile;
+
+  return { user: session.user, session, profile };
+}
+
+/**
+ * Restaura la sesión guardada y recupera el perfil y rol del usuario
+ */
+export async function restoreSession() {
+  const session = getStoredAuthSession();
+  if (!session || !session.access_token) return null;
+
+  const nowSec = Math.floor(Date.now() / 1000);
+  if (session.expires_at && session.expires_at - nowSec < 60) {
+    if (session.refresh_token) {
+      try {
+        return await refreshSession(session.refresh_token);
+      } catch {
+        return null;
+      }
+    } else {
+      clearLocalAuthCache(true);
+      return null;
+    }
+  }
+
+  setAuthToken(session.access_token);
+  try {
+    const profile = await fetchProfileByUserId(session.user.id);
+    authenticatedProfile = profile;
+    return { user: session.user, session, profile };
+  } catch (err) {
+    console.warn('[Supabase] Error al validar sesión guardada:', err.message);
+    if (session.refresh_token) {
+      try {
+        return await refreshSession(session.refresh_token);
+      } catch {
+        clearLocalAuthCache(true);
+        return null;
+      }
+    }
+    clearLocalAuthCache(true);
+    return null;
+  }
+}
+
+/**
+ * Cierra la sesión activa en Supabase y limpia las memorias locales
+ */
+export async function signOut() {
+  try {
+    if (currentAuthToken) {
+      await fetch(`${SUPABASE_URL}/auth/v1/logout`, {
+        method: 'POST',
+        headers: getHeaders()
+      });
+    }
+  } catch (err) {
+    console.warn('[Supabase] Aviso en cierre remoto de sesión:', err.message);
+  } finally {
+    clearLocalAuthCache(true);
+  }
+  return true;
+}
 
 // ------------------------------------------------------------------------------
 // OPERACIONES DE DOMINIO IN MOTION
@@ -139,6 +322,7 @@ export async function fetchRemoteClasses() {
       name: c.name,
       level: c.level || 'Nivel abierto',
       teacher: c.teacher_name || 'Staff In Motion',
+      teacherId: c.teacher_id || null,
       room: c.room || 'Salón',
       enrolled: 10,
       capacity: c.capacity || 20
@@ -208,9 +392,6 @@ export async function fetchRemoteStudents() {
       .join('')
       .toUpperCase();
 
-    // Mapeo fidedigno sin inventar datos:
-    // Si no tiene membresía, plan es null y estado es 'Sin membresía'
-    // Si no tiene nivel, level es p.level o null
     const planName = mem ? mem.plan_name : null;
     const planStatus = mem
       ? (mem.status === 'active' ? 'Al día' : 'Pendiente')
@@ -234,50 +415,32 @@ export async function fetchRemoteStudents() {
 }
 
 /**
- * Registra un nuevo alumno remotamente en Supabase.
+ * Registra un nuevo alumno remotamente en Supabase de forma transaccional.
+ * Pasa precio numérico explícito sin deducciones textuales.
  */
-export async function createRemoteStudent({ id, name, phone, plan, level, notes }) {
+export async function createRemoteStudent({ id, name, phone, plan, planPrice, level, notes }) {
   const parts = String(name || '').trim().split(/\s+/);
   const firstName = parts[0] || name;
   const lastName = parts.slice(1).join(' ') || '';
 
-  // 1. Crear perfil
-  const createdProfiles = await db.insert('profiles', {
-    role: 'student',
-    first_name: firstName,
-    last_name: lastName,
-    phone: phone && phone !== 'Sin registrar' ? phone : null,
-    level: level && level !== 'Sin nivel' ? level : null,
-    notes: notes || null
+  const res = await db.rpc('create_student_transactional', {
+    p_card_number: id,
+    p_first_name: firstName,
+    p_last_name: lastName,
+    p_phone: phone && phone !== 'Sin registrar' ? phone : null,
+    p_level: level && level !== 'Sin nivel' ? level : null,
+    p_notes: notes || null,
+    p_plan_name: plan || null,
+    p_plan_price: planPrice !== undefined && planPrice !== null ? Number(planPrice) : null
   });
 
-  if (!createdProfiles || !createdProfiles[0]) {
-    throw new Error('No se pudo crear el perfil remoto del alumno.');
+  const row = Array.isArray(res) ? res[0] : res;
+  if (row?.profile_id) {
+    cardToProfileUuid.set(id, row.profile_id);
+    profileUuidToCard.set(row.profile_id, id);
   }
 
-  const profileId = createdProfiles[0].id;
-  cardToProfileUuid.set(id, profileId);
-  profileUuidToCard.set(profileId, id);
-
-  // 2. Crear carné permanente desacoplado de pagos
-  await db.insert('cards', {
-    student_id: profileId,
-    card_number: id,
-    qr_code: id,
-    is_active: true
-  });
-
-  // 3. Crear membresía inicial si se especificó plan
-  if (plan) {
-    await db.insert('memberships', {
-      student_id: profileId,
-      plan_name: plan,
-      price: plan.includes('4') ? 300 : plan.includes('ilimitado') ? 625 : 450,
-      status: 'past_due'
-    });
-  }
-
-  return { profileId, cardId: id };
+  return row;
 }
 
 /**
@@ -289,18 +452,15 @@ export async function syncRemoteEnrollments({ studentCardId, classIds = [] }) {
     throw new Error(`No se encontró registro remoto para el alumno ${studentCardId}`);
   }
 
-  // 1. Obtener inscripciones activas actuales
   const current = await db.get('enrollments', `student_id=eq.${studentUuid}&select=id,class_id,status`);
   const currentMap = new Map((current || []).map((e) => [e.class_id, e]));
 
-  // 2. Retirar las que ya no están en classIds
   for (const [cid, e] of currentMap.entries()) {
     if (!classIds.includes(cid)) {
       await db.delete('enrollments', `id=eq.${e.id}`);
     }
   }
 
-  // 3. Insertar las nuevas
   for (const cid of classIds) {
     if (!currentMap.has(cid)) {
       await db.insert('enrollments', {
@@ -315,87 +475,73 @@ export async function syncRemoteEnrollments({ studentCardId, classIds = [] }) {
 }
 
 /**
- * Obtiene o crea de forma atómica una sesión de clase para evitar concurrencia
+ * Sincronización transaccional y por lotes de la lista de asistencia de una sesión.
+ * Permite listas vacías para desmarcar el ámbito consultado sin fallos parciales.
  */
-async function getOrCreateSessionId(classId, sessionDate) {
-  try {
-    // Intentar vía función RPC atómica
-    const rpcRes = await db.rpc('get_or_create_session', {
-      p_class_id: classId,
-      p_session_date: sessionDate
-    });
-    if (rpcRes) return rpcRes;
-  } catch {
-    // Fallback directo con verificación
-    const existing = await db.get('class_sessions', `class_id=eq.${classId}&session_date=eq.${sessionDate}&select=id`);
-    if (existing && existing.length > 0) {
-      return existing[0].id;
+export async function syncSessionAttendances({ classId, sessionDate, presentStudentCards = [], scopeStudentCards = [], method = 'manual_list' }) {
+  const presentUuids = [];
+  for (const card of presentStudentCards) {
+    const uuid = await getProfileUuidByCard(card);
+    if (!uuid) {
+      throw new Error(`No se encontró perfil para el alumno con carné ${card}`);
     }
-    const created = await db.insert('class_sessions', {
-      class_id: classId,
-      session_date: sessionDate
-    });
-    if (created && created[0]) return created[0].id;
+    presentUuids.push(uuid);
   }
-  return null;
+
+  const scopeUuids = [];
+  for (const card of scopeStudentCards) {
+    const uuid = await getProfileUuidByCard(card);
+    if (uuid) {
+      scopeUuids.push(uuid);
+    }
+  }
+
+  const res = await db.rpc('sync_session_attendances', {
+    p_class_id: classId,
+    p_session_date: sessionDate,
+    p_present_student_ids: presentUuids,
+    p_scope_student_ids: scopeUuids,
+    p_method: method
+  });
+
+  return Array.isArray(res) ? res[0] : res;
 }
 
 /**
- * Marca la asistencia de un alumno de forma concurrente y segura
+ * Marca la asistencia individual de un alumno vía RPC (sin fallbacks directos elusivos)
  */
 export async function syncRemoteAttendance({ studentCardId, classId, sessionDate, method = 'qr_scan' }) {
   const studentUuid = await getProfileUuidByCard(studentCardId);
   if (!studentUuid) {
-    throw new Error(`No se encontró UUID para el carné ${studentCardId}`);
+    throw new Error(`No se encontró perfil para el carné ${studentCardId}`);
   }
 
-  try {
-    // Intentar RPC atómico si existe
-    await db.rpc('set_attendance', {
-      p_class_id: classId,
-      p_session_date: sessionDate,
-      p_student_id: studentUuid,
-      p_present: true,
-      p_method: method
-    });
-    return true;
-  } catch {
-    // Fallback a inserción directa
-    const sessionId = await getOrCreateSessionId(classId, sessionDate);
-    if (!sessionId) throw new Error('No se pudo abrir la sesión de clase.');
+  const res = await db.rpc('set_attendance', {
+    p_class_id: classId,
+    p_session_date: sessionDate,
+    p_student_id: studentUuid,
+    p_present: true,
+    p_method: method
+  });
 
-    await db.insert('attendances', {
-      session_id: sessionId,
-      student_id: studentUuid,
-      status: 'presente',
-      method: method === 'manual' ? 'manual_list' : 'qr_scan'
-    });
-    return true;
-  }
+  return Array.isArray(res) ? res[0] : res;
 }
 
 /**
- * Desmarca la asistencia de un alumno (elimina el registro para que no reaparezca)
+ * Desmarca la asistencia individual de un alumno vía RPC (sin fallbacks directos elusivos)
  */
 export async function deleteRemoteAttendance({ studentCardId, classId, sessionDate }) {
   const studentUuid = await getProfileUuidByCard(studentCardId);
   if (!studentUuid) return false;
 
-  try {
-    await db.rpc('set_attendance', {
-      p_class_id: classId,
-      p_session_date: sessionDate,
-      p_student_id: studentUuid,
-      p_present: false
-    });
-    return true;
-  } catch {
-    const existingSessions = await db.get('class_sessions', `class_id=eq.${classId}&session_date=eq.${sessionDate}&select=id`);
-    if (!existingSessions || existingSessions.length === 0) return true;
-    const sessionId = existingSessions[0].id;
-    await db.delete('attendances', `session_id=eq.${sessionId}&student_id=eq.${studentUuid}`);
-    return true;
-  }
+  const res = await db.rpc('set_attendance', {
+    p_class_id: classId,
+    p_session_date: sessionDate,
+    p_student_id: studentUuid,
+    p_present: false
+  });
+
+  return Array.isArray(res) ? res[0] : res;
 }
 
 /**
@@ -418,45 +564,30 @@ export async function fetchRemoteAttendance() {
 }
 
 /**
- * Registra un pago en Supabase con período e idempotencia.
- * Devuelve el registro confirmado o propaga el error.
+ * Registra un pago en Supabase con período e idempotencia vía RPC.
+ * Valida período e importe en servidor y rechaza reutilización de clave con datos alterados.
  */
 export async function syncRemotePayment({ studentCardId, amount, method, period, receiptNumber, notes, idempotencyKey }) {
   const studentUuid = await getProfileUuidByCard(studentCardId);
   if (!studentUuid) {
-    throw new Error(`No se encontró UUID para el alumno ${studentCardId}`);
+    throw new Error(`No se encontró perfil para el alumno ${studentCardId}`);
   }
 
   if (!period) {
     throw new Error('El período de pago es obligatorio.');
   }
 
-  try {
-    // Intentar RPC idempotente
-    const rpcRes = await db.rpc('register_payment_idempotent', {
-      p_student_id: studentUuid,
-      p_period: String(period),
-      p_amount: Number(amount) || 0,
-      p_payment_method: method || 'transferencia',
-      p_receipt_number: receiptNumber || null,
-      p_notes: notes || null,
-      p_idempotency_key: idempotencyKey || receiptNumber || null
-    });
-    return rpcRes;
-  } catch (rpcErr) {
-    // Si la función RPC aún no está migrada en la base remota, ejecutar insert directo
-    console.warn('[Supabase] RPC idempotente no disponible, usando insert con constraint:', rpcErr.message);
-    const result = await db.insert('payments', {
-      student_id: studentUuid,
-      period: String(period),
-      amount: Number(amount) || 0,
-      payment_method: method || 'transferencia',
-      receipt_number: receiptNumber || null,
-      notes: notes || null,
-      idempotency_key: idempotencyKey || receiptNumber || null
-    });
-    return result && result[0] ? result[0] : result;
-  }
+  const res = await db.rpc('register_payment_idempotent', {
+    p_student_id: studentUuid,
+    p_period: String(period),
+    p_amount: Number(amount) || 0,
+    p_payment_method: method || 'transferencia',
+    p_receipt_number: receiptNumber || null,
+    p_notes: notes || null,
+    p_idempotency_key: idempotencyKey || receiptNumber || null
+  });
+
+  return Array.isArray(res) ? res[0] : res;
 }
 
 /**

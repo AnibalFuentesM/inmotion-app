@@ -1,4 +1,10 @@
 import {
+  signInWithPassword,
+  signOut,
+  restoreSession,
+  refreshSession,
+  getAuthenticatedProfile,
+  clearLocalAuthCache,
   fetchRemoteClasses,
   fetchRemoteStudents,
   fetchRemoteAttendance,
@@ -7,11 +13,14 @@ import {
   deleteRemoteAttendance,
   syncRemotePayment,
   createRemoteStudent,
-  syncRemoteEnrollments
+  syncRemoteEnrollments,
+  syncSessionAttendances
 } from './supabase.js';
 
 let isSupabaseConnected = false;
 let supabaseSyncError = null;
+let authenticatedUser = null;
+let authenticatedProfile = null;
 const pendingLocalStudentEdits = new Set();
 
 const STORAGE_KEY = 'inmotion-academy-demo-v1';
@@ -659,7 +668,7 @@ function exportTableToCsv(type) {
 }
 
 
-// Una unica bitacora identifica cada sesion por clase y fecha local.
+// Una única bitácora identifica cada sesión por clase y fecha local.
 function recordAttendance(classId, studentIds, sessionDate, { replaceDay = false, scope = null } = {}) {
   TODAY = new Date();
   const item = classData.find((entry) => entry.id === classId);
@@ -667,7 +676,7 @@ function recordAttendance(classId, studentIds, sessionDate, { replaceDay = false
     throw new Error('Solo podés registrar una clase programada para hoy. Volvé a abrir la sesión.');
   }
   if (studentIds.some((studentId) => !studentById(studentId))) throw new Error('Alumno no encontrado.');
-  // La sesion valida la inscripcion: evita marcaciones cruzadas entre clases.
+  // La sesión valida la inscripción: evita marcaciones cruzadas entre clases.
   if (studentIds.some((studentId) => !(studentById(studentId).classIds || []).includes(classId))) {
     throw new Error('Solo se puede marcar a alumnos inscritos en esta clase.');
   }
@@ -676,26 +685,11 @@ function recordAttendance(classId, studentIds, sessionDate, { replaceDay = false
   if (replaceDay) {
     // Con scope, solo se reescriben los alumnos que la lista podía marcar
     const inScope = (entry) => !scope || scope.includes(entry.studentId);
-    // Identificar registros retirados para desmarcarlos en Supabase
-    const removedEntries = state.attendanceLog.filter((entry) => sameSession(entry) && inScope(entry) && !studentIds.includes(entry.studentId));
-    removedEntries.forEach((rem) => {
-      deleteRemoteAttendance({
-        studentCardId: rem.studentId,
-        classId,
-        sessionDate
-      }).catch((e) => console.warn('[Supabase] Error al desmarcar asistencia remota:', e.message));
-    });
     nextState.attendanceLog = nextState.attendanceLog.filter((entry) => !(sameSession(entry) && inScope(entry)));
   }
   studentIds.forEach((studentId) => {
     if (nextState.attendanceLog.some((entry) => sameSession(entry) && entry.studentId === studentId)) return;
     nextState.attendanceLog.push({ studentId, classId, at: sessionDate });
-    syncRemoteAttendance({
-      studentCardId: studentId,
-      classId,
-      sessionDate,
-      method: replaceDay ? 'manual' : 'qr_scan'
-    }).catch((e) => console.warn('[Supabase] Error al sincronizar asistencia remota:', e.message));
   });
   persistState(nextState);
 }
@@ -1199,12 +1193,22 @@ function updateShell() {
   elements.sideNav.innerHTML = navMarkup(config);
   elements.bottomNav.innerHTML = navMarkup(config);
   elements.roleSwitcher.value = activeRole;
+  if (isSupabaseConnected) {
+    elements.roleSwitcher.disabled = true;
+    elements.roleSwitcher.setAttribute('aria-disabled', 'true');
+    elements.roleSwitcher.title = 'Sesión autenticada en Supabase (rol asignado por perfil)';
+  } else {
+    elements.roleSwitcher.disabled = false;
+    elements.roleSwitcher.removeAttribute('aria-disabled');
+    elements.roleSwitcher.title = 'Cambiar rol en modo demostración';
+  }
   elements.kicker.textContent = config.label;
   elements.initials.textContent = config.initials;
   elements.date.textContent = longDate(TODAY);
   if (elements.demoBadge) {
+    elements.demoBadge.style.cursor = 'pointer';
     if (isSupabaseConnected) {
-      elements.demoBadge.innerHTML = '<i class="is-connected" aria-hidden="true"></i> Supabase conectado';
+      elements.demoBadge.innerHTML = `<i class="is-connected" aria-hidden="true"></i> Supabase conectado (${roleConfig[activeRole]?.label || activeRole})`;
     } else if (supabaseSyncError) {
       elements.demoBadge.innerHTML = '<i class="is-offline" aria-hidden="true"></i> Demo local (offline)';
     } else {
@@ -2979,14 +2983,25 @@ function openProfile() {
   });
 }
 
-function simulateScan() {
+async function simulateScan() {
   TODAY = new Date();
   const student = studentById(DEMO_STUDENT_ID);
   const target = scanClasses().find((item) => item.id === document.querySelector('#scanClass')?.value);
+  const sessionDate = document.querySelector('#simulateScan')?.dataset?.sessionDate || dayKey(TODAY);
   try {
     if (!student) throw new Error('El alumno de la demostración ya no existe. Reiniciá la demo.');
     if (!target) throw new Error('No hay una clase válida para registrar esta lectura.');
-    recordAttendance(target.id, [student.id], document.querySelector('#simulateScan').dataset.sessionDate);
+
+    if (isSupabaseConnected) {
+      await syncRemoteAttendance({
+        studentCardId: student.id,
+        classId: target.id,
+        sessionDate,
+        method: 'qr_scan'
+      });
+    }
+
+    recordAttendance(target.id, [student.id], sessionDate);
   } catch (error) {
     showToast('No se registró la asistencia', error.message);
     return;
@@ -3234,11 +3249,13 @@ async function handleStudentSubmit(event) {
         submitBtn.disabled = true;
         submitBtn.textContent = 'Guardando en la nube...';
       }
+      const selectedPlan = planByName(student.plan);
       await createRemoteStudent({
         id: student.id,
         name: student.name,
         phone: student.phone,
         plan: student.plan,
+        planPrice: selectedPlan?.price || null,
         level: student.level,
         notes: student.notes
       });
@@ -3359,14 +3376,45 @@ function registerWebMcpTools() {
   });
 }
 
-function handleAttendanceSubmit(event) {
+async function handleAttendanceSubmit(event) {
   event.preventDefault();
   const form = event.target;
   const classId = form.dataset.classId;
+  const sessionDate = form.dataset.sessionDate;
   const studentIds = [...form.querySelectorAll('input[name="attendance"]:checked')].map((input) => input.value);
   const scope = [...form.querySelectorAll('input[name="attendance"]')].map((input) => input.value);
+  const submitBtn = form.querySelector('button[type="submit"]');
+
+  if (isSupabaseConnected) {
+    try {
+      if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Guardando en la nube...';
+      }
+      await syncSessionAttendances({
+        classId,
+        sessionDate,
+        presentStudentCards: studentIds,
+        scopeStudentCards: scope,
+        method: 'manual_list'
+      });
+    } catch (error) {
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Guardar asistencia';
+      }
+      showToast('No se guardó la asistencia', `Error remoto: ${error.message}. Podés reintentar.`);
+      return;
+    } finally {
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Guardar asistencia';
+      }
+    }
+  }
+
   try {
-    recordAttendance(classId, studentIds, form.dataset.sessionDate, { replaceDay: true, scope });
+    recordAttendance(classId, studentIds, sessionDate, { replaceDay: true, scope });
   } catch (error) {
     showToast('No se guardó la asistencia', error.message);
     return;
@@ -3569,7 +3617,13 @@ function handleContentSubmit(event) {
 }
 
 document.querySelectorAll('[data-enter-role]').forEach((button) => button.addEventListener('click', () => enterDemo(button.dataset.enterRole, button.dataset.entryRoute || 'inicio')));
-document.querySelector('#exitDemo').addEventListener('click', leaveDemo);
+document.querySelector('#exitDemo').addEventListener('click', () => {
+  if (isSupabaseConnected) {
+    handleSignOut();
+  } else {
+    leaveDemo();
+  }
+});
 document.querySelector('#resetDemo')?.addEventListener('click', openResetModal);
 elements.content.addEventListener('click', handleContentClick);
 elements.content.addEventListener('input', handleContentInput);
@@ -3588,6 +3642,12 @@ elements.modalLayer.addEventListener('change', (event) => {
 document.querySelector('#profileButton').addEventListener('click', openProfile);
 
 elements.roleSwitcher.addEventListener('change', (event) => {
+  if (isSupabaseConnected) {
+    event.preventDefault();
+    elements.roleSwitcher.value = activeRole;
+    showToast('Modo conectado activo', 'El rol está determinado por tu sesión autenticada en Supabase.');
+    return;
+  }
   if (!roleConfig[event.target.value]) return;
   activeRole = event.target.value;
   activeRoute = 'inicio';
@@ -3653,7 +3713,106 @@ if (recoveryReport) {
   );
 }
 
+async function handleSignOut() {
+  await signOut();
+  isSupabaseConnected = false;
+  authenticatedUser = null;
+  authenticatedProfile = null;
+  clearLocalAuthCache(true);
+  updateShell();
+  leaveDemo();
+  showToast('Sesión cerrada', 'Has vuelto al modo demostración local.');
+}
+
+function openAuthModal() {
+  if (isSupabaseConnected) {
+    openModal({
+      title: 'Sesión autenticada en Supabase',
+      eyebrow: 'Conexión a la nube',
+      body: `
+        <article class="surface-card">
+          <div class="person-cell">
+            <span class="avatar" style="width:52px;height:52px">${escapeHtml(roleConfig[activeRole]?.initials || 'IM')}</span>
+            <span>
+              <strong>${escapeHtml(authenticatedUser?.email || 'Usuario conectado')}</strong>
+              <small>Rol asignado: ${escapeHtml(roleConfig[activeRole]?.label || activeRole)}</small>
+            </span>
+          </div>
+          <p class="payment-meta" style="margin-top:16px">
+            Estás conectado en tiempo real con Supabase. Las operaciones se validan con RLS y procedimientos transaccionales.
+          </p>
+        </article>
+        <div class="form-actions" style="margin-top:20px">
+          <button class="button button--light" type="button" data-close-modal>Cerrar</button>
+          <button class="button button--red" type="button" id="confirmSignOut">Cerrar sesión remota</button>
+        </div>
+      `
+    });
+    document.querySelector('#confirmSignOut')?.addEventListener('click', async () => {
+      closeModal();
+      await handleSignOut();
+    });
+  } else {
+    openModal({
+      title: 'Iniciar sesión en Supabase',
+      eyebrow: 'Conexión a la nube',
+      body: `
+        <p class="modal-note">Iniciá sesión para ingresar en modo conectado con permisos RLS según tu rol oficial.</p>
+        <form id="authLoginForm" class="modal-form">
+          <label class="field">
+            <span>Correo electrónico</span>
+            <input class="input" type="email" name="email" required autocomplete="username" placeholder="ejemplo@inmotion.gt" />
+          </label>
+          <label class="field">
+            <span>Contraseña</span>
+            <input class="input" type="password" name="password" required autocomplete="current-password" placeholder="••••••••" />
+          </label>
+          <p class="payment-meta" id="authErrorMessage" role="status" style="color:var(--red)"></p>
+          <div class="form-actions">
+            <button class="button button--light" type="button" data-close-modal>Cancelar</button>
+            <button class="button button--primary" type="submit" id="submitAuthLogin">Conectar</button>
+          </div>
+        </form>
+      `
+    });
+    const authForm = document.querySelector('#authLoginForm');
+    authForm?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const errEl = document.querySelector('#authErrorMessage');
+      const submitBtn = document.querySelector('#submitAuthLogin');
+      const fd = new FormData(authForm);
+      const email = fd.get('email');
+      const password = fd.get('password');
+      if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Conectando...';
+      }
+      if (errEl) errEl.textContent = '';
+      try {
+        const res = await signInWithPassword(email, password);
+        authenticatedUser = res.user;
+        authenticatedProfile = res.profile;
+        isSupabaseConnected = true;
+        if (res.profile?.role && roleConfig[res.profile.role]) {
+          activeRole = res.profile.role;
+        }
+        closeModal();
+        showToast('Sesión iniciada', `Conectado como ${res.profile?.first_name || email} · Rol: ${activeRole}`);
+        await syncWithSupabase();
+        renderAndFocus();
+      } catch (err) {
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.textContent = 'Conectar';
+        }
+        if (errEl) errEl.textContent = err.message;
+      }
+    });
+  }
+}
+
 async function syncWithSupabase() {
+  if (!isSupabaseConnected) return;
   try {
     // 1. Clases remotas
     const remoteClasses = await fetchRemoteClasses();
@@ -3664,7 +3823,6 @@ async function syncWithSupabase() {
     // 2. Alumnos remotos (SIN escrituras automáticas ni semillas)
     const remoteStudents = await fetchRemoteStudents();
     if (remoteStudents && remoteStudents.length > 0) {
-      // Respetar cambios locales en curso
       const pendingIds = new Set(pendingLocalStudentEdits);
       const mergedStudents = remoteStudents.map((rem) => {
         if (pendingIds.has(rem.id)) {
@@ -3686,29 +3844,57 @@ async function syncWithSupabase() {
       persistState(state);
     }
 
-    // 4. Asistencias remotas (reemplazo limpio para evitar resurrección de desmarcados)
+    // 4. Asistencias remotas (acepta respuesta vacía como válida sin preservar marcas viejas)
     const remoteAttendance = await fetchRemoteAttendance();
-    if (remoteAttendance && remoteAttendance.length > 0) {
-      const remoteDates = new Set(remoteAttendance.map((e) => e.at));
-      const keptLocal = state.attendanceLog.filter((e) => !remoteDates.has(e.at));
-      state.attendanceLog = [...remoteAttendance, ...keptLocal];
+    if (Array.isArray(remoteAttendance)) {
+      state.attendanceLog = remoteAttendance;
       persistState(state);
     }
 
-    isSupabaseConnected = true;
     supabaseSyncError = null;
 
-    // Actualizar la interfaz si la app ya está visible
     if (!elements.app.classList.contains('is-hidden')) {
       renderApp();
     }
     console.log('[In Motion] Base de datos Supabase sincronizada con éxito');
   } catch (err) {
-    isSupabaseConnected = false;
     supabaseSyncError = err.message;
     console.warn('[In Motion] No se pudo sincronizar con Supabase:', err.message);
+    showToast('Error de sincronización', `No se pudieron cargar datos remotos: ${err.message}.`);
   }
 }
 
-registerWebMcpTools();
-syncWithSupabase();
+async function initSessionAndBoot() {
+  registerWebMcpTools();
+  elements.demoBadge?.addEventListener('click', openAuthModal);
+
+  try {
+    const authSession = await restoreSession();
+    if (authSession && authSession.profile) {
+      authenticatedUser = authSession.user;
+      authenticatedProfile = authSession.profile;
+      isSupabaseConnected = true;
+      if (authSession.profile.role && roleConfig[authSession.profile.role]) {
+        activeRole = authSession.profile.role;
+      }
+      await syncWithSupabase();
+    } else {
+      isSupabaseConnected = false;
+    }
+  } catch (e) {
+    console.warn('[In Motion] Inicio en modo demostración local:', e.message);
+    isSupabaseConnected = false;
+  }
+  updateShell();
+}
+
+window.inmotionAuth = {
+  signInWithPassword,
+  signOut,
+  restoreSession,
+  refreshSession,
+  getAuthenticatedProfile,
+  clearLocalAuthCache
+};
+
+initSessionAndBoot();
