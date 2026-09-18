@@ -2,10 +2,17 @@ import {
   fetchRemoteClasses,
   fetchRemoteStudents,
   fetchRemoteAttendance,
+  fetchRemotePayments,
   syncRemoteAttendance,
+  deleteRemoteAttendance,
   syncRemotePayment,
-  seedRemoteStudentsIfEmpty
+  createRemoteStudent,
+  syncRemoteEnrollments
 } from './supabase.js';
+
+let isSupabaseConnected = false;
+let supabaseSyncError = null;
+const pendingLocalStudentEdits = new Set();
 
 const STORAGE_KEY = 'inmotion-academy-demo-v1';
 const STATE_VERSION = 3;
@@ -667,9 +674,17 @@ function recordAttendance(classId, studentIds, sessionDate, { replaceDay = false
   const sameSession = (entry) => entry.classId === classId && entry.at === sessionDate;
   const nextState = structuredClone(state);
   if (replaceDay) {
-    // Con scope, solo se reescriben los alumnos que la lista podia marcar: un
-    // alumno retirado de la clase conserva su asistencia ya registrada.
+    // Con scope, solo se reescriben los alumnos que la lista podía marcar
     const inScope = (entry) => !scope || scope.includes(entry.studentId);
+    // Identificar registros retirados para desmarcarlos en Supabase
+    const removedEntries = state.attendanceLog.filter((entry) => sameSession(entry) && inScope(entry) && !studentIds.includes(entry.studentId));
+    removedEntries.forEach((rem) => {
+      deleteRemoteAttendance({
+        studentCardId: rem.studentId,
+        classId,
+        sessionDate
+      }).catch((e) => console.warn('[Supabase] Error al desmarcar asistencia remota:', e.message));
+    });
     nextState.attendanceLog = nextState.attendanceLog.filter((entry) => !(sameSession(entry) && inScope(entry)));
   }
   studentIds.forEach((studentId) => {
@@ -680,7 +695,7 @@ function recordAttendance(classId, studentIds, sessionDate, { replaceDay = false
       classId,
       sessionDate,
       method: replaceDay ? 'manual' : 'qr_scan'
-    }).catch(() => {});
+    }).catch((e) => console.warn('[Supabase] Error al sincronizar asistencia remota:', e.message));
   });
   persistState(nextState);
 }
@@ -1129,7 +1144,8 @@ const elements = {
   modalTitle: document.querySelector('#modalTitle'),
   modalEyebrow: document.querySelector('#modalEyebrow'),
   modalBody: document.querySelector('#modalBody'),
-  toastRegion: document.querySelector('#toastRegion')
+  toastRegion: document.querySelector('#toastRegion'),
+  demoBadge: document.querySelector('.demo-badge')
 };
 
 function persistState(nextState) {
@@ -1186,6 +1202,15 @@ function updateShell() {
   elements.kicker.textContent = config.label;
   elements.initials.textContent = config.initials;
   elements.date.textContent = longDate(TODAY);
+  if (elements.demoBadge) {
+    if (isSupabaseConnected) {
+      elements.demoBadge.innerHTML = '<i class="is-connected" aria-hidden="true"></i> Supabase conectado';
+    } else if (supabaseSyncError) {
+      elements.demoBadge.innerHTML = '<i class="is-offline" aria-hidden="true"></i> Demo local (offline)';
+    } else {
+      elements.demoBadge.innerHTML = '<i aria-hidden="true"></i> Modo demostración';
+    }
+  }
 }
 
 function enterDemo(role, route = 'inicio') {
@@ -2879,10 +2904,11 @@ function openStudentClassesModal(studentId) {
   });
 }
 
-function handleEnrollmentSubmit(event) {
+async function handleEnrollmentSubmit(event) {
   event.preventDefault();
   const form = event.target;
   const message = document.querySelector('#enrollmentFormMessage');
+  const submitBtn = form.querySelector('button[type="submit"]');
   const student = studentById(form.dataset.studentId);
   if (!student) {
     if (message) message.textContent = 'El alumno ya no existe en esta demo. Cerrá y volvé a abrir la ficha.';
@@ -2895,6 +2921,24 @@ function handleEnrollmentSubmit(event) {
   const before = student.classIds || [];
   const added = classIds.filter((id) => !before.includes(id)).length;
   const removed = before.filter((id) => !classIds.includes(id)).length;
+
+  if (isSupabaseConnected) {
+    try {
+      if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Guardando...';
+      }
+      await syncRemoteEnrollments({ studentCardId: student.id, classIds });
+    } catch (err) {
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Guardar inscripciones';
+      }
+      if (message) message.textContent = `Error al sincronizar inscripciones: ${err.message}`;
+      return;
+    }
+  }
+
   try {
     // attendanceLog no se toca: retirar una inscripcion no borra las sesiones
     // ya registradas de ese alumno.
@@ -3053,7 +3097,7 @@ function sameAmount(a, b) {
   return Math.round(Number(a) * 100) === Math.round(Number(b) * 100);
 }
 
-function registerPayment({ studentId, period, amount, method, reference = '' }) {
+function preparePaymentRecord({ studentId, period, amount, method, reference = '' }) {
   TODAY = new Date();
   const student = studentById(studentId);
   if (!student) throw new Error('Alumno no encontrado.');
@@ -3083,8 +3127,10 @@ function registerPayment({ studentId, period, amount, method, reference = '' }) 
     status: 'Pagado',
     reference: String(reference)
   };
-  // Se reemplaza por alumno + periodo, que es lo que identifica una mensualidad:
-  // dos registros con el mismo id habrian quedado liquidados de una sola vez.
+  return { student, record, existing };
+}
+
+function commitPaymentRecord({ student, record, existing }) {
   const nextState = {
     ...state,
     payments: existing
@@ -3092,35 +3138,79 @@ function registerPayment({ studentId, period, amount, method, reference = '' }) 
       : [record, ...state.payments]
   };
   persistState(nextState);
-  syncRemotePayment({
-    studentCardId: student.id,
-    amount: record.amount,
-    method: record.method,
-    receiptNumber: record.id,
-    notes: record.reference
-  }).catch(() => {});
   return record;
 }
 
-function handlePaymentSubmit(event) {
+function registerPayment({ studentId, period, amount, method, reference = '' }) {
+  const prepared = preparePaymentRecord({ studentId, period, amount, method, reference });
+  return commitPaymentRecord(prepared);
+}
+
+async function handlePaymentSubmit(event) {
   event.preventDefault();
-  const data = new FormData(event.target);
-  let record;
+  const form = event.target;
+  const data = new FormData(form);
+  const message = document.querySelector('#paymentFormMessage');
+  const submitBtn = form.querySelector('button[type="submit"]');
+
+  let prepared;
   try {
-    record = registerPayment({ studentId: data.get('studentId'), period: data.get('period'), amount: Number(data.get('amount')), method: data.get('method'), reference: data.get('reference') || '' });
+    prepared = preparePaymentRecord({
+      studentId: data.get('studentId'),
+      period: data.get('period'),
+      amount: Number(data.get('amount')),
+      method: data.get('method'),
+      reference: data.get('reference') || ''
+    });
   } catch (error) {
-    document.querySelector('#paymentFormMessage').textContent = error.message;
+    if (message) message.textContent = error.message;
     return;
   }
+
+  const { student, record } = prepared;
+
+  // Si está conectado a Supabase, la confirmación remota es obligatoria antes de guardar
+  if (isSupabaseConnected) {
+    try {
+      if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Guardando en la nube...';
+      }
+      if (message) message.textContent = '';
+      await syncRemotePayment({
+        studentCardId: student.id,
+        amount: record.amount,
+        method: record.method,
+        period: record.period,
+        receiptNumber: record.id,
+        notes: record.reference,
+        idempotencyKey: `PAY-${student.id}-${record.period}`
+      });
+    } catch (err) {
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Guardar pago';
+      }
+      if (message) {
+        message.textContent = `Error remoto: ${err.message}. Podés corregir o reintentar sin duplicar.`;
+      }
+      return;
+    }
+  }
+
+  // Persistir solo tras confirmación
+  commitPaymentRecord(prepared);
   closeModal();
   showToast('Pago guardado', `${record.student} · Q ${formatAmount(record.amount)} · ${record.method}`);
   renderAndFocus();
 }
 
-function handleStudentSubmit(event) {
+async function handleStudentSubmit(event) {
   event.preventDefault();
-  const data = new FormData(event.target);
+  const form = event.target;
+  const data = new FormData(form);
   const message = document.querySelector('#studentFormMessage');
+  const submitBtn = form.querySelector('button[type="submit"]');
   const name = String(data.get('name') || '').trim().replace(/\s+/g, ' ');
   if (name.length < 3) {
     if (message) message.textContent = 'Escribí el nombre completo del alumno.';
@@ -3137,6 +3227,31 @@ function handleStudentSubmit(event) {
     classIds: [],
     notes: String(data.get('notes') || '').trim().slice(0, 280)
   };
+
+  if (isSupabaseConnected) {
+    try {
+      if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Guardando en la nube...';
+      }
+      await createRemoteStudent({
+        id: student.id,
+        name: student.name,
+        phone: student.phone,
+        plan: student.plan,
+        level: student.level,
+        notes: student.notes
+      });
+    } catch (err) {
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Crear alumno';
+      }
+      if (message) message.textContent = `Error al guardar en Supabase: ${err.message}`;
+      return;
+    }
+  }
+
   // Se guarda antes de tocar la memoria: si el navegador no puede, no se creo nada.
   try {
     persistState({ ...state, students: [student, ...state.students] });
@@ -3145,7 +3260,7 @@ function handleStudentSubmit(event) {
     return;
   }
   closeModal();
-  showToast('Alumno creado', `${student.name} · registro local`);
+  showToast('Alumno creado', `${student.name} · ${isSupabaseConnected ? 'guardado en la nube' : 'registro local'}`);
   renderAndFocus();
 }
 
@@ -3546,29 +3661,42 @@ async function syncWithSupabase() {
       classData = remoteClasses;
     }
 
-    // 2. Semilla de alumnos si la base de datos está vacía
-    await seedRemoteStudentsIfEmpty(state.students);
-
-    // 3. Alumnos remotos
+    // 2. Alumnos remotos (SIN escrituras automáticas ni semillas)
     const remoteStudents = await fetchRemoteStudents();
     if (remoteStudents && remoteStudents.length > 0) {
-      state.students = remoteStudents;
+      // Respetar cambios locales en curso
+      const pendingIds = new Set(pendingLocalStudentEdits);
+      const mergedStudents = remoteStudents.map((rem) => {
+        if (pendingIds.has(rem.id)) {
+          const local = state.students.find((s) => s.id === rem.id);
+          return local || rem;
+        }
+        return rem;
+      });
+      state.students = mergedStudents;
       persistState(state);
     }
 
-    // 4. Asistencias remotas
-    const remoteAttendance = await fetchRemoteAttendance();
-    if (remoteAttendance && remoteAttendance.length > 0) {
-      const seen = new Set(state.attendanceLog.map((e) => `${e.studentId}|${e.classId}|${e.at}`));
-      for (const entry of remoteAttendance) {
-        const key = `${entry.studentId}|${entry.classId}|${entry.at}`;
-        if (!seen.has(key)) {
-          state.attendanceLog.push(entry);
-          seen.add(key);
-        }
-      }
+    // 3. Pagos remotos (recupera pagos y preserva periodos sin duplicar)
+    const remotePayments = await fetchRemotePayments();
+    if (remotePayments && remotePayments.length > 0) {
+      const paymentKeys = new Set(remotePayments.map((p) => `${p.studentId}|${p.period}`));
+      const localOnly = state.payments.filter((p) => !paymentKeys.has(`${p.studentId}|${p.period}`));
+      state.payments = [...remotePayments, ...localOnly];
       persistState(state);
     }
+
+    // 4. Asistencias remotas (reemplazo limpio para evitar resurrección de desmarcados)
+    const remoteAttendance = await fetchRemoteAttendance();
+    if (remoteAttendance && remoteAttendance.length > 0) {
+      const remoteDates = new Set(remoteAttendance.map((e) => e.at));
+      const keptLocal = state.attendanceLog.filter((e) => !remoteDates.has(e.at));
+      state.attendanceLog = [...remoteAttendance, ...keptLocal];
+      persistState(state);
+    }
+
+    isSupabaseConnected = true;
+    supabaseSyncError = null;
 
     // Actualizar la interfaz si la app ya está visible
     if (!elements.app.classList.contains('is-hidden')) {
@@ -3576,7 +3704,9 @@ async function syncWithSupabase() {
     }
     console.log('[In Motion] Base de datos Supabase sincronizada con éxito');
   } catch (err) {
-    console.warn('[In Motion] Sincronización Supabase en segundo plano:', err.message);
+    isSupabaseConnected = false;
+    supabaseSyncError = err.message;
+    console.warn('[In Motion] No se pudo sincronizar con Supabase:', err.message);
   }
 }
 

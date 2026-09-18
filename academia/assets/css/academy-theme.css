@@ -1909,8 +1909,16 @@
   }
 }
 
+/* Estados del indicador de modo de datos */
+.demo-badge i.is-connected {
+  background: #22c55e;
+  box-shadow: 0 0 8px rgba(34, 197, 94, 0.6);
+}
 
-
+.demo-badge i.is-offline {
+  background: #eab308;
+  box-shadow: 0 0 8px rgba(234, 179, 8, 0.6);
+}
 /* Comparación breve: una sugerencia y alternativas opcionales. */
 .plan-alternatives { min-width: 0; }
 .plan-alternatives summary { padding: 18px 0; cursor: pointer; font-weight: 600; line-height: 1.5; }
