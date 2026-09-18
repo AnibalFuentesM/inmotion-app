@@ -1,0 +1,321 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "In Motion System Architecture",
+    "subtitle": "Dual-surface static catalog and academy prototype with Google Workspace integration",
+    "output": "inmotion-architecture.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/AnibalFuentesM/inmotion-video-catalog",
+      "provider": "github",
+      "revision": "ff6204aa3f79f89bd65e23225d7d8ad3785728ca"
+    },
+    "views": [
+      {
+        "id": "overview",
+        "label": "Full System Overview",
+        "focus": [
+          "users",
+          "catalog_app",
+          "academy_app",
+          "gviz_api",
+          "apps_script",
+          "local_storage",
+          "google_sheets",
+          "google_drive"
+        ],
+        "note": "Two isolated surfaces sharing domain and brand without shared code or backend."
+      },
+      {
+        "id": "catalog-flow",
+        "label": "Catalog & Sheets Pipeline",
+        "focus": [
+          "users",
+          "catalog_app",
+          "gviz_api",
+          "apps_script",
+          "google_sheets",
+          "google_drive"
+        ],
+        "note": "Public GViz metadata queries and staff Drive/Sheets upload panel."
+      },
+      {
+        "id": "academy-flow",
+        "label": "Academy App & Local Demo",
+        "focus": [
+          "users",
+          "academy_app",
+          "local_storage"
+        ],
+        "note": "Self-contained multi-role academy demo persisting state in localStorage."
+      }
+    ]
+  },
+  "components": [
+    {
+      "id": "users",
+      "type": "external",
+      "label": "End Users & Staff",
+      "sublabel": "Browser (Desktop / Mobile)",
+      "pos": [
+        40,
+        240
+      ],
+      "size": [
+        140,
+        60
+      ]
+    },
+    {
+      "id": "catalog_app",
+      "type": "frontend",
+      "label": "Video Catalog",
+      "sublabel": "Root / (Vanilla JS)",
+      "tag": "Production",
+      "pos": [
+        260,
+        130
+      ],
+      "size": [
+        160,
+        60
+      ],
+      "sources": [
+        {
+          "path": "index.html",
+          "line": 1,
+          "label": "Catalog Shell"
+        },
+        {
+          "path": "assets/js/config.js",
+          "line": 1,
+          "label": "Catalog Config"
+        }
+      ]
+    },
+    {
+      "id": "academy_app",
+      "type": "frontend",
+      "label": "Academy App",
+      "sublabel": "/academia/ (ES Modules)",
+      "tag": "Prototype",
+      "pos": [
+        260,
+        330
+      ],
+      "size": [
+        160,
+        60
+      ],
+      "sources": [
+        {
+          "path": "academia/index.html",
+          "line": 1,
+          "label": "Academy Shell"
+        },
+        {
+          "path": "academia/assets/js/academy.js",
+          "line": 1,
+          "label": "Academy Engine"
+        }
+      ]
+    },
+    {
+      "id": "local_storage",
+      "type": "database",
+      "label": "Browser Storage",
+      "sublabel": "Key: demo-v1",
+      "tag": "Client-Only",
+      "pos": [
+        490,
+        330
+      ],
+      "size": [
+        150,
+        60
+      ],
+      "sources": [
+        {
+          "path": "docs/academia.md",
+          "line": 21,
+          "label": "Storage Contract"
+        }
+      ]
+    },
+    {
+      "id": "gviz_api",
+      "type": "backend",
+      "label": "GViz Endpoint",
+      "sublabel": "Google Visualization API",
+      "tag": "Read-Only",
+      "pos": [
+        720,
+        80
+      ],
+      "size": [
+        160,
+        60
+      ]
+    },
+    {
+      "id": "apps_script",
+      "type": "backend",
+      "label": "Apps Script WebApp",
+      "sublabel": "Code.gs / Staff Form",
+      "tag": "Serverless",
+      "pos": [
+        720,
+        200
+      ],
+      "size": [
+        160,
+        60
+      ],
+      "sources": [
+        {
+          "path": "apps-script/Code.gs",
+          "line": 1,
+          "label": "Apps Script API"
+        }
+      ]
+    },
+    {
+      "id": "google_sheets",
+      "type": "database",
+      "label": "Google Sheets",
+      "sublabel": "Video Metadata Database",
+      "tag": "Structured",
+      "pos": [
+        940,
+        80
+      ],
+      "size": [
+        150,
+        60
+      ]
+    },
+    {
+      "id": "google_drive",
+      "type": "cloud",
+      "label": "Google Drive",
+      "sublabel": "Video File Storage",
+      "tag": "Media",
+      "pos": [
+        940,
+        200
+      ],
+      "size": [
+        150,
+        60
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "security-group",
+      "label": "Client Runtime: Inmotion Browser Surface",
+      "wraps": [
+        "catalog_app",
+        "academy_app",
+        "local_storage"
+      ]
+    },
+    {
+      "kind": "region",
+      "label": "External Cloud: Google Workspace Infrastructure",
+      "wraps": [
+        "gviz_api",
+        "apps_script",
+        "google_sheets",
+        "google_drive"
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "users_to_catalog",
+      "from": "users",
+      "to": "catalog_app",
+      "label": "browse & play",
+      "variant": "emphasis"
+    },
+    {
+      "id": "users_to_academy",
+      "from": "users",
+      "to": "academy_app",
+      "label": "demo roles",
+      "variant": "emphasis"
+    },
+    {
+      "id": "catalog_to_gviz",
+      "from": "catalog_app",
+      "to": "gviz_api",
+      "label": "fetch metadata",
+      "variant": "default"
+    },
+    {
+      "id": "gviz_to_sheets",
+      "from": "gviz_api",
+      "to": "google_sheets",
+      "label": "query rows"
+    },
+    {
+      "id": "catalog_to_apps_script",
+      "from": "catalog_app",
+      "to": "apps_script",
+      "label": "iframe staff panel",
+      "variant": "dashed"
+    },
+    {
+      "id": "apps_script_to_drive",
+      "from": "apps_script",
+      "to": "google_drive",
+      "label": "save video"
+    },
+    {
+      "id": "apps_script_to_sheets",
+      "from": "apps_script",
+      "to": "google_sheets",
+      "label": "append metadata",
+      "fromSide": "top",
+      "toSide": "bottom"
+    },
+    {
+      "id": "academy_to_storage",
+      "from": "academy_app",
+      "to": "local_storage",
+      "label": "sync state",
+      "variant": "emphasis"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Dual-Surface Architecture",
+      "items": [
+        "Catalog (/) and Academy (/academia/) share domain and brand, zero code coupling",
+        "Completely static frontend with no bespoke application server",
+        "Independent assets and styles: academy is fully self-contained"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Catalog & Cloud Integration",
+      "items": [
+        "Public video catalog queries Sheets metadata dynamically via GViz JSON endpoint",
+        "Staff management runs via embedded Google Apps Script web app",
+        "Video files stream from Google Drive with metadata synchronized in Sheets"
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "Academy Demo Engine",
+      "items": [
+        "4 interactive roles: Student, Teacher, Admin, and Guardian (Tutor)",
+        "State persists locally in browser localStorage (inmotion-academy-demo-v1)",
+        "Attendance model designed around class session context on academy devices"
+      ]
+    }
+  ]
+}

@@ -101,3 +101,24 @@ select option {
     padding-right: 0.75rem;
   }
 }
+
+/* Controles cómodos y reproductor contenido en pantallas pequeñas. */
+body.modal-open { overflow: hidden; }
+#modalBody { min-height: 0; overflow-wrap: anywhere; overscroll-behavior: contain; }
+#videoModal .modal-panel { max-height: calc(100dvh - 2rem); }
+#modalTitle { white-space: normal; overflow-wrap: anywhere; }
+#videoModal button, .save-video-btn { min-width: 44px; min-height: 44px; }
+#activeFiltersBar > span { max-width: 100%; overflow-wrap: anywhere; }
+#activeFiltersBar button { min-width: 44px; min-height: 44px; flex-shrink: 0; }
+@media (max-width: 640px) {
+  #viewTabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  #viewTabs .view-tab { min-width: 0; min-height: 48px; flex-wrap: wrap; gap: 4px; padding: 8px 4px; }
+  #viewTabs .material-symbols-outlined { display: none; }
+  #filtersForm { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  #filtersForm > label:first-child { grid-column: 1 / -1; }
+  #filtersForm input, #filtersForm select { min-width: 0; min-height: 44px; font-size: 16px; }
+  #modalPosition { display: none; }
+  #modalBody { padding: 12px; }
+  #modalNavToolbar { gap: 6px; }
+  #modalNavToolbar button { padding-left: 8px; padding-right: 8px; }
+}

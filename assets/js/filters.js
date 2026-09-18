@@ -52,16 +52,14 @@ function matchesPeriod(record, period) {
     return false;
   }
 
-  const now = new Date();
-  const timeDiff = now.getTime() - record.parsedDate.getTime();
-  // Future dates (e.g. timezone variations) are included in recent windows
-  if (timeDiff < 0) {
-    return true;
-  }
-  const daysDiff = timeDiff / (1000 * 60 * 60 * 24);
-  if (period === '7d') return daysDiff <= 7;
-  if (period === '30d') return daysDiff <= 30;
-  return true;
+  // Incluir hoy y los días anteriores del período, sin fechas futuras.
+  const days = period === '7d' ? 7 : period === '30d' ? 30 : null;
+  if (!days) return true;
+  const end = new Date();
+  end.setHours(24, 0, 0, 0);
+  const start = new Date(end);
+  start.setDate(start.getDate() - days);
+  return record.parsedDate >= start && record.parsedDate < end;
 }
 
 /**

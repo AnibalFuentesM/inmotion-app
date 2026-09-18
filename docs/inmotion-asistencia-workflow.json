@@ -1,0 +1,239 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "In Motion - Flujo de Asistencia y Carné QR",
+    "output": "docs/inmotion-asistencia-workflow.html",
+    "animation": "trace",
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "happy-path",
+        "label": "Flujo Estándar de Escaneo QR",
+        "focus": ["abrir_sesion", "presentar_carnet", "escanear_qr", "validar_sesion", "confirmar_presente", "guardar_asistencia", "notificar_portal"],
+        "note": "Ruta principal de ingreso: escaneo del carné permanente en el salón."
+      },
+      {
+        "id": "contingencia",
+        "label": "Contingencia de Carné Olvidado",
+        "focus": ["presentar_carnet", "lista_manual", "validar_sesion", "confirmar_presente"],
+        "note": "Marcación táctil en lista manual integrada sin demorar el acceso."
+      },
+      {
+        "id": "validacion",
+        "label": "Prevención de Marcaciones Cruzadas",
+        "focus": ["escanear_qr", "validar_sesion", "clase_invalida", "confirmar_presente"],
+        "note": "Validación de inscripción contra la clase activa en el salón."
+      }
+    ]
+  },
+  "lanes": [
+    { "id": "acceso", "label": "Recepción y Alumnos" },
+    { "id": "sistema", "label": "Motor de Asistencia" },
+    { "id": "contingencia", "label": "Excepciones y Fallos", "variant": "exception" }
+  ],
+  "phases": [
+    { "id": "inicio", "label": "Apertura e Ingreso", "fromCol": 0, "toCol": 1 },
+    { "id": "captura", "label": "Captura y Validación", "fromCol": 2, "toCol": 3, "variant": "emphasis" },
+    { "id": "cierre", "label": "Confirmación y Portales", "fromCol": 4, "toCol": 5, "variant": "dashed" }
+  ],
+  "groups": [
+    { "id": "puerta_acceso", "label": "Control en Puerta", "lane": "acceso", "fromCol": 0, "toCol": 2, "variant": "emphasis" },
+    { "id": "contingencia_grupo", "label": "Rutas de Contingencia", "lane": "contingencia", "fromCol": 2, "toCol": 4, "variant": "security" },
+    { "id": "procesamiento", "label": "Procesamiento y Persistencia", "lane": "sistema", "fromCol": 3, "toCol": 5, "variant": "default" }
+  ],
+  "mainPath": [
+    "abrir_sesion",
+    "presentar_carnet",
+    "escanear_qr",
+    "validar_sesion",
+    "confirmar_presente",
+    "guardar_asistencia",
+    "notificar_portal"
+  ],
+  "nodes": [
+    {
+      "id": "abrir_sesion",
+      "lane": "acceso",
+      "col": 0,
+      "type": "frontend",
+      "label": "Abrir Sesión",
+      "sublabel": "Selecciona clase activa",
+      "tag": "Dispositivo Salón",
+      "width": 152
+    },
+    {
+      "id": "presentar_carnet",
+      "lane": "acceso",
+      "col": 1,
+      "type": "external",
+      "label": "Presentar Carné",
+      "sublabel": "QR estático permanente",
+      "tag": "Tarjeta o Móvil",
+      "width": 152
+    },
+    {
+      "id": "escanear_qr",
+      "lane": "acceso",
+      "col": 2,
+      "type": "backend",
+      "label": "Escanear QR",
+      "sublabel": "Cámara institucional",
+      "tag": "Óptico",
+      "width": 152
+    },
+    {
+      "id": "lista_manual",
+      "lane": "contingencia",
+      "col": 2,
+      "type": "frontend",
+      "label": "Lista Manual",
+      "sublabel": "Marcación con un toque",
+      "tag": "Sin Carné",
+      "width": 152
+    },
+    {
+      "id": "validar_sesion",
+      "lane": "sistema",
+      "col": 3,
+      "type": "security",
+      "label": "Validar Clase",
+      "sublabel": "Verifica inscripción activa",
+      "tag": "Filtro Sesión",
+      "width": 152
+    },
+    {
+      "id": "clase_invalida",
+      "lane": "contingencia",
+      "col": 4,
+      "type": "security",
+      "label": "Clase Incorrecta",
+      "sublabel": "Alumno no inscrito hoy",
+      "tag": "Alerta Cruzada",
+      "width": 152
+    },
+    {
+      "id": "confirmar_presente",
+      "lane": "sistema",
+      "col": 4,
+      "type": "backend",
+      "label": "Registrar Presente",
+      "sublabel": "Modelo binario sin tardanza",
+      "tag": "Asistencia OK",
+      "width": 152
+    },
+    {
+      "id": "guardar_asistencia",
+      "lane": "sistema",
+      "col": 5,
+      "type": "database",
+      "label": "Persistir Estado",
+      "sublabel": "localStorage / Base central",
+      "tag": "Sincronizado",
+      "width": 152
+    },
+    {
+      "id": "notificar_portal",
+      "lane": "acceso",
+      "col": 5,
+      "type": "frontend",
+      "label": "Portal Alumno / Tutor",
+      "sublabel": "Última asistencia visible",
+      "tag": "Tiempo Real",
+      "width": 152
+    }
+  ],
+  "edges": [
+    {
+      "id": "sesion-a-carnet",
+      "from": "abrir_sesion",
+      "to": "presentar_carnet",
+      "label": "espera alumno",
+      "variant": "default"
+    },
+    {
+      "id": "carnet-a-scan",
+      "from": "presentar_carnet",
+      "to": "escanear_qr",
+      "label": "muestra código",
+      "variant": "emphasis"
+    },
+    {
+      "id": "carnet-a-manual",
+      "from": "presentar_carnet",
+      "to": "lista_manual",
+      "label": "olvidó tarjeta",
+      "variant": "dashed",
+      "role": "branch"
+    },
+    {
+      "id": "scan-a-validacion",
+      "from": "escanear_qr",
+      "to": "validar_sesion",
+      "label": "id carné",
+      "variant": "emphasis"
+    },
+    {
+      "id": "manual-a-validacion",
+      "from": "lista_manual",
+      "to": "validar_sesion",
+      "label": "selección manual",
+      "variant": "dashed"
+    },
+    {
+      "id": "validacion-a-confirmacion",
+      "from": "validar_sesion",
+      "to": "confirmar_presente",
+      "label": "inscrito",
+      "variant": "emphasis"
+    },
+    {
+      "id": "validacion-a-invalida",
+      "from": "validar_sesion",
+      "to": "clase_invalida",
+      "label": "no inscrito",
+      "variant": "security",
+      "role": "error"
+    },
+    {
+      "id": "confirmacion-a-guardar",
+      "from": "confirmar_presente",
+      "to": "guardar_asistencia",
+      "label": "asiste",
+      "variant": "emphasis"
+    },
+    {
+      "id": "guardar-a-portal",
+      "from": "guardar_asistencia",
+      "to": "notificar_portal",
+      "label": "actualiza portal",
+      "variant": "default"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Dispositivo Único de la Academia",
+      "items": [
+        "Un solo dispositivo institucional en salón o recepción opera la cámara y HTTPS.",
+        "Alumnos y tutores portan carné permanente; niños usan tarjeta impresa sin batería."
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Contexto de Clase Desacoplado",
+      "items": [
+        "El contexto de clase reside en el dispositivo del salón, sin QR dinámicos.",
+        "La asistencia está desacoplada del pago y registra sólo presente o sin registro."
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Tolerancia a Fallos y Excepciones",
+      "items": [
+        "Lista manual táctil en la misma pantalla para resolver olvidos con un toque.",
+        "El motor previene registros cruzados y actualiza en tiempo real los portales."
+      ]
+    }
+  ]
+}

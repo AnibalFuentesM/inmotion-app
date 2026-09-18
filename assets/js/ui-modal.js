@@ -196,7 +196,7 @@ export function createVideoModal(modalElement, { onSaveToggle } = {}) {
     // Track as opened / recently viewed
     const videoId = record.stableId || record.id;
     addRecentVideo(videoId);
-    window.dispatchEvent(new CustomEvent('catalog-storage-updated', { detail: { videoId } }));
+
 
     if (modalTitle) {
       modalTitle.textContent = record.step_name;
@@ -224,6 +224,7 @@ export function createVideoModal(modalElement, { onSaveToggle } = {}) {
     updateModalSaveButton(isVideoSaved(videoId));
 
     modalBody.innerHTML = '';
+    modalBody.scrollTop = 0;
     modalBody.appendChild(buildPlayer(record.video_url));
 
     // Metadata pills
@@ -301,7 +302,7 @@ export function createVideoModal(modalElement, { onSaveToggle } = {}) {
    * @param {boolean} active
    */
   function setBackgroundInert(active) {
-    const backgroundElements = document.querySelectorAll('header, main, footer');
+    const backgroundElements = document.querySelectorAll('body > nav, body > header, body > main, body > footer');
     backgroundElements.forEach((node) => {
       node.inert = active;
       if (active) {
@@ -321,7 +322,10 @@ export function createVideoModal(modalElement, { onSaveToggle } = {}) {
       return;
     }
 
-    const fallback = document.querySelector('#cardsGrid article button') || document.querySelector('#searchInput');
+    const previousLabel = previous?.getAttribute('aria-label');
+    const fallback = [...document.querySelectorAll('#cardsGrid button')].find(button =>
+      previousLabel ? button.getAttribute('aria-label') === previousLabel : button.textContent === previous?.textContent
+    ) || document.querySelector('#searchInput');
     fallback?.focus?.({ preventScroll: true });
   }
 
@@ -400,7 +404,6 @@ export function createVideoModal(modalElement, { onSaveToggle } = {}) {
     modalElement.classList.remove('hidden');
     modalElement.classList.add('flex', 'is-open');
     modalElement.setAttribute('aria-hidden', 'false');
-    setBackgroundInert(true);
     document.body.classList.add('modal-open');
     isOpen = true;
 
@@ -409,6 +412,7 @@ export function createVideoModal(modalElement, { onSaveToggle } = {}) {
     if (initialFocus instanceof HTMLElement) {
       initialFocus.focus();
     }
+    setBackgroundInert(true);
   }
 
   // Event Listeners

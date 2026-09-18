@@ -154,7 +154,12 @@ function updateResultsMeta() {
   if (state.filters.view === 'saved') scopeLabel = 'guardados';
   if (state.filters.view === 'recent') scopeLabel = 'vistos recientemente';
 
-  const baseText = `Mostrando ${showing} de ${total} ${scopeLabel}`;
+  const scopeTotal = state.filters.view === 'saved'
+    ? state.records.filter(r => getSavedVideos().includes(r.stableId || r.id)).length
+    : state.filters.view === 'recent'
+      ? state.records.filter(r => getRecentVideos().includes(r.stableId || r.id)).length
+      : total;
+  const baseText = `Mostrando ${showing} de ${scopeTotal} ${scopeLabel}`;
 
   if (state.missingColumns.length > 0) {
     elements.resultsMeta.textContent = `${baseText} (Columnas faltantes: ${state.missingColumns.join(', ')})`;
@@ -421,9 +426,8 @@ function bindEvents() {
 
   window.addEventListener('catalog-storage-updated', () => {
     updateBadgesAndTabState();
-    if (state.filters.view === 'recent' || state.filters.view === 'saved') {
-      renderCatalog();
-    }
+    // Sincronizar las tarjetas también cuando se guarda desde el reproductor.
+    renderCatalog();
   });
 }
 

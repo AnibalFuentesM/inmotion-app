@@ -1266,7 +1266,7 @@ function passStatus(pass) {
   const validUntilStr = pass.validUntil || `${pass.date}T23:59:59`;
   const validDate = new Date(validUntilStr);
   const now = new Date();
-  if (now > validDate) return 'expired';
+  if (Number.isNaN(validDate.getTime()) || now > validDate) return 'expired';
   return 'available';
 }
 
@@ -1315,17 +1315,31 @@ function generatePassCode() {
 }
 
 function passQrMarkup(pass) {
-  const opaqueRef = `INM-PASS-${pass.code || pass.id.replace(/^PASS-/, '')}`;
-  return `
-    <div class="pass-qr-frame" data-qr-ref="${escapeHtml(opaqueRef)}">
-      <svg viewBox="0 0 21 21" aria-label="Código QR individual: ${escapeHtml(opaqueRef)}" role="img" shape-rendering="crispEdges">
-        <rect width="21" height="21" fill="#ffffff"/>
-        ${qrPattern(opaqueRef).flatMap((row, y) => row.map((cell, x) => cell ? `<rect x="${x}" y="${y}" width="1" height="1" fill="#0b0b0c"/>` : '')).join('')}
-      </svg>
-      <span class="pass-qr-label">${escapeHtml(opaqueRef)}</span>
-      <span class="pass-qr-caption">Identificador visual opaco · Código único</span>
-    </div>
-  `;
+  return `<div class="pass-qr-frame"><strong>Validación por código</strong>
+    <p class="pass-qr-caption">QR escaneable pendiente. Presentá el código corto al personal.</p></div>`;
+}
+
+// Estas operaciones todavía no tienen persistencia compartida en Supabase.
+function allowPassAction(adminOnly = false) {
+  TODAY = new Date();
+  if (isSupabaseConnected) {
+    showToast('Función disponible en la demo', 'Los pases todavía no se sincronizan. No se registró ninguna operación.');
+    return false;
+  }
+  if (!(adminOnly ? activeRole === 'admin' : ['admin', 'teacher'].includes(activeRole))) {
+    showToast('Acceso restringido', 'Tu rol no puede realizar esta operación.');
+    return false;
+  }
+  return true;
+}
+
+function canUsePass(pass, pending = false) {
+  if (!pass || passStatus(pass) !== 'available' || pass.date !== dayKey(new Date()) ||
+      pass.paymentStatus !== (pending ? 'pending' : 'paid')) {
+    showToast('Pase no disponible', 'Revisá la fecha, el pago y el estado actual del pase.');
+    return false;
+  }
+  return true;
 }
 
 // El estado inicial se arma en cada llamada: construido una sola vez al cargar,
@@ -1586,7 +1600,7 @@ function sanitizeState(saved, isConnected = isSupabaseConnected) {
     seenPassIds.add(pass.id);
     singlePasses.push(pass);
   });
-  const usableSinglePasses = isConnected ? singlePasses : (singlePasses.length ? singlePasses : createBaseSinglePasses());
+  const usableSinglePasses = isConnected || Array.isArray(saved.singlePasses) ? singlePasses : createBaseSinglePasses();
 
   const total = dropped.students + dropped.payments + dropped.attendance;
   if (total) recoveryReport = { total, ...dropped };
@@ -3731,6 +3745,7 @@ function updatePassViews() {
 }
 
 function openCreatePassModal() {
+  if (!allowPassAction(true)) return;
   openModal({
     title: 'Crear nuevo pase',
     eyebrow: 'Pruebas y particulares · Emisión',
@@ -3788,7 +3803,7 @@ function openCreatePassModal() {
 
         <label class="field">
           <span>Importe acordado (Q) *</span>
-          <input type="number" name="amount" id="createPassAmount" value="60" min="1" step="1" readonly required />
+          <input type="number" name="amount" id="createPassAmount" value="60" min="0.01" step="0.01" readonly required />
           <span class="field-hint" id="createPassAmountHint">Precio fijado para clase de prueba: Q60.</span>
         </label>
 
@@ -3823,11 +3838,7 @@ function openCreatePassModal() {
           <label class="field" style="margin-top:12px">
             <span>Profesor asignado *</span>
             <select name="passTeacher" id="createPassTeacher">
-              <option value="Alex Aquino">Alex Aquino</option>
-              <option value="Luis Ramírez">Luis Ramírez</option>
-              <option value="Majo Borrayo">Majo Borrayo</option>
-              <option value="Sofía Castillo">Sofía Castillo</option>
-              <option value="Leo Méndez">Leo Méndez</option>
+              ${[...new Set(classData.map(c => c.teacher).filter(Boolean))].map(name => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`).join('')}
             </select>
           </label>
 
@@ -3870,6 +3881,11 @@ function openCreatePassModal() {
       </form>
     `
   });
+  updateCreatePassForm();
+  const form = document.querySelector('#createPassForm');
+  const selected = classData.find(c => c.id === form.elements.classOption.value);
+  if (selected) form.elements.passDate.value = dayKey(addDays(new Date(), (selected.weekday - new Date().getDay() + 7) % 7));
+  updateCreatePassForm();
 }
 
 function updateCreatePassForm() {
@@ -3898,10 +3914,13 @@ function updateCreatePassForm() {
       if (amountHint) amountHint.textContent = 'Precio fijado para clase de prueba: Q60.';
     } else {
       amountInput.readOnly = false;
-      if (amountInput.value === '60') amountInput.value = '150';
+      if (amountInput.dataset.previousType !== 'private') amountInput.value = '';
+      // El importe particular lo ingresa administración, sin precio sugerido.
       if (amountHint) amountHint.textContent = 'Ingresá el importe acordado para la clase particular (mayor a Q0).';
     }
   }
+
+  if (amountInput) amountInput.dataset.previousType = isTrial ? 'trial' : 'private';
 
   const isCustomClass = form.elements.classOption?.value === 'custom';
   const customFields = form.querySelector('#customSessionFields');
@@ -3934,6 +3953,7 @@ function updateCreatePassForm() {
 
 function handleCreatePassSubmit(event) {
   event.preventDefault();
+  if (!allowPassAction(true)) return;
   const form = event.target;
   const submitBtn = form.querySelector('#createPassSubmitBtn');
   if (submitBtn?.disabled) return;
@@ -3990,6 +4010,16 @@ function handleCreatePassSubmit(event) {
   } else {
     const regularClass = classData.find((c) => c.id === classOption);
     className = regularClass?.name || 'Clase regular';
+  }
+
+  const selectedClass = classData.find(c => c.id === classOption);
+  const selectedDate = new Date(`${date}T12:00:00`);
+  if (!isValidDayKey(date) || date < dayKey(new Date()) || !teacher ||
+      (classOption === 'custom' && passType !== 'private') ||
+      (classOption !== 'custom' && (!selectedClass || selectedDate.getDay() !== selectedClass.weekday))) {
+    submitBtn.disabled = false;
+    showToast('Revisá la programación', 'Elegí una fecha vigente que coincida con el día de la clase. Las sesiones personalizadas son para particulares.');
+    return;
   }
 
   const validUntil = `${date}T23:59:59`;
@@ -4147,6 +4177,7 @@ function openPassModal(passId) {
 }
 
 function openValidatePassModal(initialCode = null) {
+  if (!allowPassAction()) return;
   const query = initialCode ? String(initialCode).trim() : '';
   const foundPass = query ? passByCode(query) : null;
 
@@ -4386,6 +4417,7 @@ function handleValidatePassSearchSubmit(event) {
 
 function handleConfirmPassAttendanceSubmit(event) {
   event.preventDefault();
+  if (!allowPassAction(false)) return;
   const form = event.target;
   const submitBtn = form.querySelector('#confirmAttendanceBtn');
   if (submitBtn?.disabled) return;
@@ -4393,6 +4425,7 @@ function handleConfirmPassAttendanceSubmit(event) {
 
   const passId = form.elements.passId.value;
   const pass = passById(passId);
+  if (!canUsePass(pass)) return;
   if (!pass) {
     showToast('Pase no encontrado', 'El pase no existe o fue eliminado.');
     return;
@@ -4438,6 +4471,7 @@ function handleConfirmPassAttendanceSubmit(event) {
 
 function handleAuthPendingAttendanceSubmit(event) {
   event.preventDefault();
+  if (!allowPassAction(true)) return;
   const form = event.target;
   const submitBtn = form.querySelector('#authPendingSubmitBtn');
   if (submitBtn?.disabled) return;
@@ -4454,6 +4488,7 @@ function handleAuthPendingAttendanceSubmit(event) {
   }
 
   const pass = passById(passId);
+  if (!canUsePass(pass, true)) return;
   if (!pass) return;
 
   const nextState = structuredClone(state);
@@ -4479,6 +4514,7 @@ function handleAuthPendingAttendanceSubmit(event) {
 }
 
 function openCollectPassPaymentModal(passId) {
+  if (!allowPassAction(true)) return;
   const pass = passById(passId);
   if (!pass) return;
 
@@ -4524,6 +4560,7 @@ function openCollectPassPaymentModal(passId) {
 
 function handleCollectPassPaymentSubmit(event) {
   event.preventDefault();
+  if (!allowPassAction(true)) return;
   const form = event.target;
   const submitBtn = form.querySelector('#collectPassSubmitBtn');
   if (submitBtn?.disabled) return;
@@ -4534,6 +4571,7 @@ function handleCollectPassPaymentSubmit(event) {
   const reference = cleanText(form.elements.reference.value, 80);
 
   const pass = passById(passId);
+  if (!pass || pass.paymentStatus === 'paid' || pass.status === 'cancelled') { showToast('Cobro no disponible', 'El pase ya fue pagado, fue cancelado o no existe.'); return; }
   if (!pass) {
     showToast('Pase no encontrado', 'El pase no existe.');
     return;
@@ -4560,6 +4598,7 @@ function handleCollectPassPaymentSubmit(event) {
 }
 
 function openCancelPassModal(passId) {
+  if (!allowPassAction(true)) return;
   const pass = passById(passId);
   if (!pass) return;
 
@@ -4600,6 +4639,7 @@ function openCancelPassModal(passId) {
 
 function handleCancelPassSubmit(event) {
   event.preventDefault();
+  if (!allowPassAction(true)) return;
   const form = event.target;
   const submitBtn = form.querySelector('#cancelPassSubmitBtn');
   if (submitBtn?.disabled) return;
@@ -4614,6 +4654,7 @@ function handleCancelPassSubmit(event) {
   }
 
   const pass = passById(passId);
+  if (!pass || passStatus(pass) !== 'available') { showToast('No se puede cancelar', 'Solo se pueden cancelar pases disponibles.'); return; }
   if (!pass) return;
 
   const nextState = structuredClone(state);
