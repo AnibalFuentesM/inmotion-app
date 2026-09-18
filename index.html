@@ -93,7 +93,7 @@
     <!-- Filters Section -->
     <section class="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-md p-4 shadow-card sm:p-6"
       aria-label="Filtros">
-      <form id="filtersForm" class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
+      <form id="filtersForm" class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-6">
         <label class="sm:col-span-2 lg:col-span-3">
           <span class="mb-1.5 block text-xs font-bold uppercase tracking-[0.15em] text-slate-400">Buscar</span>
           <input id="searchInput" type="search" placeholder="Buscar por nombre, etiquetas, estilo o nivel"
@@ -114,6 +114,16 @@
           <select id="levelFilter"
             class="w-full rounded-xl border-white/10 bg-white/5 text-sm text-white shadow-sm focus:border-primary focus:ring-primary transition-all">
             <option value="all">Todos los niveles</option>
+          </select>
+        </label>
+
+        <label class="sm:col-span-2 lg:col-span-1">
+          <span class="mb-1.5 block text-xs font-bold uppercase tracking-[0.15em] text-slate-400">Orden</span>
+          <select id="sortOrder"
+            class="w-full rounded-xl border-white/10 bg-white/5 text-sm text-white shadow-sm focus:border-primary focus:ring-primary transition-all">
+            <option value="recent">Más recientes</option>
+            <option value="oldest">Más antiguos</option>
+            <option value="alpha">Nombre (A-Z)</option>
           </select>
         </label>
       </form>

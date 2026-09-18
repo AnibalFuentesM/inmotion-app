@@ -4,12 +4,13 @@ import { fetchSheetData } from './data-source.js';
 import { buildFilterState, applyFilters, getUniqueFieldValues } from './filters.js';
 import { renderVideoCards } from './ui-cards.js';
 import { createVideoModal } from './ui-modal.js';
-import { normalizeVideoRecords } from './video-model.js';
+import { normalizeVideoRecords, sortVideoRecords } from './video-model.js';
 
 const elements = {
   searchInput: document.querySelector('#searchInput'),
   styleFilter: document.querySelector('#styleFilter'),
   levelFilter: document.querySelector('#levelFilter'),
+  sortOrder: document.querySelector('#sortOrder'),
   clearFiltersBtn: document.querySelector('#clearFiltersBtn'),
   cardsGrid: document.querySelector('#cardsGrid'),
   resultsMeta: document.querySelector('#resultsMeta'),
@@ -28,7 +29,8 @@ const state = {
   records: [],
   filtered: [],
   missingColumns: [],
-  filters: buildFilterState()
+  filters: buildFilterState(),
+  sortOrder: 'recent'
 };
 
 const modal = createVideoModal(elements.videoModal);
@@ -114,7 +116,8 @@ function updateResultsMeta() {
 }
 
 function renderCatalog() {
-  state.filtered = applyFilters(state.records, state.filters);
+  const filtered = applyFilters(state.records, state.filters);
+  state.filtered = sortVideoRecords(filtered, state.sortOrder);
 
   hideError();
   hideEmptyState();
@@ -152,9 +155,13 @@ function renderCatalog() {
 
 function resetFilters() {
   state.filters = buildFilterState();
+  state.sortOrder = 'recent';
   elements.searchInput.value = '';
   elements.styleFilter.value = 'all';
   elements.levelFilter.value = 'all';
+  if (elements.sortOrder) {
+    elements.sortOrder.value = 'recent';
+  }
   renderCatalog();
 }
 
@@ -229,6 +236,12 @@ function bindEvents() {
   elements.levelFilter.addEventListener('change', (event) => {
     const target = /** @type {HTMLSelectElement} */ (event.target);
     state.filters.level = target.value;
+    renderCatalog();
+  });
+
+  elements.sortOrder?.addEventListener('change', (event) => {
+    const target = /** @type {HTMLSelectElement} */ (event.target);
+    state.sortOrder = target.value;
     renderCatalog();
   });
 

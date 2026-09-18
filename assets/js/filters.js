@@ -17,13 +17,24 @@ export function buildFilterState() {
 }
 
 /**
+ * @param {unknown} text
+ * @returns {string}
+ */
+export function normalizeSearchText(text) {
+  return String(text || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+}
+
+/**
  * @param {{ step_name: string; style: string; level: string; tags: string[] }} record
  * @returns {string}
  */
 function searchBlob(record) {
-  return [record.step_name, record.style, record.level, record.tags.join(' ')]
-    .join(' ')
-    .toLowerCase();
+  return normalizeSearchText(
+    [record.step_name, record.style, record.level, (record.tags || []).join(' ')].join(' ')
+  );
 }
 
 /**
@@ -33,7 +44,7 @@ function searchBlob(record) {
  */
 export function applyFilters(records, filterState) {
   const safeRecords = Array.isArray(records) ? records : [];
-  const searchText = String(filterState?.searchText || '').trim().toLowerCase();
+  const searchText = normalizeSearchText(filterState?.searchText).trim();
   const selectedStyle = String(filterState?.style || 'all').toLowerCase();
   const selectedLevel = String(filterState?.level || 'all').toLowerCase();
 

@@ -76,6 +76,7 @@
           <span class="role-arrow" aria-hidden="true">↗</span>
         </button>
       </div>
+      <button class="access-plan-link" type="button" data-enter-role="student" data-entry-route="planes">Encontrá tu plan <span aria-hidden="true">↗</span></button>
       <a class="catalog-link" href="../index.html">Abrir catálogo de videos <span aria-hidden="true">→</span></a>
     </div>
     <aside class="access-poster" aria-hidden="true">
@@ -85,13 +86,13 @@
   </section>
 
   <div class="app-shell is-hidden" id="appShell">
-    <aside class="sidebar">
+    <aside class="sidebar" id="sidebar" aria-label="Menú de la aplicación">
       <a href="#/inicio" class="brand" aria-label="In Motion, inicio">
         <img src="./assets/inmotion-logo.svg" alt="In Motion Dance Academy" />
       </a>
       <nav class="side-nav" id="sideNav" aria-label="Navegación principal"></nav>
       <div class="side-bottom">
-        <span class="demo-badge"><i></i> Modo demostración</span>
+        <span class="demo-badge"><i aria-hidden="true"></i> Modo demostración</span>
         <a href="../index.html" class="side-link">Catálogo de videos <span>↗</span></a>
         <button class="side-link" type="button" id="exitDemo">Cambiar acceso <span>↙</span></button>
         <button class="side-link" type="button" id="resetDemo">Reiniciar demo <span>⟲</span></button>
@@ -100,18 +101,18 @@
 
     <div class="workspace">
       <header class="topbar">
-        <button class="menu-button" type="button" id="menuButton" aria-label="Abrir menú" aria-expanded="false">
+        <button class="menu-button" type="button" id="menuButton" aria-label="Abrir menú" aria-expanded="false" aria-controls="sidebar">
           <span></span><span></span>
         </button>
-        <img class="topbar-logo" src="./assets/inmotion-logo.svg" alt="In Motion Dance Academy" />
+        <img class="topbar-logo" src="./assets/inmotion-logo.svg" alt="" />
         <div>
           <p class="topbar-kicker" id="topbarKicker">Portal de alumno</p>
           <p class="topbar-date" id="topbarDate"></p>
         </div>
         <div class="topbar-actions">
-          <label class="role-switcher">
+          <label class="role-switcher" for="roleSwitcher">
             <span class="sr-only">Cambiar rol de demostración</span>
-            <select id="roleSwitcher" aria-label="Cambiar rol de demostración">
+            <select id="roleSwitcher">
               <option value="student">Alumno · Valeria</option>
               <option value="teacher">Maestro · Alex</option>
               <option value="admin">Admin · Majo</option>
@@ -124,7 +125,7 @@
         </div>
       </header>
 
-      <main class="main-content" id="mainContent" tabindex="-1"></main>
+      <main class="main-content" id="mainContent" tabindex="-1" aria-labelledby="topbarKicker"></main>
     </div>
 
     <nav class="bottom-nav" id="bottomNav" aria-label="Navegación móvil"></nav>

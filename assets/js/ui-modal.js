@@ -147,14 +147,110 @@ function buildPlayer(videoUrl) {
 /**
  * @param {HTMLElement} modalElement
  */
+const FOCUSABLE_SELECTOR =
+  'iframe, a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+/**
+ * @param {HTMLElement} modalElement
+ */
 export function createVideoModal(modalElement) {
   const modalBody = modalElement.querySelector('#modalBody');
   const modalTitle = modalElement.querySelector('#modalTitle');
   const closeButton = modalElement.querySelector('[data-modal-close]');
   const backdrop = modalElement.querySelector('[data-modal-backdrop]');
 
+  if (!modalElement.hasAttribute('tabindex')) {
+    modalElement.setAttribute('tabindex', '-1');
+  }
+
   let isOpen = false;
   let lastFocusedElement = null;
+
+  /**
+   * @returns {HTMLElement[]}
+   */
+  function modalFocusables() {
+    return [...modalElement.querySelectorAll(FOCUSABLE_SELECTOR)]
+      .filter((node) => !node.hasAttribute('inert') && node.tabIndex >= 0 && node.getClientRects().length > 0);
+  }
+
+  /**
+   * @param {boolean} active
+   * @returns {void}
+   */
+  function setBackgroundInert(active) {
+    const backgroundElements = document.querySelectorAll('header, main, footer');
+    backgroundElements.forEach((node) => {
+      node.inert = active;
+      if (active) {
+        node.setAttribute('aria-hidden', 'true');
+      } else {
+        node.removeAttribute('aria-hidden');
+      }
+    });
+  }
+
+  /**
+   * @returns {void}
+   */
+  function restoreFocus() {
+    const previous = lastFocusedElement;
+    lastFocusedElement = null;
+
+    if (previous?.isConnected && typeof previous.focus === 'function' && !previous.disabled) {
+      previous.focus({ preventScroll: true });
+      return;
+    }
+
+    const fallback = document.querySelector('#cardsGrid button') || document.querySelector('#searchInput');
+    fallback?.focus?.({ preventScroll: true });
+  }
+
+  /**
+   * Redirige el foco al modal si algún evento externo (ej. salida de iframe) intenta llevarlo al documento padre.
+   * @param {FocusEvent} event
+   * @returns {void}
+   */
+  function handleFocusIn(event) {
+    if (!isOpen) {
+      return;
+    }
+
+    if (event.target && !modalElement.contains(/** @type {Node} */ (event.target))) {
+      event.preventDefault();
+      const targets = modalFocusables();
+      const target = targets[0] || closeButton || modalElement;
+      if (target instanceof HTMLElement) {
+        target.focus();
+      }
+    }
+  }
+
+  /**
+   * @param {KeyboardEvent} event
+   * @returns {void}
+   */
+  function trapModalTab(event) {
+    const targets = modalFocusables();
+    if (!targets.length) {
+      event.preventDefault();
+      modalElement.focus();
+      return;
+    }
+
+    const first = targets[0];
+    const last = targets[targets.length - 1];
+    const active = document.activeElement;
+    const outside = !modalElement.contains(active);
+
+    if (event.shiftKey && (outside || active === first)) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && (outside || active === last)) {
+      event.preventDefault();
+      first.focus();
+    }
+  }
 
   /**
    * @returns {void}
@@ -167,11 +263,12 @@ export function createVideoModal(modalElement) {
     isOpen = false;
     modalElement.classList.add('hidden');
     modalElement.classList.remove('flex', 'is-open');
+    modalElement.setAttribute('aria-hidden', 'true');
+    setBackgroundInert(false);
+    document.body.classList.remove('modal-open');
     modalBody.innerHTML = '';
 
-    if (lastFocusedElement instanceof HTMLElement) {
-      lastFocusedElement.focus();
-    }
+    restoreFocus();
   }
 
   /**
@@ -202,10 +299,15 @@ export function createVideoModal(modalElement) {
 
     modalElement.classList.remove('hidden');
     modalElement.classList.add('flex', 'is-open');
+    modalElement.setAttribute('aria-hidden', 'false');
+    setBackgroundInert(true);
+    document.body.classList.add('modal-open');
     isOpen = true;
 
-    if (closeButton instanceof HTMLElement) {
-      closeButton.focus();
+    const firstInBody = modalBody.querySelector(FOCUSABLE_SELECTOR);
+    const initialFocus = firstInBody || closeButton || modalElement;
+    if (initialFocus instanceof HTMLElement) {
+      initialFocus.focus();
     }
   }
 
@@ -219,10 +321,18 @@ export function createVideoModal(modalElement) {
   });
 
   document.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape') {
+    if (!isOpen) {
+      return;
+    }
+
+    if (event.key === 'Tab') {
+      trapModalTab(event);
+    } else if (event.key === 'Escape') {
       close();
     }
   });
+
+  document.addEventListener('focusin', handleFocusIn);
 
   return { open, close, isOpen: () => isOpen };
 }

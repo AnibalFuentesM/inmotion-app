@@ -20,6 +20,7 @@ const roleConfig = {
     routes: [
       ['inicio', 'Inicio', 'home'],
       ['clases', 'Clases', 'calendar'],
+      ['planes', 'Planes', 'money'],
       ['carnet', 'Carnet QR', 'card']
     ]
   },
@@ -47,19 +48,280 @@ const roleConfig = {
     initials: 'CR',
     routes: [
       ['inicio', 'Inicio', 'home'],
-      ['carnet', 'Carnés', 'card']
+      ['carnet', 'Carnés', 'card'],
+      ['planes', 'Planes', 'money']
     ]
   }
 };
 
 const classData = [
-  { id: 'bachata-inter', weekday: 3, time: '6:00 PM', name: 'Bachata Intermedio', level: 'Nivel intermedio', teacher: 'Alex Aquino', room: 'Salón 2', enrolled: 14, capacity: 18 },
-  { id: 'salsa-basico', weekday: 3, time: '7:15 PM', name: 'Salsa Principiantes', level: 'Nivel inicial', teacher: 'Luis Ramírez', room: 'Salón 1', enrolled: 9, capacity: 20 },
-  { id: 'kpop-teens', weekday: 4, time: '5:00 PM', name: 'K-Pop Teens', level: '12 a 17 años', teacher: 'Majo Borrayo', room: 'Salón 1', enrolled: 18, capacity: 18 },
-  { id: 'latino', weekday: 4, time: '7:00 PM', name: 'Baile Latino', level: 'Todos los niveles', teacher: 'Alex Aquino', room: 'Salón 2', enrolled: 12, capacity: 20 },
-  { id: 'latino-kids', weekday: 6, time: '10:00 AM', name: 'Baile Latino Kids', level: '7 a 11 años', teacher: 'Sofía Castillo', room: 'Salón 1', enrolled: 7, capacity: 12 },
-  { id: 'salsa-on2', weekday: 6, time: '11:30 AM', name: 'Salsa On2', level: 'Nivel avanzado', teacher: 'Leo Méndez', room: 'Salón 2', enrolled: 10, capacity: 14 }
+  { id: 'bachata-inter', weekday: 3, time: '6:00 PM', name: 'Bachata Intermedio', level: 'Nivel intermedio', teacher: 'Alex Aquino', room: 'Salón', enrolled: 14, capacity: 18 },
+  { id: 'salsa-basico', weekday: 3, time: '7:15 PM', name: 'Salsa Principiantes', level: 'Nivel inicial', teacher: 'Luis Ramírez', room: 'Salón', enrolled: 9, capacity: 20 },
+  { id: 'kpop-teens', weekday: 4, time: '5:00 PM', name: 'K-Pop Teens', level: '12 a 17 años', teacher: 'Majo Borrayo', room: 'Salón', enrolled: 18, capacity: 18 },
+  { id: 'latino', weekday: 4, time: '7:00 PM', name: 'Baile Latino', level: 'Todos los niveles', teacher: 'Alex Aquino', room: 'Salón', enrolled: 12, capacity: 20 },
+  { id: 'latino-kids', weekday: 6, time: '10:00 AM', name: 'Baile Latino Kids', level: '7 a 11 años', teacher: 'Sofía Castillo', room: 'Salón', enrolled: 7, capacity: 12 },
+  { id: 'salsa-on2', weekday: 6, time: '11:30 AM', name: 'Salsa On2', level: 'Nivel avanzado', teacher: 'Leo Méndez', room: 'Salón', enrolled: 10, capacity: 14 }
 ];
+
+// ---------------------------------------------------------------------------
+// Horario semanal, pases y tarifas del Comparador de Planes (SelectorPlanes)
+//
+// SUPUESTOS DE LA SIMULACION, NO CONDICIONES DE LA ACADEMIA.
+// Las cifras de pases y los cargos de apertura salen de un video de referencia
+// y no estan confirmadas con In Motion. Las reglas derivadas -un Dancer Pass por
+// track, Night Pass para lunes a jueves, Weekend Pass por dia de fin de semana,
+// parqueo de Q 15 entre semana y Q 20 el fin de semana, y el parqueo incluido
+// del Full In Motion- las armo la demo para poder comparar; nadie las aprobo.
+// Mientras sigan sin confirmarse, la interfaz las presenta como supuestos.
+// ---------------------------------------------------------------------------
+const SCHEDULE_FEES = {
+  registration: 150,
+  membership: 125,
+};
+
+const PASS_PLANS = {
+  dancer: { id: 'dancer', name: 'Dancer Pass', price: 395 },
+  night: { id: 'night', name: 'Night Pass', price: 595 },
+  weekend: { id: 'weekend', name: 'Weekend Pass', price: 300 },
+  teens: { id: 'teens', name: 'Teens In Motion', price: 495 },
+  full: { id: 'full', name: 'Full In Motion', price: 750 },
+};
+
+const SCHEDULE_DAYS = [
+  { id: 'lunes', label: 'Lunes', type: 'weekday' },
+  { id: 'martes', label: 'Martes', type: 'weekday' },
+  { id: 'miercoles', label: 'Miércoles', type: 'weekday' },
+  { id: 'jueves', label: 'Jueves', type: 'weekday' },
+  { id: 'sabado', label: 'Sábado', type: 'weekend' },
+  { id: 'domingo', label: 'Domingo', type: 'weekend' }
+];
+
+const SCHEDULE_TIME_SLOTS = [
+  { id: '9am', label: '9 a 10 am' },
+  { id: '10am', label: '10 a 11 am' },
+  { id: '11am', label: '11 am a 12 pm' },
+  { id: '4pm', label: '4:00 a 5:30 pm' },
+  { id: '6pm', label: '6:00 pm' },
+  { id: '7pm', label: '7:00 pm' },
+  { id: '8pm', label: '8:00 pm' }
+];
+
+const SCHEDULE_TRACKS = {
+  latinOpen: 'Latin Dance Nivel Abierto',
+  level1: 'Nivel 1 Salsa y Bachata',
+  level2: 'Nivel 2 Salsa y Bachata',
+  urbano: 'Urbano',
+  level4: 'Nivel 4 Salsa y Bachata',
+  level3: 'Nivel 3 Salsa y Bachata',
+  salsaCubana: 'Salsa Cubana',
+  salsaOn2: 'Salsa On2',
+  teens: 'Teens',
+  kpop: 'K-Pop'
+};
+
+const SCHEDULE_COLORS = {
+  latinOpen: '#686d72',
+  level1: '#e20c14',
+  level2: '#d97706',
+  urbano: '#16a34a',
+  level4: '#ea580c',
+  level3: '#2563eb',
+  teens: '#db2777',
+  salsaCubana: '#0891b2',
+  kpop: '#059669',
+  salsaOn2: '#7c3aed'
+};
+
+const SCHEDULE_CLASSES = [
+  { id: 'latin-mon', day: 'lunes', slot: '6pm', time: '6:00 pm', name: 'Latin Dance Nivel Abierto', track: 'latinOpen', category: 'weekday', color: SCHEDULE_COLORS.latinOpen },
+  { id: 'level1-mon', day: 'lunes', slot: '7pm', time: '7:00 pm', name: 'Nivel 1 Básico Salsa y Bachata', track: 'level1', category: 'weekday', color: SCHEDULE_COLORS.level1 },
+  { id: 'level2-mon', day: 'lunes', slot: '8pm', time: '8:00 pm', name: 'Nivel 2 Principiante Salsa y Bachata', track: 'level2', category: 'weekday', color: SCHEDULE_COLORS.level2 },
+  { id: 'urbano-tue', day: 'martes', slot: '6pm', time: '6:00 pm', name: 'Urbano', track: 'urbano', category: 'weekday', color: SCHEDULE_COLORS.urbano },
+  { id: 'level4-tue', day: 'martes', slot: '7pm', time: '7:00 pm', name: 'Nivel 4 Intermedio Salsa y Bachata', track: 'level4', category: 'weekday', color: SCHEDULE_COLORS.level4 },
+  { id: 'level3-tue', day: 'martes', slot: '8pm', time: '8:00 pm', name: 'Nivel 3 Prin / Inter Salsa y Bachata', track: 'level3', category: 'weekday', color: SCHEDULE_COLORS.level3 },
+  { id: 'latin-wed', day: 'miercoles', slot: '6pm', time: '6:00 pm', name: 'Latin Dance Nivel Abierto', track: 'latinOpen', category: 'weekday', color: SCHEDULE_COLORS.latinOpen },
+  { id: 'level1-wed', day: 'miercoles', slot: '7pm', time: '7:00 pm', name: 'Nivel 1 Básico Salsa y Bachata', track: 'level1', category: 'weekday', color: SCHEDULE_COLORS.level1 },
+  { id: 'level2-wed', day: 'miercoles', slot: '8pm', time: '8:00 pm', name: 'Nivel 2 Principiante Salsa y Bachata', track: 'level2', category: 'weekday', color: SCHEDULE_COLORS.level2 },
+  { id: 'urbano-thu', day: 'jueves', slot: '6pm', time: '6:00 pm', name: 'Urbano', track: 'urbano', category: 'weekday', color: SCHEDULE_COLORS.urbano },
+  { id: 'level4-thu', day: 'jueves', slot: '7pm', time: '7:00 pm', name: 'Nivel 4 Intermedio Salsa y Bachata', track: 'level4', category: 'weekday', color: SCHEDULE_COLORS.level4 },
+  { id: 'level3-thu', day: 'jueves', slot: '8pm', time: '8:00 pm', name: 'Nivel 3 Prin / Inter Salsa y Bachata', track: 'level3', category: 'weekday', color: SCHEDULE_COLORS.level3 },
+  { id: 'teens-urbano-sat', day: 'sabado', slot: '9am', time: '9:00 a 10:00 am', name: 'Urbano Teens', track: 'teens', category: 'teen', color: SCHEDULE_COLORS.teens },
+  { id: 'teens-kpop-sat', day: 'sabado', slot: '10am', time: '10:00 a 11:00 am', name: 'K-Pop Teens', track: 'teens', category: 'teen', color: SCHEDULE_COLORS.teens },
+  { id: 'teens-latino-sat', day: 'sabado', slot: '11am', time: '11:00 am a 12:00 pm', name: 'Latino Teens', track: 'teens', category: 'teen', color: SCHEDULE_COLORS.teens },
+  { id: 'cubana-sat', day: 'sabado', slot: '4pm', time: '4:00 a 5:30 pm', name: 'Salsa Cubana (Rueda de Casino)', track: 'salsaCubana', category: 'weekend', color: SCHEDULE_COLORS.salsaCubana },
+  { id: 'kpop-sun', day: 'domingo', slot: '10am', time: '10:00 a 11:00 am', name: 'K-Pop', track: 'kpop', category: 'weekend', color: SCHEDULE_COLORS.kpop },
+  { id: 'on2-sun', day: 'domingo', slot: '4pm', time: '4:00 a 5:30 pm', name: 'Salsa On2', track: 'salsaOn2', category: 'weekend', color: SCHEDULE_COLORS.salsaOn2 }
+];
+
+
+// ---------------------------------------------------------------------------
+// Definicion unica de los planes. De aca salen el comparador, la cuota que se
+// sugiere al registrar un pago, el carnet y el cupo de clases del mes: antes
+// cada pantalla llevaba su propia copia de los importes y del numero de clases.
+// Importes ficticios de demostracion.
+// ---------------------------------------------------------------------------
+const membershipPlans = [
+  {
+    id: 'four',
+    planName: 'Plan 4 clases',
+    name: '4 clases',
+    price: 300,
+    monthlyClasses: 4,
+    unlimited: false,
+    weeklyRhythm: 1,
+    subtitle: 'Tu primer paso',
+    description: 'Un espacio semanal para empezar y disfrutar.'
+  },
+  {
+    id: 'eight',
+    planName: 'Plan 8 clases',
+    name: '8 clases',
+    price: 450,
+    monthlyClasses: 8,
+    unlimited: false,
+    weeklyRhythm: 2,
+    subtitle: 'Encontrá tu ritmo',
+    description: 'Más práctica para avanzar con constancia.'
+  },
+  {
+    id: 'unlimited',
+    planName: 'Plan ilimitado',
+    name: 'Ilimitado',
+    price: 625,
+    // Sin cupo mensual: se representa con null, nunca con Infinity, para que
+    // ninguna pantalla muestre "Infinity" ni calcule un saldo negativo.
+    monthlyClasses: null,
+    unlimited: true,
+    weeklyRhythm: 3,
+    subtitle: 'Todo tu movimiento',
+    description: 'Para hacer del baile parte de tu semana.'
+  },
+  {
+    id: 'dancer',
+    planName: 'Dancer Pass',
+    name: 'Dancer Pass',
+    price: 395,
+    monthlyClasses: null,
+    unlimited: true,
+    weeklyRhythm: 2,
+    subtitle: 'Tu disciplina favorita',
+    description: 'Acceso al track de baile seleccionado entre semana.'
+  },
+  {
+    id: 'night',
+    planName: 'Night Pass',
+    name: 'Night Pass',
+    price: 595,
+    monthlyClasses: null,
+    unlimited: true,
+    weeklyRhythm: 3,
+    subtitle: 'Noches entre semana',
+    description: 'Acceso a todas las clases de lunes a jueves en la noche.'
+  },
+  {
+    id: 'weekend',
+    planName: 'Weekend Pass',
+    name: 'Weekend Pass',
+    price: 300,
+    monthlyClasses: null,
+    unlimited: true,
+    weeklyRhythm: 1,
+    subtitle: 'Fin de semana',
+    description: 'Acceso a clases de fin de semana (sábado o domingo).'
+  },
+  {
+    id: 'teens',
+    planName: 'Teens In Motion',
+    name: 'Teens In Motion',
+    price: 495,
+    monthlyClasses: null,
+    unlimited: true,
+    weeklyRhythm: 1,
+    subtitle: 'Sábados Teens',
+    description: 'Acceso a las clases juveniles Teens de los sábados.'
+  },
+  {
+    id: 'full',
+    planName: 'Full In Motion',
+    name: 'Full In Motion',
+    price: 750,
+    monthlyClasses: null,
+    unlimited: true,
+    weeklyRhythm: 4,
+    subtitle: 'Pase ilimitado total',
+    description: 'Acceso ilimitado a todos los horarios con parqueo incluido hasta 3 horas.'
+  }
+];
+
+const DEFAULT_PLAN = membershipPlans[1];
+const PLAN_NAMES = membershipPlans.map((plan) => plan.planName);
+
+function formatAmount(value) {
+  return Number(value).toLocaleString('es-GT', { maximumFractionDigits: 2 });
+}
+
+function planByName(name) {
+  if (!name) return DEFAULT_PLAN;
+  const clean = String(name).trim().toLowerCase();
+  const match = membershipPlans.find((plan) =>
+    plan.planName.toLowerCase() === clean ||
+    plan.name.toLowerCase() === clean ||
+    plan.id.toLowerCase() === clean
+  );
+  if (match) return match;
+  // Un plan que no esta en el catalogo NO se convierte al predeterminado ni se le
+  // deduce precio, cupo o equivalencia: se conserva tal como quedo guardado y se
+  // marca para revision. Antes, un titulo combinado del comparador se resolvia
+  // como un plan inventado de Q 695 que nadie aprobo.
+  return unknownPlan(name);
+}
+
+function unknownPlan(name) {
+  return {
+    id: null,
+    planName: String(name),
+    name: String(name),
+    price: null,
+    monthlyClasses: null,
+    unlimited: false,
+    weeklyRhythm: null,
+    subtitle: 'Plan fuera del catálogo',
+    description: 'Este plan no figura en el catálogo de la demo. Se conserva tal como fue guardado y necesita revisión antes de cobrarlo o asignarle cupos.',
+    needsReview: true
+  };
+}
+
+// Un importe que la demo no puede derivar se dice; no se rellena con un numero.
+function priceText(value) {
+  return Number.isFinite(value) ? `Q ${formatAmount(value)}` : 'Por confirmar';
+}
+
+
+function planRhythmText(plan) {
+  if (plan.needsReview) return 'Frecuencia semanal por confirmar';
+  if (plan.unlimited) return `${plan.weeklyRhythm} o más clases por semana`;
+  return `${plan.weeklyRhythm} clase${plan.weeklyRhythm === 1 ? '' : 's'} por semana`;
+}
+
+function planAllowanceText(plan) {
+  if (plan.needsReview) return 'Cupo mensual por confirmar';
+  return plan.unlimited ? 'Asistencia sin límite mensual' : `${plan.monthlyClasses} clases al mes`;
+}
+
+function planUnitText(plan) {
+  if (plan.needsReview) return 'Importe por clase por confirmar';
+  if (plan.unlimited) return 'Sin límite de clases en el plan demo';
+  return `Q ${formatAmount(plan.price / plan.monthlyClasses)} por clase`;
+}
+
+// Etiqueta corta para senalar en pantalla un plan que quedo fuera del catalogo.
+function planReviewTag(plan) {
+  return plan.needsReview ? ' <span class="tag">Revisar plan</span>' : '';
+}
+
+function recommendedPlanFor(frequency) {
+  return membershipPlans.find((plan) => plan.weeklyRhythm === frequency) || membershipPlans[membershipPlans.length - 1];
+}
 
 function startOfDay(date) {
   const copy = new Date(date);
@@ -173,9 +435,16 @@ function nextMonthDate() {
   return new Date(TODAY.getFullYear(), TODAY.getMonth() + 1, 1);
 }
 
+// Solo los correlativos con forma P-<numero> entran en la cuenta: un id de
+// recuperacion como P-2026-09-IM-0241 disparaba el correlativo a millones.
 function nextPaymentId() {
-  const highest = state.payments.reduce((acc, item) => Math.max(acc, Number(String(item.id).replace(/\D/g, '')) || 0), 1000);
-  return `P-${highest + 1}`;
+  const highest = state.payments.reduce((acc, item) => {
+    const match = /^P-(\d+)$/.exec(String(item.id));
+    return match ? Math.max(acc, Number(match[1])) : acc;
+  }, 1000);
+  let number = highest + 1;
+  while (state.payments.some((item) => item.id === `P-${number}`)) number += 1;
+  return `P-${number}`;
 }
 
 function nextStudentId() {
@@ -183,6 +452,8 @@ function nextStudentId() {
   return `IM-${String(highest + 1).padStart(4, '0')}`;
 }
 
+// Cifras de referencia del calendario (academia de 50 alumnos), distintas de la
+// lista de la sesion, que sale de las inscripciones demo.
 function capacityText(item) {
   return `${item.enrolled} / ${item.capacity}`;
 }
@@ -210,10 +481,10 @@ function pastDayLabel(date) {
   return `${WEEKDAY_SHORT[date.getDay()]} ${shortDate(date)}`;
 }
 
-function membershipValidity() {
-  const last = new Date(TODAY.getFullYear(), TODAY.getMonth() + 1, 0);
-  const month = new Intl.DateTimeFormat('es-GT', { month: 'short' }).format(last).replace('.', '');
-  return `${last.getDate()} · ${month.toUpperCase()} · ${last.getFullYear()}`;
+// El periodo de la mensualidad que se consulta hoy. No es la vigencia del
+// carne: el carne no vence.
+function currentPeriodLabel() {
+  return monthLabel(TODAY);
 }
 
 function studentById(studentId) {
@@ -270,8 +541,31 @@ function studentPaymentStatus(studentId) {
   return monthlyPaymentFor(studentId)?.status === 'Pagado' ? 'Al día' : 'Sin registro';
 }
 
+function planForStudent(studentId) {
+  return planByName(studentById(studentId)?.plan) || DEFAULT_PLAN;
+}
+
 function planAmount(studentId) {
-  return ({ 'Plan 4 clases': 300, 'Plan 8 clases': 450, 'Plan ilimitado': 625 })[studentById(studentId)?.plan] || 450;
+  return planForStudent(studentId).price;
+}
+
+// Cupo del mes segun el plan real del alumno.
+// null = sin limite. undefined = plan fuera del catalogo, cupo desconocido:
+// no se asume ilimitado, que seria regalar clases que nadie autorizo.
+function monthlyAllowanceFor(studentId) {
+  const plan = planForStudent(studentId);
+  if (plan.needsReview) return undefined;
+  return plan.unlimited ? null : plan.monthlyClasses;
+}
+
+function attendedThisMonth(studentId) {
+  return state.attendanceLog.filter((entry) => entry.studentId === studentId && entry.at.startsWith(monthKey(TODAY))).length;
+}
+
+// La lista de una sesion son los alumnos inscritos en esa clase, no un padron
+// fijo: asi coincide con lo que se puede marcar y con lo que se guarda.
+function rosterFor(classId) {
+  return state.students.filter((student) => (student.classIds || []).includes(classId));
 }
 
 function currentGuardian() {
@@ -286,17 +580,88 @@ function attendanceFor(classId, date = TODAY) {
   return state.attendanceLog.filter((entry) => entry.classId === classId && entry.at === dayKey(date)).map((entry) => entry.studentId);
 }
 
+// Aca vivian bookClass, cancelBooking y updateStudentPlan. Se retiraron porque
+// escribian sobre datos que no les correspondian:
+// - Reservar y liberar movian classIds, que es la inscripcion permanente del
+//   alumno, no una reserva por sesion. Un alumno "liberando su lugar" se
+//   desinscribia de la clase y desaparecia de la lista del maestro.
+// - Elegir un plan desde el comparador guardaba en el alumno el titulo
+//   combinado de la sugerencia, que no es un plan del catalogo.
+// La inscripcion se administra desde administracion; el comparador consulta.
+
+function exportTableToCsv(type) {
+  let csvContent = '';
+  let filename = '';
+
+  if (type === 'students') {
+    filename = `inmotion_alumnos_${dayKey(TODAY)}.csv`;
+    const headers = ['ID', 'Nombre', 'Plan', 'Nivel', 'Telefono', 'Tutor', 'Estado'];
+    const rows = state.students.map((s) => [
+      s.id,
+      `"${(s.name || '').replace(/"/g, '""')}"`,
+      `"${(planForStudent(s.id).planName || '').replace(/"/g, '""')}"`,
+      `"${(s.level || '').replace(/"/g, '""')}"`,
+      `"${s.phone || ''}"`,
+      `"${s.guardianName || ''}"`,
+      `"${studentPaymentStatus(s.id)}"`
+    ]);
+    csvContent = [headers.join(','), ...rows.map((r) => r.join(','))].join('\r\n');
+  } else if (type === 'payments') {
+    filename = `inmotion_pagos_${dayKey(TODAY)}.csv`;
+    const headers = ['ID', 'ID Alumno', 'Alumno', 'Periodo', 'Monto', 'Metodo', 'Estado', 'Fecha Pago'];
+    const rows = state.payments.map((p) => {
+      const student = studentById(p.studentId);
+      return [
+        p.id,
+        p.studentId,
+        `"${(student?.name || '').replace(/"/g, '""')}"`,
+        p.period,
+        p.amount,
+        `"${p.method || ''}"`,
+        `"${paymentStatus(p)}"`,
+        p.paidAt || ''
+      ];
+    });
+    csvContent = [headers.join(','), ...rows.map((r) => r.join(','))].join('\r\n');
+  }
+
+  if (!csvContent) return;
+
+  const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.setAttribute('href', url);
+  link.setAttribute('download', filename);
+  link.style.display = 'none';
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+
+  showToast('Descarga lista', `Se generó el archivo ${filename}.`);
+}
+
+
 // Una unica bitacora identifica cada sesion por clase y fecha local.
-function recordAttendance(classId, studentIds, sessionDate, { replaceDay = false } = {}) {
+function recordAttendance(classId, studentIds, sessionDate, { replaceDay = false, scope = null } = {}) {
   TODAY = new Date();
   const item = classData.find((entry) => entry.id === classId);
   if (!item || sessionDate !== dayKey(TODAY) || item.weekday !== TODAY.getDay()) {
     throw new Error('Solo podés registrar una clase programada para hoy. Volvé a abrir la sesión.');
   }
   if (studentIds.some((studentId) => !studentById(studentId))) throw new Error('Alumno no encontrado.');
+  // La sesion valida la inscripcion: evita marcaciones cruzadas entre clases.
+  if (studentIds.some((studentId) => !(studentById(studentId).classIds || []).includes(classId))) {
+    throw new Error('Solo se puede marcar a alumnos inscritos en esta clase.');
+  }
   const sameSession = (entry) => entry.classId === classId && entry.at === sessionDate;
   const nextState = structuredClone(state);
-  if (replaceDay) nextState.attendanceLog = nextState.attendanceLog.filter((entry) => !sameSession(entry));
+  if (replaceDay) {
+    // Con scope, solo se reescriben los alumnos que la lista podia marcar: un
+    // alumno retirado de la clase conserva su asistencia ya registrada.
+    const inScope = (entry) => !scope || scope.includes(entry.studentId);
+    nextState.attendanceLog = nextState.attendanceLog.filter((entry) => !(sameSession(entry) && inScope(entry)));
+  }
   studentIds.forEach((studentId) => {
     if (nextState.attendanceLog.some((entry) => sameSession(entry) && entry.studentId === studentId)) return;
     nextState.attendanceLog.push({ studentId, classId, at: sessionDate });
@@ -305,10 +670,13 @@ function recordAttendance(classId, studentIds, sessionDate, { replaceDay = false
 }
 
 const GUARDIAN_ID = 'TU-0031';
+// La demo entra siempre con la misma alumna: antes su carnet estaba escrito a
+// mano en cinco pantallas y cualquier cambio de plan las dejaba en desacuerdo.
+const DEMO_STUDENT_ID = 'IM-0241';
 
 // classIds es la inscripcion real del alumno: sin ella no se puede saber cual es
 // la proxima clase de un hijo, solo la proxima clase de la academia.
-const baseStudents = [
+const baseStudentSeed = [
   { id: 'IM-0241', name: 'Valeria Ruiz', initials: 'VR', plan: 'Plan 8 clases', phone: '5555-0142', status: 'Pendiente', level: 'Nivel intermedio', classIds: ['bachata-inter', 'kpop-teens'], guardianId: GUARDIAN_ID },
   { id: 'IM-0262', name: 'Diego Ruiz', initials: 'DR', plan: 'Plan 4 clases', phone: '5555-0177', status: 'Al día', level: '7 a 11 años', classIds: ['latino-kids'], guardianId: GUARDIAN_ID },
   { id: 'IM-0218', name: 'Luis Méndez', initials: 'LM', plan: 'Plan ilimitado', phone: '5555-0188', status: 'Al día', level: 'Nivel avanzado', classIds: ['salsa-on2', 'bachata-inter'] },
@@ -318,47 +686,65 @@ const baseStudents = [
   { id: 'IM-0229', name: 'María Fernanda León', initials: 'ML', plan: 'Plan 8 clases', phone: '5555-0134', status: 'Al día', level: 'Nivel inicial', classIds: ['salsa-basico', 'latino'] }
 ];
 
+function createBaseStudents() {
+  return structuredClone(baseStudentSeed);
+}
+
 // Los tutores no se editan desde la app: solo se consultan.
 const guardians = [
   { id: GUARDIAN_ID, name: 'Carmen Ruiz', initials: 'CR', phone: '5555-0177', childrenIds: ['IM-0241', 'IM-0262'], consentSignedAt: dayKey(addDays(TODAY, -35)) }
 ];
 
-const basePayments = [
-  { id: 'P-1044', studentId: 'IM-0241', student: 'Valeria Ruiz', month: monthLabel(TODAY), amount: 450, method: 'Pendiente', date: `Vence ${shortDate(addDays(TODAY, 2))}`, status: 'Pendiente' },
-  { id: 'P-1043', studentId: 'IM-0218', student: 'Luis Méndez', month: monthLabel(TODAY), amount: 625, method: 'POS', date: shortDate(addDays(TODAY, -1)), status: 'Pagado' },
-  { id: 'P-1042', studentId: 'IM-0194', student: 'Andrea Pérez', month: monthLabel(TODAY), amount: 450, method: 'Transferencia', date: shortDate(addDays(TODAY, -3)), status: 'Pagado' },
-  { id: 'P-1041', studentId: 'IM-0250', student: 'Santiago Cruz', month: monthLabel(TODAY), amount: 300, method: 'Pendiente', date: `Venció ${shortDate(addDays(TODAY, -6))}`, status: 'En mora' },
-  { id: 'P-1040', studentId: 'IM-0207', student: 'Camila Soto', month: monthLabel(TODAY), amount: 625, method: 'Efectivo', date: shortDate(addDays(TODAY, -8)), status: 'Pagado' },
-  { id: 'P-1039', studentId: 'IM-0262', student: 'Diego Ruiz', month: monthLabel(TODAY), amount: 300, method: 'Efectivo', date: shortDate(addDays(TODAY, -9)), status: 'Pagado' }
-].map((payment, index) => ({
-  ...payment,
-  period: monthKey(TODAY),
-  dueDate: payment.status === 'Pagado' ? null : dayKey(addDays(TODAY, index === 0 ? 2 : -6)),
-  paidAt: payment.status === 'Pagado' ? dayKey(addDays(TODAY, [0, -1, -3, 0, -8, -9][index])) : null
-}));
+// El monto de cada mensualidad demo sale del plan del alumno, no de una cifra
+// suelta: si un plan cambia de precio, el padron de pagos lo sigue.
+function createBasePayments() {
+  const rows = [
+    { id: 'P-1044', studentId: 'IM-0241', method: 'Pendiente', paid: false, offset: 2 },
+    { id: 'P-1043', studentId: 'IM-0218', method: 'POS', paid: true, offset: -1 },
+    { id: 'P-1042', studentId: 'IM-0194', method: 'Transferencia', paid: true, offset: -3 },
+    { id: 'P-1041', studentId: 'IM-0250', method: 'Pendiente', paid: false, offset: -6 },
+    { id: 'P-1040', studentId: 'IM-0207', method: 'Efectivo', paid: true, offset: -8 },
+    { id: 'P-1039', studentId: 'IM-0262', method: 'Efectivo', paid: true, offset: -9 }
+  ];
+  return rows.map((row) => {
+    const seed = baseStudentSeed.find((item) => item.id === row.studentId);
+    const date = addDays(TODAY, row.offset);
+    return {
+      id: row.id,
+      studentId: row.studentId,
+      student: seed?.name || row.studentId,
+      month: monthLabel(TODAY),
+      period: monthKey(TODAY),
+      amount: (planByName(seed?.plan) || DEFAULT_PLAN).price,
+      method: row.method,
+      date: row.paid ? shortDate(date) : `${row.offset < 0 ? 'Venció' : 'Vence'} ${shortDate(date)}`,
+      // El estado guardado solo distingue pagado / pendiente, igual que lo que
+      // acepta sanitizePayment; la mora se deduce de la fecha de vencimiento.
+      status: row.paid ? 'Pagado' : 'Pendiente',
+      paidAt: row.paid ? dayKey(date) : null,
+      dueDate: row.paid ? null : dayKey(date),
+      reference: ''
+    };
+  });
+}
 
-const roster = [
-  { id: 'IM-0241', name: 'Valeria Ruiz', initials: 'VR', plan: '8 clases' },
-  { id: 'IM-0218', name: 'Luis Méndez', initials: 'LM', plan: 'Ilimitado' },
-  { id: 'IM-0194', name: 'Andrea Pérez', initials: 'AP', plan: '8 clases' },
-  { id: 'IM-0250', name: 'Santiago Cruz', initials: 'SC', plan: '4 clases' },
-  { id: 'IM-0207', name: 'Camila Soto', initials: 'CS', plan: 'Ilimitado' },
-  { id: 'IM-0229', name: 'María Fernanda León', initials: 'ML', plan: '8 clases' }
-];
-
-const defaultState = {
-  role: null,
-  students: baseStudents,
-  payments: basePayments,
-  // La bitacora es la fuente de la lista diaria y de la consulta de cada alumno.
-  attendanceLog: [
-    { studentId: 'IM-0241', classId: 'bachata-inter', at: dayKey(previousDateFor(3)) },
-    { studentId: 'IM-0218', classId: 'bachata-inter', at: dayKey(previousDateFor(3)) },
-    { studentId: 'IM-0194', classId: 'bachata-inter', at: dayKey(previousDateFor(3)) },
-    { studentId: 'IM-0241', classId: 'kpop-teens', at: dayKey(previousDateFor(4)) },
-    { studentId: 'IM-0262', classId: 'latino-kids', at: dayKey(previousDateFor(6)) }
-  ]
-};
+// El estado inicial se arma en cada llamada: construido una sola vez al cargar,
+// una pestaña abierta desde el mes pasado reiniciaba la demo con fechas viejas.
+function createDefaultState() {
+  return {
+    role: null,
+    students: createBaseStudents(),
+    payments: createBasePayments(),
+    // La bitacora es la fuente de la lista diaria y de la consulta de cada alumno.
+    attendanceLog: [
+      { studentId: 'IM-0241', classId: 'bachata-inter', at: dayKey(previousDateFor(3)) },
+      { studentId: 'IM-0218', classId: 'bachata-inter', at: dayKey(previousDateFor(3)) },
+      { studentId: 'IM-0194', classId: 'bachata-inter', at: dayKey(previousDateFor(3)) },
+      { studentId: 'IM-0241', classId: 'kpop-teens', at: dayKey(previousDateFor(4)) },
+      { studentId: 'IM-0262', classId: 'latino-kids', at: dayKey(previousDateFor(6)) }
+    ]
+  };
+}
 
 // La version 2 guardaba fechas como texto. Conservamos sus registros al migrar;
 // las marcas sin fecha no se trasladan a una sesion inventada.
@@ -414,7 +800,9 @@ function sanitizeStudent(raw) {
   const name = cleanText(raw.name, 80);
   if (!/^IM-\d{3,6}$/.test(id) || !name) return null;
   const knownClassIds = classData.map((item) => item.id);
-  const plan = ['Plan 4 clases', 'Plan 8 clases', 'Plan ilimitado'].includes(raw.plan) ? raw.plan : 'Plan 8 clases';
+  // El plan se conserva tal como vino. Reescribirlo al predeterminado borraba
+  // la evidencia de lo que se habia guardado y dejaba el error invisible.
+  const plan = cleanText(raw.plan, 80) || DEFAULT_PLAN.planName;
   return {
     id,
     name,
@@ -447,7 +835,7 @@ function sanitizePayment(raw, studentIds) {
   // Un pago liquidado sin fecha utilizable no puede quedar como pagado a ciegas.
   if (isPaid && !paidAt) return null;
   return {
-    id: cleanText(payment.id, 24) || `P-${Math.round(amount)}-${payment.period}`,
+    id: cleanText(payment.id, 24) || `P-${payment.period}-${studentId}`,
     studentId,
     student: cleanText(payment.student, 80) || studentId,
     month: cleanText(payment.month, 40) || monthLabel(parseDayKey(`${payment.period}-01`)),
@@ -492,7 +880,7 @@ function sanitizeState(saved) {
     students.push(student);
   });
   // Sin alumnos la app no tiene nada que mostrar: se vuelve al padron base.
-  const usableStudents = students.length ? students : structuredClone(baseStudents);
+  const usableStudents = students.length ? students : createBaseStudents();
   if (!students.length && rawStudents.length) dropped.students = rawStudents.length;
   const studentIds = new Set(usableStudents.map((item) => item.id));
 
@@ -524,6 +912,20 @@ function sanitizeState(saved) {
     attendanceLog.push(entry);
   });
 
+  // Dos registros con el mismo id hacian que el comprobante abriera el pago
+  // equivocado y que una liquidacion reescribiera los dos a la vez.
+  const usedIds = new Set();
+  payments.forEach((payment) => {
+    if (!usedIds.has(payment.id)) {
+      usedIds.add(payment.id);
+      return;
+    }
+    let suffix = 2;
+    while (usedIds.has(`${payment.id}-${suffix}`)) suffix += 1;
+    payment.id = `${payment.id}-${suffix}`;
+    usedIds.add(payment.id);
+  });
+
   const total = dropped.students + dropped.payments + dropped.attendance;
   if (total) recoveryReport = { total, ...dropped };
 
@@ -542,14 +944,14 @@ function loadState() {
     saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
   } catch {
     // Almacenamiento bloqueado o JSON corrupto: arrancamos con la demo limpia.
-    return structuredClone(defaultState);
+    return createDefaultState();
   }
-  if (!isPlainObject(saved) || ![2, STATE_VERSION].includes(saved.version)) return structuredClone(defaultState);
+  if (!isPlainObject(saved) || ![2, STATE_VERSION].includes(saved.version)) return createDefaultState();
   try {
     return sanitizeState(saved);
   } catch {
     recoveryReport = { total: 0, students: 0, payments: 0, attendance: 0, fatal: true };
-    return structuredClone(defaultState);
+    return createDefaultState();
   }
 }
 
@@ -559,6 +961,8 @@ let activeRoute = 'inicio';
 let activeClassId = classData[0].id;
 let lastFocusedElement = null;
 let activeChildId = null;
+let selectedFrequency = 2;
+let selectedScheduleClassIds = new Set(['level1-mon', 'level1-wed']);
 
 const MOBILE_QUERY = window.matchMedia('(max-width: 780px)');
 const REDUCED_MOTION = window.matchMedia('(prefers-reduced-motion: reduce)');
@@ -621,7 +1025,7 @@ function icon(name) {
 
 function navMarkup(config) {
   return config.routes.map(([route, label, iconName], index) => `
-    <a class="nav-item ${activeRoute === route ? 'is-active' : ''}" href="#/${escapeHtml(route)}" data-route="${escapeHtml(route)}">
+    <a class="nav-item ${activeRoute === route ? 'is-active' : ''}" href="#/${escapeHtml(route)}" ${activeRoute === route ? 'aria-current="page"' : ''} data-route="${escapeHtml(route)}">
       <span class="nav-icon">${icon(iconName)}</span>
       <span>${escapeHtml(label)}</span>
       <span class="nav-index">0${index + 1}</span>
@@ -640,15 +1044,15 @@ function updateShell() {
   elements.date.textContent = longDate(TODAY);
 }
 
-function enterDemo(role) {
+function enterDemo(role, route = 'inicio') {
   if (!roleConfig[role]) return;
   activeRole = role;
-  activeRoute = 'inicio';
+  activeRoute = route;
   persistOrWarn({ ...state, role });
   elements.access.classList.add('is-hidden');
   elements.app.classList.remove('is-hidden');
-  history.replaceState(null, '', '#/inicio');
-  renderApp();
+  history.replaceState(null, '', `#/${route}`);
+  renderAndFocus();
 }
 
 function leaveDemo() {
@@ -665,6 +1069,7 @@ function leaveDemo() {
 function syncMenuState() {
   const open = elements.app.classList.contains('menu-open');
   elements.menuButton.setAttribute('aria-expanded', String(open));
+  elements.menuButton.setAttribute('aria-label', open ? 'Cerrar menú' : 'Abrir menú');
   if (!elements.sidebar) return;
   const collapsed = MOBILE_QUERY.matches && !open;
   elements.sidebar.inert = collapsed;
@@ -686,6 +1091,14 @@ function renderApp() {
   elements.content.innerHTML = `<div class="page-enter">${renderer()}</div>`;
   setMenuOpen(false);
   window.scrollTo({ top: 0, behavior: REDUCED_MOTION.matches ? 'auto' : 'smooth' });
+}
+
+// Cerrar un dialogo devuelve el foco al boton que lo abrio, pero el render
+// posterior reemplaza ese boton y el foco cae al body. Estos flujos dejan el
+// foco en el contenido principal, que es donde sigue la lectura.
+function renderAndFocus() {
+  renderApp();
+  elements.content.focus({ preventScroll: true });
 }
 
 function routeTo(route) {
@@ -711,7 +1124,10 @@ function weekStrip(classes = classData) {
   }).join('')}</div>`;
 }
 
-function classCards(classes = scheduledClasses().slice(0, 3)) {
+function classCards(classes = scheduledClasses().slice(0, 3), empty = null) {
+  if (!classes.length) {
+    return `<div class="empty-state"><strong>${escapeHtml(empty?.title || 'Sin clases')}</strong>${escapeHtml(empty?.detail || 'No hay clases programadas en esta demostración.')}</div>`;
+  }
   return `<div class="cards-grid">${classes.map((item, index) => `
     <article class="class-card ${index === 0 ? 'is-featured' : ''}">
       <span class="class-card-index">0${index + 1}</span>
@@ -727,38 +1143,59 @@ function classCards(classes = scheduledClasses().slice(0, 3)) {
 }
 
 function scheduleList(classes = scheduledClasses()) {
+  if (!classes.length) return `<div class="schedule-empty"><span class="eyebrow">Un espacio para practicar</span><h2>No hay clases con este filtro.</h2><p>Probá otro nivel o consultá la agenda completa.</p><button class="button button--light" type="button" data-class-filter="all">Ver todas las clases</button></div>`;
   return `<div class="schedule-list">${classes.map((item) => `
     <div class="schedule-row">
       <div class="schedule-time">${escapeHtml(item.time)}<small>${escapeHtml(item.day)} · ${escapeHtml(item.dateLabel)}</small></div>
       <div class="schedule-name"><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(item.level)} · ${escapeHtml(item.room)}</small></div>
       <div class="schedule-teacher">${escapeHtml(item.teacher)}<small>Maestro</small></div>
-      <span class="capacity">${escapeHtml(capacityText(item))} inscritos</span>
-      <button class="button button--light button--small" type="button" data-class-detail="${escapeHtml(item.id)}">Ver clase</button>
+      <span class="capacity">${escapeHtml(capacityText(item))} cupos</span>
+      <button class="button button--light button--small" type="button" data-class-detail="${escapeHtml(item.id)}" aria-label="Ver clase ${escapeHtml(item.name)}, ${escapeHtml(item.day)} ${escapeHtml(item.time)}">Ver clase</button>
     </div>
   `).join('')}</div>`;
 }
 
 function renderStudentHome() {
-  const planTotal = 8;
-  const attendance = state.attendanceLog.filter((entry) => entry.studentId === 'IM-0241');
-  const attended = attendance.filter((entry) => entry.at.startsWith(monthKey(TODAY))).length;
-  const checkedIn = attendance.some((entry) => entry.at === dayKey(TODAY));
-  const remaining = Math.max(0, planTotal - attended);
-  const payment = monthlyPaymentFor('IM-0241');
+  const student = studentById(DEMO_STUDENT_ID);
+  const plan = planForStudent(DEMO_STUDENT_ID);
+  const firstName = (student?.name || 'Valeria').split(' ')[0];
+  const attended = attendedThisMonth(DEMO_STUDENT_ID);
+  const allowance = monthlyAllowanceFor(DEMO_STUDENT_ID);
+  const checkedIn = state.attendanceLog.some((entry) => entry.studentId === DEMO_STUDENT_ID && entry.at === dayKey(TODAY));
+  // Sin cupo no hay resta posible: el plan ilimitado se cuenta, no se descuenta.
+  // Un plan fuera del catalogo tampoco se descuenta, pero por otra razon: no
+  // sabemos cual es su cupo y no se inventa uno.
+  const allowanceUnknown = allowance === undefined;
+  const remaining = allowance === null || allowanceUnknown ? null : Math.max(0, allowance - attended);
+  const payment = monthlyPaymentFor(DEMO_STUDENT_ID);
   const paid = payment?.status === 'Pagado';
-  const own = upcomingClasses(classesForStudent('IM-0241'));
+  const own = upcomingClasses(classesForStudent(DEMO_STUDENT_ID));
   const next = own[0];
   const [hour, meridiem] = next?.time.split(' ') || [];
+  const allowanceLine = allowanceUnknown
+    ? 'Cupo mensual por confirmar'
+    : allowance === null
+      ? 'Asistencia sin límite este mes'
+      : `${remaining} de ${allowance} disponibles este mes`;
+  const attendanceNote = allowanceUnknown
+    ? `Llevás ${attended} clase${attended === 1 ? '' : 's'} este mes. El plan guardado no está en el catálogo de la demo, así que su cupo está por confirmar.`
+    : allowance === null
+    ? `Llevás ${attended} clase${attended === 1 ? '' : 's'} este mes. Tu plan no descuenta clases.`
+    : attended > allowance
+      ? `Ya superaste las ${allowance} clases del plan. Consultá las condiciones en recepción.`
+      : remaining === 0
+        ? `Usaste las ${allowance} clases del plan este mes.`
+        : `${remaining} clase${remaining === 1 ? '' : 's'} disponible${remaining === 1 ? '' : 's'} este mes.`;
   return `
     <section class="student-hero">
       <div class="student-hero-copy">
         <div>
           <p class="eyebrow">${escapeHtml(shortDayLabel(TODAY))}</p>
-          <h1 class="hero-title">Hola, Valeria.<br/><span>¿Bailamos?</span></h1>
+          <h1 class="hero-title">Hola, ${escapeHtml(firstName)}.<br/><span>¿Bailamos?</span></h1>
         </div>
         <div class="hero-foot">
-          <button class="button button--red" type="button" data-open-scan>Marcar asistencia <span aria-hidden="true">↗</span></button>
-          <p>${checkedIn ? 'Tu asistencia de hoy ya quedó registrada en esta demo.' : 'Mostrá tu carnet QR en recepción al llegar a la academia.'}</p>
+          <button class="button button--red" type="button" data-go="carnet">Mostrar mi carné <span aria-hidden="true">→</span></button>
+          <p>${checkedIn ? 'Tu asistencia de hoy ya quedó registrada en esta demo.' : 'Mostrá tu carné en recepción al llegar a la academia.'}</p>
         </div>
       </div>
       <aside class="next-class">
@@ -768,31 +1205,378 @@ function renderStudentHome() {
       </aside>
     </section>
 
+    <div class="journey-actions" role="group" aria-label="Explorá la academia">
+      <button type="button" data-go="planes"><span class="journey-icon">${icon('money')}</span><span><strong>Encontrá tu plan</strong><small>Compará opciones a tu ritmo</small></span><span aria-hidden="true">↗</span></button>
+      <a href="../index.html"><span class="journey-icon">▷</span><span><strong>Seguí practicando</strong><small>Explorá los videos de tus clases</small></span><span aria-hidden="true">↗</span></a>
+    </div>
     <section class="section">
       <div class="section-head"><div><h2>Esta semana</h2><p>Tu agenda de clases del ${escapeHtml(weekRange())}.</p></div><button class="text-button" type="button" data-go="clases">Ver calendario →</button></div>
-      ${weekStrip(classesForStudent('IM-0241'))}
+      ${weekStrip(classesForStudent(DEMO_STUDENT_ID))}
     </section>
 
     <section class="section">
-      <div class="section-head"><div><h2>Tus próximas clases</h2><p>Plan ${planTotal} clases · ${remaining} disponibles este mes</p></div></div>
-      ${classCards(own)}
+      <div class="section-head"><div><h2>Tus próximas clases</h2><p>${escapeHtml(plan.planName)} · ${escapeHtml(allowanceLine)}</p></div></div>
+      ${classCards(own, { title: 'Sin clases asignadas', detail: 'Todavía no tenés inscripciones en esta demostración. Consultá el calendario para ver los horarios.' })}
     </section>
 
     <section class="section split-grid">
       <article class="surface-card">
         <p class="eyebrow">Mensualidad · ${escapeHtml(monthName(TODAY))}</p>
         <div class="payment-status">
-          <div><p class="payment-amount">Q ${escapeHtml(payment?.amount ?? '—')}</p><p class="payment-meta">${escapeHtml(paymentStatus(payment))} · ${escapeHtml(paymentDateText(payment))}</p></div>
+          <div><p class="payment-amount">Q ${escapeHtml(payment ? formatAmount(payment.amount) : '—')}</p><p class="payment-meta">${escapeHtml(paymentStatus(payment))} · ${escapeHtml(paymentDateText(payment))}<br/>${escapeHtml(plan.planName)} · ${escapeHtml(priceText(plan.price))}${plan.needsReview ? '' : ' al mes'}</p></div>
           <button class="button ${paid ? 'button--light' : ''}" type="button" data-student-payment>${paid ? 'Ver comprobante' : 'Ver detalle'}</button>
         </div>
       </article>
       <article class="surface-card">
         <p class="eyebrow">Asistencia del mes</p>
-        <h2>${attended} de ${planTotal} clases</h2>
-        <p class="payment-meta">${remaining} clases disponibles este mes.</p>
+        ${allowance === null || allowanceUnknown
+          ? `<h2>${attended} clase${attended === 1 ? '' : 's'} este mes</h2>`
+          : `<h2>${attended} de ${allowance} clases</h2><progress class="attendance-progress" value="${Math.min(attended, allowance)}" max="${allowance}" aria-label="Clases asistidas este mes">${attended} de ${allowance}</progress>`}
+        <p class="payment-meta">${escapeHtml(attendanceNote)}</p>
       </article>
     </section>
   `;
+}
+
+// ---------------------------------------------------------------------------
+// Motor de recomendación de pases y parqueo (SelectorPlanes)
+// ---------------------------------------------------------------------------
+function parkingForScheduleSelection(classes) {
+  const uniqueDays = [...new Set(classes.map((item) => item.day))];
+  return uniqueDays.reduce((total, day) => {
+    const dayInfo = SCHEDULE_DAYS.find((candidate) => candidate.id === day);
+    return total + (dayInfo?.type === 'weekend' ? 20 : 15);
+  }, 0);
+}
+
+function summarizePassParts(parts) {
+  const counts = parts.reduce((summary, part) => {
+    summary.set(part, (summary.get(part) || 0) + 1);
+    return summary;
+  }, new Map());
+
+  return [...counts.entries()]
+    .map(([name, count]) => (count > 1 ? `${name} x${count}` : name))
+    .join(' + ');
+}
+
+function compareRecommendations(a, b) {
+  if (a.total !== b.total) return a.total - b.total;
+  if (a.monthly !== b.monthly) return a.monthly - b.monthly;
+  return a.title.localeCompare(b.title, 'es');
+}
+
+function buildScheduleRecommendations(classes) {
+  if (!classes.length) return [];
+
+  const full = {
+    id: 'full',
+    title: PASS_PLANS.full.name,
+    monthly: PASS_PLANS.full.price,
+    parking: 0,
+    total: PASS_PLANS.full.price,
+    note: 'Acceso ilimitado a todas las clases y horarios. La simulación asume que cubre hasta 3 horas de parqueo por visita; queda por confirmar con la academia.'
+  };
+
+  const weekdayClasses = classes.filter((item) => item.category === 'weekday');
+  const teenClasses = classes.filter((item) => item.category === 'teen');
+  const weekendClasses = classes.filter((item) => item.category === 'weekend');
+  const regularParking = parkingForScheduleSelection(classes);
+  const options = [];
+
+  const weekdayOptions = buildWeekdayOptions(weekdayClasses);
+  const weekendOption = buildWeekendOption(weekendClasses);
+  const teensOption = buildTeensOption(teenClasses);
+
+  if (weekdayOptions.length || weekendOption || teensOption) {
+    const requiredBlocks = [
+      weekdayOptions.length ? weekdayOptions : [{ parts: [], monthly: 0, note: '' }],
+      weekendOption ? [weekendOption] : [{ parts: [], monthly: 0, note: '' }],
+      teensOption ? [teensOption] : [{ parts: [], monthly: 0, note: '' }]
+    ];
+
+    for (const weekday of requiredBlocks[0]) {
+      for (const weekend of requiredBlocks[1]) {
+        for (const teens of requiredBlocks[2]) {
+          const parts = [...weekday.parts, ...weekend.parts, ...teens.parts];
+          if (!parts.length) continue;
+
+          const monthly = weekday.monthly + weekend.monthly + teens.monthly;
+          options.push({
+            id: parts.join('-'),
+            title: summarizePassParts(parts),
+            monthly,
+            parking: regularParking,
+            total: monthly + regularParking,
+            note: [weekday.note, weekend.note, teens.note].filter(Boolean).join(' ')
+          });
+        }
+      }
+    }
+  }
+
+  return dedupeRecommendations([...options, full]).sort(compareRecommendations);
+}
+
+function buildWeekdayOptions(weekdayClasses) {
+  if (!weekdayClasses.length) return [];
+
+  const tracks = [...new Set(weekdayClasses.map((item) => item.track))];
+  const dancerOption = {
+    parts: tracks.map(() => PASS_PLANS.dancer.name),
+    monthly: tracks.length * PASS_PLANS.dancer.price,
+    note:
+      tracks.length === 1
+        ? `Dancer Pass para ${SCHEDULE_TRACKS[tracks[0]] || tracks[0]}.`
+        : `Dancer Pass por cada track seleccionado (${tracks.length}).`
+  };
+
+  return [
+    dancerOption,
+    {
+      parts: [PASS_PLANS.night.name],
+      monthly: PASS_PLANS.night.price,
+      note: 'Night Pass cubre las clases seleccionadas de lunes a jueves.'
+    }
+  ];
+}
+
+function buildWeekendOption(weekendClasses) {
+  if (!weekendClasses.length) return null;
+
+  const weekendDays = [...new Set(weekendClasses.map((item) => item.day))];
+  return {
+    parts: weekendDays.map(() => PASS_PLANS.weekend.name),
+    monthly: weekendDays.length * PASS_PLANS.weekend.price,
+    note: `Weekend Pass aplicado a ${weekendDays.length} día${weekendDays.length > 1 ? 's' : ''} de fin de semana.`
+  };
+}
+
+function buildTeensOption(teenClasses) {
+  if (!teenClasses.length) return null;
+
+  return {
+    parts: [PASS_PLANS.teens.name],
+    monthly: PASS_PLANS.teens.price,
+    note: 'Teens In Motion cubre las clases Teens del sábado.'
+  };
+}
+
+function dedupeRecommendations(recommendations) {
+  const byKey = new Map();
+
+  for (const recommendation of recommendations) {
+    const key = `${recommendation.title}|${recommendation.monthly}|${recommendation.parking}`;
+    const current = byKey.get(key);
+    if (!current || recommendation.total < current.total) {
+      byKey.set(key, recommendation);
+    }
+  }
+
+  return [...byKey.values()];
+}
+
+function renderSchedulePosterGrid() {
+  const timeColumn = `
+    <article class="schedule-poster-col schedule-time-col">
+      <div class="schedule-col-header">Hora</div>
+      <div class="schedule-slots-list">
+        ${SCHEDULE_TIME_SLOTS.map((slot) => `<div class="schedule-cell is-time">${escapeHtml(slot.label)}</div>`).join('')}
+      </div>
+    </article>
+  `;
+
+  const dayColumns = SCHEDULE_DAYS.map((day) => {
+    const cells = SCHEDULE_TIME_SLOTS.map((slot) => {
+      const item = SCHEDULE_CLASSES.find((c) => c.day === day.id && c.slot === slot.id);
+      if (!item) {
+        return '<div class="schedule-cell"></div>';
+      }
+      const isSelected = selectedScheduleClassIds.has(item.id);
+      return `
+        <div class="schedule-cell has-class">
+          <button type="button" class="schedule-class-card ${isSelected ? 'is-selected' : ''}" data-toggle-schedule-class="${escapeHtml(item.id)}" aria-pressed="${isSelected}" aria-label="${escapeHtml(item.name)}, ${escapeHtml(day.label)} ${escapeHtml(item.time)}">
+            <span class="schedule-track-dot" style="background-color: ${escapeHtml(item.color)};" aria-hidden="true"></span>
+            <span class="schedule-class-body">
+              <strong class="schedule-class-title">${escapeHtml(item.name)}</strong>
+              <span class="schedule-class-time">${escapeHtml(item.time)}</span>
+            </span>
+          </button>
+        </div>
+      `;
+    }).join('');
+
+    return `
+      <article class="schedule-poster-col">
+        <div class="schedule-col-header ${day.type === 'weekend' ? 'is-weekend' : ''}">${escapeHtml(day.label)}</div>
+        <div class="schedule-slots-list">
+          ${cells}
+        </div>
+      </article>
+    `;
+  }).join('');
+
+  return timeColumn + dayColumns;
+}
+
+function renderScheduleSelectionSummary() {
+  const classes = SCHEDULE_CLASSES.filter((item) => selectedScheduleClassIds.has(item.id));
+  if (!classes.length) {
+    return `
+      <div class="selection-empty">
+        <strong>0 clases seleccionadas</strong>
+        <p>Hacé clic en una o más casillas del calendario para comparar planes.</p>
+      </div>
+    `;
+  }
+  const days = [...new Set(classes.map((item) => SCHEDULE_DAYS.find((d) => d.id === item.day)?.label || item.day))];
+  return `
+    <div class="selection-info">
+      <div class="selection-count-tag">${classes.length} clase${classes.length > 1 ? 's' : ''}</div>
+      <p class="selection-days">${days.length} día${days.length > 1 ? 's' : ''} de visita: <strong>${escapeHtml(days.join(', '))}</strong></p>
+      <ul class="selection-class-list">
+        ${classes.map((c) => `<li>${escapeHtml(SCHEDULE_DAYS.find((d) => d.id === c.day)?.label || c.day)} · ${escapeHtml(c.time)} · ${escapeHtml(c.name)}</li>`).join('')}
+      </ul>
+    </div>
+  `;
+}
+
+function renderScheduleRecommendations() {
+  const classes = SCHEDULE_CLASSES.filter((item) => selectedScheduleClassIds.has(item.id));
+  const recommendations = buildScheduleRecommendations(classes);
+
+  if (!recommendations.length) {
+    return `
+      <div class="schedule-empty-rec">
+        <p><strong>Las sugerencias aparecerán aquí</strong> al marcar las clases que querés tomar.</p>
+      </div>
+    `;
+  }
+
+  const cards = recommendations.map((rec, index) => {
+    const isBest = index === 0;
+    const currentPlan = activeRole === 'student' ? planForStudent(DEMO_STUDENT_ID) : null;
+    const isCurrentPlan = currentPlan && (currentPlan.planName.toLowerCase() === rec.title.toLowerCase() || currentPlan.name.toLowerCase() === rec.title.toLowerCase());
+    return `
+      <article class="rec-card ${isBest ? 'is-best' : ''}">
+        <div class="rec-header">
+          <h3 class="rec-title">${escapeHtml(rec.title)}</h3>
+          ${isBest ? '<span class="badge badge--best">✦ Recomendado</span>' : ''}
+        </div>
+        <div class="rec-prices">
+          <div class="price-row">
+            <span>Mensualidad</span>
+            <strong>Q ${escapeHtml(formatAmount(rec.monthly))}</strong>
+          </div>
+          <div class="price-row">
+            <span>Parqueo estimado</span>
+            <strong>${rec.parking === 0 ? 'Incluido' : `Q ${escapeHtml(formatAmount(rec.parking))}`}</strong>
+          </div>
+          <div class="price-row total-row">
+            <span>Total mensual estimado</span>
+            <strong>Q ${escapeHtml(formatAmount(rec.total))}</strong>
+          </div>
+        </div>
+        <p class="rec-note">${escapeHtml(rec.note)}</p>
+        <p class="rec-subnote">Estimación demo; no incluye posibles cargos iniciales. Confirmá el precio final con la academia.</p>
+        <div class="rec-actions">
+          ${isCurrentPlan
+            ? '<span class="tag tag--dark" style="margin-top:10px;width:100%;text-align:center;display:block;padding:8px 0;">Tu plan actual ✓</span>'
+            : '<p class="rec-subnote">Comparación estimada. Para contratar este pase, confirmá condiciones y precios vigentes con la academia.</p>'
+          }
+        </div>
+      </article>
+    `;
+  });
+  return cards[0] + (cards.length > 1 ? `<details class="plan-alternatives"><summary>Comparar otras opciones (${cards.length - 1})</summary>${cards.slice(1).join('')}</details>` : '');
+
+}
+
+function updateScheduleViews() {
+  if (elements.content) {
+    elements.content.querySelectorAll('[data-toggle-schedule-class]').forEach((card) => {
+      const id = card.dataset.toggleScheduleClass;
+      const isSelected = selectedScheduleClassIds.has(id);
+      card.classList.toggle('is-selected', isSelected);
+      card.setAttribute('aria-pressed', String(isSelected));
+    });
+
+    const summaryEl = elements.content.querySelector('#scheduleSelectionSummary');
+    if (summaryEl) summaryEl.innerHTML = renderScheduleSelectionSummary();
+
+    const recEl = elements.content.querySelector('#scheduleRecommendations');
+    if (recEl) recEl.innerHTML = renderScheduleRecommendations();
+  }
+}
+
+function renderPlans() {
+  return `
+    <header class="plan-hero">
+      <div>
+        <p class="eyebrow">Explorá tu próximo paso · Demo</p>
+        <h1>¿Querés mejorar<br/><span>tu plan?</span></h1>
+        <p>Elegí las clases que te gustaría tomar y encontrá una opción para tu ritmo.</p>
+        <p class="plan-disclaimer">Estimación de demostración. Confirmá tarifas y condiciones con la academia; tu plan actual no cambia.</p>
+      </div>
+    </header>
+
+    <section class="schedule-comparator-section" aria-labelledby="scheduleTitle">
+      <div class="schedule-comparator-layout">
+        <div class="schedule-poster-card">
+          <div class="schedule-poster-header">
+            <div>
+              <h2 id="scheduleTitle">Horarios de clase</h2>
+              <p>Tocá las clases que te interesan para comparar.</p>
+            </div>
+            <div class="schedule-actions">
+              <button type="button" class="button button--light button--small" data-schedule-action="select-all">Seleccionar todo</button>
+              <button type="button" class="button button--light button--small" data-schedule-action="clear-selection">Limpiar</button>
+            </div>
+          </div>
+
+          <div class="schedule-poster-shell">
+            <div class="schedule-poster-grid" id="schedulePosterGrid" aria-live="polite">
+              ${renderSchedulePosterGrid()}
+            </div>
+          </div>
+
+        </div>
+
+        <aside class="schedule-summary-card" aria-labelledby="summaryTitle">
+          <h2 id="summaryTitle">Tu opción sugerida</h2>
+          <div id="scheduleSelectionSummary" class="schedule-selection-summary">
+            ${renderScheduleSelectionSummary()}
+          </div>
+          <div id="scheduleRecommendations" class="schedule-recommendations">
+            ${renderScheduleRecommendations()}
+          </div>
+        </aside>
+      </div>
+    </section>
+
+    <section class="plan-faq" aria-label="Preguntas sobre los planes">
+      <h2>¿Tenés dudas?</h2>
+      <details>
+        <summary>¿Cómo se calcula el pase recomendado?</summary>
+        <p>La demo evalúa las combinaciones de pases que cubrirían tus clases seleccionadas y le suma un parqueo estimado por día de visita, para sugerir la de menor costo total. Tanto las reglas de combinación (Dancer Pass por disciplina, Night Pass de lunes a jueves, Weekend Pass por día de fin de semana, Teens) como el parqueo son supuestos de la simulación y no están confirmados con la academia.</p>
+      </details>
+      <details>
+        <summary>¿Qué incluye el plan Full In Motion?</summary>
+        <p>En la simulación, Full In Motion (Q 750/mes) representa pase libre a todas las clases sin restricción de horario, con hasta 3 horas de parqueo por visita. Es un supuesto de la demo: confirmá el alcance real y el precio vigente con la academia.</p>
+      </details>
+      <details>
+        <summary>¿Puedo cambiar mi plan desde aquí?</summary>
+        <p>No. Este comparador es solo de consulta: no modifica tu membresía, tus inscripciones ni tus pagos. Para un cambio real, consultá disponibilidad, condiciones y precios vigentes con la academia.</p>
+      </details>
+    </section>
+  `;
+}
+
+
+function openPlanDetail(id) {
+  const plan = membershipPlans.find((item) => item.id === id);
+  if (!plan) return;
+  openModal({ title: `Plan ${plan.name}`, eyebrow: 'Conocé tu opción · Demo', body: `<p class="plan-price">Q ${escapeHtml(formatAmount(plan.price))}<span>/ mes</span></p><p>${escapeHtml(plan.description)}</p><ul class="plan-detail-list"><li>${escapeHtml(planRhythmText(plan))}, como orientación.</li><li>${escapeHtml(planAllowanceText(plan))}.</li><li>${escapeHtml(planUnitText(plan))}.</li><li>La inscripción y otros cargos deben confirmarse con recepción.</li></ul><p class="plan-disclaimer">Esta comparación no modifica tu membresía ni registra pagos. Los importes son ficticios.</p><button class="button" type="button" data-close-modal>Seguir comparando</button>` });
 }
 
 function renderStudentClasses() {
@@ -801,13 +1585,14 @@ function renderStudentClasses() {
       <div><p class="eyebrow">Calendario de clases</p><h1>Elegí tu próximo<br/>movimiento.</h1><p>Consultá horarios y cupos de demostración. Las reservas no están habilitadas en este prototipo.</p></div>
       <button class="button" type="button" data-go="carnet">Mostrar mi QR</button>
     </header>
-    <div class="filter-row" aria-label="Filtrar clases">
-      <button class="filter-chip is-active" type="button" data-class-filter="all">Todas</button>
-      <button class="filter-chip" type="button" data-class-filter="today">Hoy</button>
-      <button class="filter-chip" type="button" data-class-filter="initial">Nivel inicial</button>
-      <button class="filter-chip" type="button" data-class-filter="advanced">Avanzado</button>
+    <div class="filter-row" role="group" aria-label="Filtrar clases por nivel">
+      <button class="filter-chip is-active" type="button" aria-pressed="true" data-class-filter="all">Todas</button>
+      <button class="filter-chip" type="button" aria-pressed="false" data-class-filter="today">Hoy</button>
+      <button class="filter-chip" type="button" aria-pressed="false" data-class-filter="initial">Nivel inicial</button>
+      <button class="filter-chip" type="button" aria-pressed="false" data-class-filter="intermediate">Intermedio</button>
+      <button class="filter-chip" type="button" aria-pressed="false" data-class-filter="advanced">Avanzado</button>
     </div>
-    <div id="studentSchedule">${scheduleList()}</div>
+    <div id="studentSchedule" aria-live="polite">${scheduleList()}</div>
   `;
 }
 
@@ -852,41 +1637,94 @@ function qrPattern(seed) {
   return grid;
 }
 
-function qrMarkup(seed = 'IM-0241') {
+function qrMarkup(seed = DEMO_STUDENT_ID) {
   return `<svg viewBox="0 0 21 21" aria-label="Código QR de demostración ${escapeHtml(seed)}" role="img" shape-rendering="crispEdges">
     <rect width="21" height="21" fill="#fff"/>
     ${qrPattern(seed).flatMap((row, y) => row.map((cell, x) => cell ? `<rect x="${x}" y="${y}" width="1" height="1" fill="#0b0b0c"/>` : '')).join('')}
   </svg>`;
 }
 
-function renderStudentCard() {
+// El carne es identificacion permanente: numero de carne, nombre, nivel y plan
+// inscrito. No caduca y no refleja el estado de la mensualidad -un carne que
+// dice "Por confirmar" por un pago pendiente insinua un bloqueo de asistencia
+// que la academia no aplica-. El estado del mes se muestra aparte.
+//
+// Se muestra estatico, de una sola cara. El giro se retiro porque su reverso
+// publicaba normas de estudio, temporada y un telefono que la academia nunca
+// aprobo, y porque escondia detras de una interaccion lo unico que hay que ver.
+// El QR vive en su propio panel, al lado: se lee sin girar nada.
+function memberCardMarkup(student) {
+  const plan = planForStudent(student.id);
+  const [firstName, ...rest] = String(student.name).split(' ');
   return `
-    <header class="page-heading"><div><p class="eyebrow">Identificación digital</p><h1>Tu carnet.<br/>Siempre listo.</h1><p>Este QR funciona como demostración del flujo de asistencia y no representa una credencial real.</p></div></header>
-    <div class="member-card-wrap">
-      <article class="member-card">
-        <img class="member-logo" src="./assets/inmotion-logo.svg" alt="In Motion Dance Academy" />
-        <p class="member-card-label">Miembro activo · Plan 8 clases</p>
-        <h2>Valeria<br/>Ruiz</h2>
-        <span class="member-id">IM-0241 · Nivel intermedio</span>
-        <div class="member-validity"><span>Vigencia</span><strong>${membershipValidity()}</strong></div>
+    <article class="member-card">
+      <img class="member-logo" src="./assets/inmotion-logo.svg" alt="In Motion Dance Academy" />
+      <p class="member-card-label">Carné de alumno · ${escapeHtml(plan.planName)}</p>
+      <h2>${escapeHtml(firstName)}${rest.length ? `<br/>${escapeHtml(rest.join(' '))}` : ''}</h2>
+      <span class="member-id">${escapeHtml(student.id)} · ${escapeHtml(student.level)}</span>
+      <div class="member-validity"><span>Carné</span><strong>Permanente</strong></div>
+    </article>`;
+}
+
+// Bloque separado del carne: periodo, importe y estado de la mensualidad.
+// Es informativo; no condiciona el carne ni la asistencia.
+function membershipStatusMarkup(student) {
+  const plan = planForStudent(student.id);
+  const payment = monthlyPaymentFor(student.id);
+  const status = paymentStatus(payment);
+  const paid = payment?.status === 'Pagado';
+  return `
+    <section class="section">
+      <div class="section-head">
+        <div>
+          <h2>Mensualidad</h2>
+          <p>Período ${escapeHtml(currentPeriodLabel())}. Se consulta aparte del carné: el carné no vence.</p>
+        </div>
+        <span class="status-pill ${paid ? 'is-paid' : 'is-due'}">${escapeHtml(status)}</span>
+      </div>
+      <article class="surface-card">
+        <p class="eyebrow">${escapeHtml(currentPeriodLabel())}</p>
+        <p class="payment-amount">${escapeHtml(payment ? `Q ${formatAmount(payment.amount)}` : priceText(plan.price))}</p>
+        <p class="payment-meta">${escapeHtml(status)} · ${escapeHtml(paymentDateText(payment))}<br/>${escapeHtml(plan.planName)}${planReviewTag(plan)} · ${escapeHtml(priceText(plan.price))}${plan.needsReview ? '' : ' al mes'}${payment ? '' : ' · cuota del plan, sin registro para este mes'}</p>
+        ${plan.needsReview ? '<p class="payment-meta">El plan guardado no figura en el catálogo de la demo. Se conserva tal cual y no se le asigna una cuota: corregilo desde administración antes de registrar un pago.</p>' : ''}
       </article>
+    </section>`;
+}
+
+function renderStudentCard() {
+  const student = studentById(DEMO_STUDENT_ID) || state.students[0];
+  if (!student) {
+    return `
+    <header class="page-heading"><div><p class="eyebrow">Identificación digital</p><h1>Tu carnet.<br/>Siempre listo.</h1></div></header>
+    <div class="empty-state"><strong>Sin alumno en la demo</strong>Reiniciá la demostración para recuperar el padrón inicial.</div>`;
+  }
+  const plan = planForStudent(student.id);
+  return `
+    <header class="page-heading"><div><p class="eyebrow">Identificación digital</p><h1>Tu carnet.<br/>Siempre listo.</h1><p>Tu número de carné es permanente y no caduca. El código QR está al lado, listo para mostrarlo en recepción.</p></div></header>
+    <div class="member-card-wrap">
+      ${memberCardMarkup(student)}
       <aside class="qr-panel">
         <h2>Registro rápido</h2>
-        <p>Mostrá este código en recepción para registrar tu llegada a clase.</p>
-        <div class="qr-code">${qrMarkup()}</div>
-        <p class="qr-demo-label">QR de demostración · IM-0241</p>
-        <button class="button button--ghost" style="width:100%;margin-top:22px" type="button" data-open-scan>Simular lectura</button>
+        <p>Mostrá este código en recepción para registrar tu llegada a clase. ${escapeHtml(plan.planName)} · ${escapeHtml(planAllowanceText(plan))}.</p>
+        <div class="qr-code">${qrMarkup(student.id)}</div>
+        <p class="qr-demo-label">QR de demostración · ${escapeHtml(student.id)}</p>
       </aside>
     </div>
+    ${membershipStatusMarkup(student)}
   `;
 }
 
+
 function teacherCards() {
-  return `<div class="teacher-day-grid">${teacherClasses().slice(0, 4).map((item, index) => `
+  const own = teacherClasses().slice(0, 4);
+  if (!own.length) {
+    return `<div class="empty-state"><strong>Sin clases asignadas</strong>${escapeHtml(TEACHER_NAME)} no tiene clases en la agenda de demostración.</div>`;
+  }
+  return `<div class="teacher-day-grid">${own.map((item, index) => `
     <article class="teacher-class">
       <div class="teacher-class-time">${escapeHtml(item.time).replace(' ', '<br/>')}</div>
-      <div><span class="tag ${index === 0 ? 'tag--red' : ''}">${escapeHtml(item.day)}</span><h3>${escapeHtml(item.name)}</h3><p>${escapeHtml(item.room)} · ${escapeHtml(capacityText(item))} inscritos</p></div>
-      <button class="button button--small ${index === 0 ? 'button--red' : 'button--light'}" type="button" data-take-attendance="${escapeHtml(item.id)}">${index === 0 ? 'Pasar asistencia' : 'Abrir clase'}</button>
+      <div><span class="tag ${index === 0 ? 'tag--red' : ''}">${escapeHtml(item.day)}</span><h3>${escapeHtml(item.name)}</h3><p>${escapeHtml(item.room)} · ${escapeHtml(capacityText(item))} cupos</p></div>
+      <button class="button button--small ${index === 0 ? 'button--red' : 'button--light'}" type="button" data-take-attendance="${escapeHtml(item.id)}" aria-label="${index === 0 ? 'Pasar asistencia' : 'Abrir clase'} de ${escapeHtml(item.name)}, ${escapeHtml(item.day)} ${escapeHtml(item.time)}">${index === 0 ? 'Pasar asistencia' : 'Abrir clase'}</button>
     </article>
   `).join('')}</div>`;
 }
@@ -917,35 +1755,59 @@ function renderTeacherAgenda() {
   `;
 }
 
+// Antes la lista era un padron fijo de seis nombres: no incluia a los alumnos
+// dados de alta en la demo, mostraba alumnos de otras clases y guardar la sesion
+// borraba las marcas de quien no aparecia en ella.
 function rosterMarkup(classId = activeClassId, date = TODAY) {
+  const students = rosterFor(classId);
+  if (!students.length) {
+    return '<div class="empty-state"><strong>Sin alumnos inscritos</strong>Esta clase no tiene inscripciones en los datos demo, así que no hay lista que pasar.</div>';
+  }
   const selected = attendanceFor(classId, date);
-  return `<div class="attendance-roster">${roster.map((student) => `
+  const editable = dayKey(date) === dayKey(TODAY);
+  return `<div class="attendance-roster">${students.map((student) => {
+    const present = selected.includes(student.id);
+    return `
     <label class="student-check">
-      <input type="checkbox" name="attendance" value="${escapeHtml(student.id)}" ${selected.includes(student.id) ? 'checked' : ''} ${dayKey(date) !== dayKey(TODAY) ? 'disabled' : ''} />
-      <span class="avatar">${escapeHtml(student.initials)}</span>
-      <span><strong>${escapeHtml(student.name)}</strong><small>${escapeHtml(student.id)} · ${escapeHtml(student.plan)}</small></span>
-      <span>${selected.includes(student.id) ? 'Presente' : 'Sin marcar'}</span>
+      <input type="checkbox" name="attendance" value="${escapeHtml(student.id)}" ${present ? 'checked' : ''} ${editable ? '' : 'disabled'} />
+      <span class="avatar" aria-hidden="true">${escapeHtml(student.initials || initials(student.name))}</span>
+      <span><strong>${escapeHtml(student.name)}</strong><small>${escapeHtml(student.id)} · ${escapeHtml(planForStudent(student.id).name)}</small></span>
+      <span>${present ? 'Presente' : 'Sin registro'}</span>
     </label>
-  `).join('')}</div>`;
+  `;
+  }).join('')}</div>`;
 }
 
 function renderTeacherAttendance() {
   const item = findClass(activeClassId) || scheduledClasses()[0];
   const live = item.day === 'Hoy';
+  const enrolled = rosterFor(item.id);
+  const enrolledIds = enrolled.map((entry) => entry.id);
+  const historyOnly = attendanceFor(item.id, item.date).filter((id) => !enrolledIds.includes(id));
+  const canSubmit = live && enrolled.length > 0;
+  const student = studentById(DEMO_STUDENT_ID);
   return `
     <header class="page-heading"><div><p class="eyebrow">Control de asistencia</p><h1>¿Quién vino<br/>a bailar?</h1><p>Marcá la lista y guardá esta sesión localmente.</p></div></header>
     <section class="split-grid">
       <article class="surface-card">
         <div class="section-head"><div><h2>${escapeHtml(item.name)}</h2><p>${escapeHtml(item.day)} · ${escapeHtml(item.time)} · ${escapeHtml(item.room)}</p></div><span class="tag ${live ? 'tag--red' : ''}">${live ? 'Programada para hoy' : 'Programada'}</span></div>
         <form id="attendanceForm" data-class-id="${escapeHtml(item.id)}" data-session-date="${escapeHtml(dayKey(item.date))}">
+          <div class="roster-actions-bar">
+            <p class="payment-meta" style="margin:0">${enrolled.length} alumno${enrolled.length === 1 ? '' : 's'} inscrito${enrolled.length === 1 ? '' : 's'} en esta clase.</p>
+            <div class="roster-quick-actions">
+              <button type="button" class="button button--light button--small" data-attendance-action="check-all" ${canSubmit ? '' : 'disabled'}>Marcar todos</button>
+              <button type="button" class="button button--light button--small" data-attendance-action="clear-all" ${canSubmit ? '' : 'disabled'}>Desmarcar</button>
+            </div>
+          </div>
           ${rosterMarkup(item.id, item.date)}
+          ${historyOnly.length ? `<p class="modal-note">${historyOnly.length} alumno${historyOnly.length === 1 ? '' : 's'} con asistencia registrada en esta sesión ya no está${historyOnly.length === 1 ? '' : 'n'} inscrito${historyOnly.length === 1 ? '' : 's'} en la clase: ${escapeHtml(historyOnly.map((id) => studentById(id)?.name || id).join(', '))}. Su registro se conserva y no se modifica desde esta lista.</p>` : ''}
           ${!live ? '<p class="modal-note">La asistencia se habilita el día de esta clase.</p>' : ''}
-          <div class="form-actions"><button class="button button--red" type="submit" ${!live ? 'disabled' : ''}>Guardar asistencia</button></div>
+          <div class="form-actions"><button class="button button--red" type="submit" ${canSubmit ? '' : 'disabled'}>Guardar asistencia</button></div>
         </form>
       </article>
       <aside class="surface-card">
-        <p class="eyebrow">Lectura QR</p><h2>Escáner de recepción</h2><p class="payment-meta">El prototipo simula la lectura del carnet de Valeria. No solicita cámara ni envía datos.</p>
-        <div class="qr-code" style="max-width:220px;margin-top:24px">${qrMarkup()}</div>
+        <p class="eyebrow">Lectura QR</p><h2>Escáner de recepción</h2><p class="payment-meta">Escanea la academia, no el alumno: el prototipo simula la lectura del carnet de ${escapeHtml(student?.name || 'la alumna demo')}. No solicita cámara ni envía datos.</p>
+        <div class="qr-code" style="max-width:220px;margin-top:24px">${qrMarkup(student?.id || DEMO_STUDENT_ID)}</div>
         <button class="button" style="width:100%;margin-top:20px" type="button" data-open-scan>Simular escaneo</button>
       </aside>
     </section>
@@ -956,56 +1818,73 @@ function pendingPayments() {
   return state.payments.filter((item) => item.status !== 'Pagado');
 }
 
-function adminPaymentRows(payments = state.payments) {
-  if (!payments.length) return '<tr><td colspan="6"><div class="empty-state"><strong>No hay registros</strong>Probá con otro filtro.</div></td></tr>';
+function adminPaymentRows(payments = state.payments, empty = null) {
+  if (!payments.length) {
+    return `<tr><td colspan="6"><div class="empty-state"><strong>${escapeHtml(empty?.title || 'No hay registros')}</strong>${escapeHtml(empty?.detail || 'Probá con otro filtro.')}</div></td></tr>`;
+  }
   return payments.map((item) => `
     <tr data-payment-row="${escapeHtml(item.id)}">
-      <td><div class="person-cell"><span class="avatar">${escapeHtml(initials(item.student))}</span><span><strong>${escapeHtml(item.student)}</strong><small>${escapeHtml(item.studentId)}</small></span></div></td>
+      <td><div class="person-cell"><span class="avatar" aria-hidden="true">${escapeHtml(initials(item.student))}</span><span><strong>${escapeHtml(item.student)}</strong><small>${escapeHtml(item.studentId)}</small></span></div></td>
       <td>${escapeHtml(item.month)}</td>
-      <td><strong>Q ${escapeHtml(item.amount)}</strong></td>
+      <td><strong>Q ${escapeHtml(formatAmount(item.amount))}</strong></td>
       <td>${escapeHtml(item.method)}</td>
       <td><span class="status-pill ${item.status === 'Pagado' ? 'is-paid' : 'is-due'}">${escapeHtml(paymentStatus(item))}</span></td>
-      <td>${item.status === 'Pagado' ? `<button class="table-action" type="button" data-receipt="${escapeHtml(item.id)}">Comprobante</button>` : `<button class="table-action" type="button" data-register-for="${escapeHtml(item.studentId)}" data-payment-period="${escapeHtml(item.period)}">Registrar</button>`}</td>
+      <td>${item.status === 'Pagado'
+        ? `<button class="table-action" type="button" data-receipt="${escapeHtml(item.id)}" aria-label="Comprobante de ${escapeHtml(item.student)}, ${escapeHtml(item.month)}">Comprobante</button>`
+        : `<button class="table-action" type="button" data-register-for="${escapeHtml(item.studentId)}" data-payment-period="${escapeHtml(item.period)}" aria-label="Registrar pago de ${escapeHtml(item.student)}, ${escapeHtml(item.month)}">Registrar</button>`}</td>
     </tr>
   `).join('');
 }
 
 function studentRows(students = state.students) {
   if (!students.length) return '<tr><td colspan="5"><div class="empty-state"><strong>Sin coincidencias</strong>Revisá el nombre o número de carnet.</div></td></tr>';
-  return students.map((student) => `
+  return students.map((student) => {
+    const status = studentPaymentStatus(student.id);
+    return `
     <tr>
-      <td><div class="person-cell"><span class="avatar">${escapeHtml(initials(student.name))}</span><span><strong>${escapeHtml(student.name)}</strong><small>${escapeHtml(student.id)}</small></span></div></td>
-      <td>${escapeHtml(student.plan)}</td>
+      <td><div class="person-cell"><span class="avatar" aria-hidden="true">${escapeHtml(initials(student.name))}</span><span><strong>${escapeHtml(student.name)}</strong><small>${escapeHtml(student.id)}</small></span></div></td>
+      <td>${escapeHtml(planForStudent(student.id).planName)}${planReviewTag(planForStudent(student.id))}</td>
       <td>${escapeHtml(student.phone)}</td>
-      <td><span class="status-pill ${studentPaymentStatus(student.id) === 'Al día' ? 'is-paid' : 'is-due'}">${escapeHtml(studentPaymentStatus(student.id))}</span></td>
-      <td><button class="table-action" type="button" data-student-detail="${escapeHtml(student.id)}">Ver ficha</button></td>
+      <td><span class="status-pill ${status === 'Al día' ? 'is-paid' : 'is-due'}">${escapeHtml(status)}</span></td>
+      <td><button class="table-action" type="button" data-student-detail="${escapeHtml(student.id)}" aria-label="Ver ficha de ${escapeHtml(student.name)}">Ver ficha</button></td>
     </tr>
-  `).join('');
+  `;
+  }).join('');
 }
 
 function renderAdminHome() {
   const due = pendingPayments();
+  // Antes decia 50 alumnos y 6 maestros mientras la pantalla de al lado listaba
+  // 7 registros: ahora las dos cifras salen de los mismos datos.
+  const teachers = new Set(classData.map((item) => item.teacher)).size;
   return `
     <section class="admin-intro">
       <div><p class="eyebrow">Administración · ${escapeHtml(shortDayLabel(TODAY))}</p><h1>La academia,<br/>en orden.</h1></div>
-      <div class="admin-intro-meta"><div><strong>50</strong><span>alumnos activos</span></div><div><strong>6</strong><span>maestros</span></div></div>
+      <div class="admin-intro-meta"><div><strong>${escapeHtml(state.students.length)}</strong><span>alumnos registrados</span></div><div><strong>${escapeHtml(teachers)}</strong><span>maestros en agenda</span></div></div>
     </section>
     <section class="section">
       <div class="section-head"><div><h2>Acciones de hoy</h2><p>Operaciones frecuentes del equipo administrativo.</p></div></div>
-      <div class="filter-row"><button class="button button--red" type="button" data-open-payment>+ Registrar pago</button><button class="button button--light" type="button" data-open-student>+ Nuevo alumno</button><button class="button button--light" type="button" data-go="asistencia">Revisar asistencia</button></div>
+      <div class="filter-row" role="group" aria-label="Acciones administrativas"><button class="button button--red" type="button" data-open-payment>+ Registrar pago</button><button class="button button--light" type="button" data-open-student>+ Nuevo alumno</button><button class="button button--light" type="button" data-go="asistencia">Revisar asistencia</button></div>
     </section>
     <section class="section">
-      <div class="section-head"><div><h2>Pagos por resolver</h2><p>${due.length} registros necesitan seguimiento.</p></div><button class="text-button" type="button" data-go="pagos">Ver todos →</button></div>
-      <div class="table-wrap"><table class="data-table"><thead><tr><th>Alumno</th><th>Mes</th><th>Monto</th><th>Método</th><th>Estado</th><th>Acción</th></tr></thead><tbody>${adminPaymentRows(due)}</tbody></table></div>
+      <div class="section-head"><div><h2>Pagos por resolver</h2><p>${due.length === 1 ? '1 registro necesita' : `${due.length} registros necesitan`} seguimiento.</p></div><button class="text-button" type="button" data-go="pagos">Ver todos →</button></div>
+      <div class="table-wrap"><table class="data-table"><thead><tr><th scope="col">Alumno</th><th scope="col">Mes</th><th scope="col">Monto</th><th scope="col">Método</th><th scope="col">Estado</th><th scope="col">Acción</th></tr></thead><tbody>${adminPaymentRows(due, { title: 'Nada por resolver', detail: 'No hay mensualidades pendientes ni en mora en los datos demo.' })}</tbody></table></div>
     </section>
   `;
 }
 
 function renderAdminStudents() {
   return `
-    <header class="page-heading"><div><p class="eyebrow">Base de alumnos</p><h1>Personas,<br/>no expedientes.</h1><p>Datos ficticios para validar la experiencia de gestión.</p></div><button class="button button--red" type="button" data-open-student>+ Nuevo alumno</button></header>
-    <div class="section-head"><label class="search-box"><span>⌕</span><input id="studentSearch" type="search" placeholder="Buscar por nombre o carnet" autocomplete="off" /></label><span class="tag">${escapeHtml(state.students.length)} registros demo</span></div>
-    <div class="table-wrap"><table class="data-table"><thead><tr><th>Alumno</th><th>Plan</th><th>Teléfono</th><th>Estado</th><th>Acción</th></tr></thead><tbody id="studentTableBody">${studentRows()}</tbody></table></div>
+    <header class="page-heading">
+      <div><p class="eyebrow">Base de alumnos</p><h1>Personas,<br/>no expedientes.</h1><p>Datos ficticios para validar la experiencia de gestión.</p></div>
+      <div class="heading-actions">
+        <button class="button button--light" type="button" data-admin-export="students">Exportar CSV ⤓</button>
+        <button class="button button--red" type="button" data-open-student>+ Nuevo alumno</button>
+      </div>
+    </header>
+    <div class="section-head"><label class="search-box"><span aria-hidden="true">⌕</span><span class="sr-only">Buscar alumno por nombre o carnet</span><input id="studentSearch" type="search" placeholder="Buscar por nombre o carnet" autocomplete="off" /></label><span class="tag">${escapeHtml(state.students.length)} registros demo</span></div>
+    <p class="payment-meta" id="studentSearchStatus" role="status">${escapeHtml(state.students.length)} de ${escapeHtml(state.students.length)} alumnos.</p>
+    <div class="table-wrap"><table class="data-table"><thead><tr><th scope="col">Alumno</th><th scope="col">Plan</th><th scope="col">Teléfono</th><th scope="col">Estado</th><th scope="col">Acción</th></tr></thead><tbody id="studentTableBody">${studentRows()}</tbody></table></div>
   `;
 }
 
@@ -1013,31 +1892,47 @@ function renderAdminPayments() {
   const paid = state.payments.filter((item) => item.status === 'Pagado' && item.paidAt?.startsWith(monthKey(TODAY))).reduce((sum, item) => sum + item.amount, 0);
   const due = pendingPayments().reduce((sum, item) => sum + item.amount, 0);
   return `
-    <header class="page-heading"><div><p class="eyebrow">Control de pagos</p><h1>Registrar.<br/>Conciliar. Listo.</h1><p>Solo registra cobros realizados fuera del sistema. No procesa tarjetas ni emite FEL.</p></div><button class="button button--red" type="button" data-open-payment>+ Registrar pago</button></header>
+    <header class="page-heading">
+      <div><p class="eyebrow">Control de pagos</p><h1>Registrar.<br/>Conciliar. Listo.</h1><p>Solo registra cobros realizados fuera del sistema. No procesa tarjetas ni emite FEL.</p></div>
+      <div class="heading-actions">
+        <button class="button button--light" type="button" data-admin-export="payments">Exportar CSV ⤓</button>
+        <button class="button button--red" type="button" data-open-payment>+ Registrar pago</button>
+      </div>
+    </header>
     <section class="split-grid" style="margin-bottom:28px">
       <article class="surface-card"><p class="eyebrow">Registrado en ${escapeHtml(monthName(TODAY))}</p><p class="payment-amount">Q ${escapeHtml(paid.toLocaleString('es-GT'))}</p><p class="payment-meta">Monto visible en esta demo local.</p></article>
       <article class="surface-card"><p class="eyebrow">Pendiente / mora</p><p class="payment-amount">Q ${escapeHtml(due.toLocaleString('es-GT'))}</p><p class="payment-meta">Requiere seguimiento administrativo.</p></article>
     </section>
-    <div class="filter-row" id="paymentFilters"><button class="filter-chip is-active" type="button" data-payment-filter="all">Todos</button><button class="filter-chip" type="button" data-payment-filter="Pagado">Pagados</button><button class="filter-chip" type="button" data-payment-filter="Pendiente">Pendientes</button><button class="filter-chip" type="button" data-payment-filter="En mora">En mora</button></div>
-    <div class="table-wrap"><table class="data-table"><thead><tr><th>Alumno</th><th>Mes</th><th>Monto</th><th>Método</th><th>Estado</th><th>Acción</th></tr></thead><tbody id="paymentTableBody">${adminPaymentRows()}</tbody></table></div>
+    <div class="filter-row" id="paymentFilters" role="group" aria-label="Filtrar pagos por estado"><button class="filter-chip is-active" type="button" aria-pressed="true" data-payment-filter="all">Todos</button><button class="filter-chip" type="button" aria-pressed="false" data-payment-filter="Pagado">Pagados</button><button class="filter-chip" type="button" aria-pressed="false" data-payment-filter="Pendiente">Pendientes</button><button class="filter-chip" type="button" aria-pressed="false" data-payment-filter="En mora">En mora</button></div>
   `;
 }
 
 function renderAdminAttendance() {
+  // El estado se leia del indice de la fila: la primera clase de la lista salia
+  // siempre marcada como pendiente, fuera o no la de hoy.
   const sessions = scheduledClasses().map((item) => {
+    const enrolled = rosterFor(item.id).length;
     const marked = attendanceFor(item.id, item.date).length;
-    const live = item.day === 'Hoy';
-    return [
-      `${item.day} · ${item.time}`,
-      item.name,
-      item.teacher,
-      `${marked} marcado${marked === 1 ? '' : 's'} de ${item.enrolled}`,
-      live ? 'Programada para hoy' : 'Programada'
-    ];
+    return {
+      when: `${item.day} · ${item.time}`,
+      name: item.name,
+      teacher: item.teacher,
+      attendance: enrolled || marked
+        ? `${marked} marcado${marked === 1 ? '' : 's'} · ${enrolled} inscrito${enrolled === 1 ? '' : 's'}`
+        : 'Sin inscritos en la demo',
+      live: item.day === 'Hoy'
+    };
   });
   return `
     <header class="page-heading"><div><p class="eyebrow">Registro de asistencia</p><h1>Cada llegada<br/>cuenta.</h1><p>Las ${classData.length} clases de la semana. Consulta operativa, sin gráficas ni analítica avanzada.</p></div><button class="button" type="button" data-open-scan>Simular escáner QR</button></header>
-    <div class="table-wrap"><table class="data-table"><thead><tr><th>Fecha y hora</th><th>Clase</th><th>Maestro</th><th>Asistencia</th><th>Estado</th></tr></thead><tbody>${sessions.map((row, index) => `<tr>${row.map((cell, cellIndex) => `<td>${cellIndex === 4 ? `<span class="status-pill ${index ? 'is-paid' : 'is-due'}">${escapeHtml(cell)}</span>` : escapeHtml(cell)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>
+    <div class="table-wrap"><table class="data-table"><thead><tr><th scope="col">Fecha y hora</th><th scope="col">Clase</th><th scope="col">Maestro</th><th scope="col">Asistencia</th><th scope="col">Estado</th></tr></thead><tbody>${sessions.map((row) => `<tr>
+      <td>${escapeHtml(row.when)}</td>
+      <td>${escapeHtml(row.name)}</td>
+      <td>${escapeHtml(row.teacher)}</td>
+      <td>${escapeHtml(row.attendance)}</td>
+      <td><span class="status-pill ${row.live ? 'is-due' : ''}">${row.live ? 'Programada para hoy' : 'Programada'}</span></td>
+    </tr>`).join('')}</tbody></table></div>
+    <p class="modal-note">La columna de asistencia cuenta las marcas registradas y las inscripciones vigentes de los datos demo; pueden no coincidir si un alumno fue retirado de la clase después de asistir. Los cupos del calendario son cifras de referencia de una academia de 50 alumnos y no se calculan con estas inscripciones.</p>
   `;
 }
 
@@ -1064,10 +1959,11 @@ function childCardMarkup(child) {
       <p class="eyebrow" style="margin-top:20px">Última asistencia</p>
       <p class="payment-meta">${last ? `${escapeHtml(last.label)} · ${escapeHtml(last.className)}` : 'Sin registros todavía.'}</p>
       <p class="eyebrow" style="margin-top:20px">Mensualidad · ${escapeHtml(monthName(TODAY))}</p>
-      <h3>Q ${payment ? escapeHtml(payment.amount) : '—'} <span class="status-pill ${paid ? 'is-paid' : 'is-due'}">${escapeHtml(paymentStatus(payment))}</span></h3>
+      <h3>${payment ? escapeHtml(`Q ${formatAmount(payment.amount)}`) : escapeHtml(priceText(planForStudent(child.id).price))} <span class="status-pill ${paid ? 'is-paid' : 'is-due'}">${escapeHtml(paymentStatus(payment))}</span></h3>
+      <p class="payment-meta">${escapeHtml(planForStudent(child.id).planName)}${planReviewTag(planForStudent(child.id))}${payment ? '' : ' · cuota del plan, sin registro este mes'}</p>
       <div class="form-actions">
-        <button class="button button--light button--small" type="button" data-child-payment="${escapeHtml(child.id)}">Ver mensualidad</button>
-        <button class="button button--small" type="button" data-child-carnet="${escapeHtml(child.id)}">Ver carné</button>
+        <button class="button button--light button--small" type="button" data-child-payment="${escapeHtml(child.id)}" aria-label="Ver mensualidad de ${escapeHtml(child.name)}">Ver mensualidad</button>
+        <button class="button button--small" type="button" data-child-carnet="${escapeHtml(child.id)}" aria-label="Ver carné de ${escapeHtml(child.name)}">Ver carné</button>
       </div>
     </article>
   `;
@@ -1101,7 +1997,7 @@ function renderGuardianHome() {
     <section class="section">
       <div class="section-head"><div><h2>A tu cargo</h2><p>Próxima clase, última asistencia y mensualidad del mes.</p></div><span class="tag">${children.length} alumno${children.length === 1 ? '' : 's'}</span></div>
       <div class="cards-grid">
-        ${children.map(childCardMarkup).join('')}
+        ${children.length ? children.map(childCardMarkup).join('') : '<div class="empty-state"><strong>Sin alumnos a cargo</strong>Esta demostración no tiene hijos asignados a este tutor.</div>'}
         ${consentCardMarkup(guardian)}
       </div>
     </section>
@@ -1111,17 +2007,10 @@ function renderGuardianHome() {
 function guardianCarnetMarkup() {
   const child = studentById(activeChildId);
   if (!child) return '<div class="empty-state"><strong>Sin alumnos a cargo</strong>Esta demostración no tiene hijos asignados.</div>';
-  const [firstName, ...rest] = child.name.split(' ');
   const next = nextClassForStudent(child.id);
   return `
     <div class="member-card-wrap">
-      <article class="member-card">
-        <img class="member-logo" src="./assets/inmotion-logo.svg" alt="In Motion Dance Academy" />
-        <p class="member-card-label">Miembro activo · ${escapeHtml(child.plan)}</p>
-        <h2>${escapeHtml(firstName)}<br/>${escapeHtml(rest.join(' '))}</h2>
-        <span class="member-id">${escapeHtml(child.id)} · ${escapeHtml(child.level)}</span>
-        <div class="member-validity"><span>Vigencia</span><strong>${membershipValidity()}</strong></div>
-      </article>
+      ${memberCardMarkup(child)}
       <aside class="qr-panel">
         <h2>Registro en recepción</h2>
         <p>${next ? `Mostrá este código al llegar a ${escapeHtml(next.name)}, ${escapeHtml(next.day.toLowerCase())} a las ${escapeHtml(next.time)}.` : 'Mostrá este código al llegar a la academia.'}</p>
@@ -1129,6 +2018,7 @@ function guardianCarnetMarkup() {
         <p class="qr-demo-label">QR de demostración · ${escapeHtml(child.id)}</p>
       </aside>
     </div>
+    ${membershipStatusMarkup(child)}
   `;
 }
 
@@ -1136,9 +2026,9 @@ function renderGuardianCard() {
   const children = childrenOf(currentGuardian());
   if (!children.some((child) => child.id === activeChildId)) activeChildId = children[0]?.id || null;
   return `
-    <header class="page-heading"><div><p class="eyebrow">Identificación digital</p><h1>El carné<br/>de tus hijos.</h1><p>Se muestra en recepción para registrar la llegada. El tutor no marca la asistencia.</p></div></header>
-    <div class="filter-row" aria-label="Elegir alumno">
-      ${children.map((child) => `<button class="filter-chip ${child.id === activeChildId ? 'is-active' : ''}" type="button" data-child-select="${escapeHtml(child.id)}">${escapeHtml(child.name)}</button>`).join('')}
+    <header class="page-heading"><div><p class="eyebrow">Identificación digital</p><h1>El carné<br/>de tus hijos.</h1><p>El carné es permanente y no caduca. Se muestra en recepción para registrar la llegada; el estado de la mensualidad se consulta aparte. El tutor no marca la asistencia.</p></div></header>
+    <div class="filter-row" role="group" aria-label="Elegir alumno">
+      ${children.map((child) => `<button class="filter-chip ${child.id === activeChildId ? 'is-active' : ''}" type="button" aria-pressed="${child.id === activeChildId}" data-child-select="${escapeHtml(child.id)}">${escapeHtml(child.name)}</button>`).join('')}
     </div>
     <div id="guardianCarnet">${guardianCarnetMarkup()}</div>
   `;
@@ -1147,6 +2037,8 @@ function renderGuardianCard() {
 const renderers = {
   'student:inicio': renderStudentHome,
   'student:clases': renderStudentClasses,
+  'student:planes': renderPlans,
+  'guardian:planes': renderPlans,
   'student:carnet': renderStudentCard,
   'teacher:inicio': renderTeacherHome,
   'teacher:agenda': renderTeacherAgenda,
@@ -1163,8 +2055,12 @@ function initials(name) {
   return String(name).split(/\s+/).slice(0, 2).map((part) => part[0] || '').join('').toUpperCase();
 }
 
+// El fondo del dialogo es un <button> con tabindex="-1": entraba en la lista y
+// quedaba como primer elemento del ciclo, asi que Shift+Tab desde el primer
+// control real no daba la vuelta y el foco se escapaba de la ventana.
 function modalFocusables() {
-  return [...elements.modalLayer.querySelectorAll(FOCUSABLE_SELECTOR)].filter((node) => !node.hasAttribute('inert') && node.offsetParent !== null);
+  return [...elements.modalLayer.querySelectorAll(FOCUSABLE_SELECTOR)]
+    .filter((node) => !node.hasAttribute('inert') && node.tabIndex >= 0 && node.getClientRects().length > 0);
 }
 
 // Mientras el dialogo esta abierto el resto de la pagina no recibe foco ni se
@@ -1279,27 +2175,28 @@ function resolveWebMcp(value) {
 }
 
 function scanClasses() {
-  return classesForStudent('IM-0241').filter((item) => item.day === 'Hoy' &&
+  return classesForStudent(DEMO_STUDENT_ID).filter((item) => item.day === 'Hoy' &&
     (activeRole !== 'teacher' || (item.id === activeClassId && item.teacher === TEACHER_NAME)));
 }
 
 function openScanModal() {
   TODAY = new Date();
   const classes = scanClasses();
+  const student = studentById(DEMO_STUDENT_ID);
   openModal({
     title: 'Escanear carnet',
     eyebrow: 'Asistencia QR · Simulación',
     body: `
       <div class="scan-stage"><span class="scan-line"></span><p class="scan-copy">Alineá el código dentro del recuadro</p></div>
-      <p class="modal-note">Demo local: no se activa la cámara. El botón simula la lectura del carnet IM-0241.</p>
-      ${classes.length ? `<label class="field"><span>Clase de hoy · Valeria Ruiz</span><select id="scanClass">${classes.map((item) => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.name)} · ${escapeHtml(item.time)}</option>`).join('')}</select></label>
+      <p class="modal-note">Demo local: no se activa la cámara. El botón simula la lectura del carnet ${escapeHtml(student?.id || DEMO_STUDENT_ID)}.</p>
+      ${classes.length ? `<label class="field"><span>Clase de hoy · ${escapeHtml(student?.name || DEMO_STUDENT_ID)}</span><select id="scanClass">${classes.map((item) => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.name)} · ${escapeHtml(item.time)}</option>`).join('')}</select></label>
       <div class="form-actions"><button class="button button--red" type="button" id="simulateScan" data-session-date="${escapeHtml(dayKey(TODAY))}">Simular lectura</button></div>`
-        : '<p class="modal-note">Valeria no tiene una clase asignada para hoy en esta sesión. No se registrará ninguna asistencia.</p>'}
+        : `<p class="modal-note">${escapeHtml((student?.name || 'La alumna demo').split(' ')[0])} no tiene una clase asignada para hoy en esta sesión. No se registrará ninguna asistencia.</p>`}
     `
   });
 }
 
-function openPaymentModal(studentId = 'IM-0241', period = monthKey(TODAY)) {
+function openPaymentModal(studentId = DEMO_STUDENT_ID, period = monthKey(TODAY)) {
   const student = state.students.find((item) => item.id === studentId) || state.students[0];
   const periods = [...new Set([monthKey(TODAY), monthKey(nextMonthDate()), period, ...pendingPayments().map((item) => item.period)])].sort();
   openModal({
@@ -1309,12 +2206,12 @@ function openPaymentModal(studentId = 'IM-0241', period = monthKey(TODAY)) {
       <form id="paymentForm">
         <div class="form-grid">
           <label class="field field--wide"><span>Alumno</span><select name="studentId" required>${state.students.map((item) => `<option value="${escapeHtml(item.id)}" ${item.id === student.id ? 'selected' : ''}>${escapeHtml(item.name)} · ${escapeHtml(item.id)}</option>`).join('')}</select></label>
-          <label class="field"><span>Monto (Q)</span><input name="amount" type="number" min="0.01" step="0.01" required /></label>
-          <label class="field"><span>Método</span><select name="method" required><option>POS</option><option>Transferencia</option><option>Efectivo</option><option>Depósito</option></select></label>
+          <label class="field"><span>Monto (Q) · liquidación completa</span><input name="amount" type="number" min="0.01" step="0.01" required readonly /></label>
+          <label class="field"><span>Método</span><select name="method" required>${PAYMENT_METHODS.map((value) => `<option>${escapeHtml(value)}</option>`).join('')}</select></label>
           <label class="field"><span>Mes aplicado</span><select name="period">${periods.map((value) => `<option value="${escapeHtml(value)}" ${value === period ? 'selected' : ''}>${escapeHtml(monthLabel(parseDayKey(`${value}-01`)))}</option>`).join('')}</select></label>
           <label class="field"><span>Referencia</span><input name="reference" placeholder="Ej. voucher 1842" /></label>
         </div>
-        <p class="modal-note">Este registro no realiza ningún cobro, no procesa tarjetas y no genera factura FEL.</p>
+        <p class="modal-note">Este registro no realiza ningún cobro, no procesa tarjetas y no genera factura FEL. El importe sale de la deuda del mes o, si no hay ninguna registrada, de la cuota del plan del alumno.</p>
         <p class="payment-meta" id="paymentFormMessage" role="status"></p>
         <div class="form-actions"><button class="button button--light" type="button" data-close-modal>Cancelar</button><button class="button button--red" type="submit">Guardar pago</button></div>
       </form>
@@ -1327,14 +2224,22 @@ function updatePaymentForm() {
   const form = document.querySelector('#paymentForm');
   if (!form) return;
   const studentId = form.elements.studentId.value;
-  const existing = state.payments.find((item) => item.studentId === studentId && item.period === form.elements.period.value);
+  const required = requiredPaymentFor(studentId, form.elements.period.value);
+  const existing = required.existing;
   const paid = existing?.status === 'Pagado';
-  form.elements.amount.value = existing?.amount ?? planAmount(studentId);
-  form.elements.amount.readOnly = !!existing;
-  form.querySelector('[type="submit"]').disabled = paid;
+  form.elements.amount.value = required.amount === null ? '' : required.amount;
+  // El importe es derivado en los dos casos: queda visible pero no editable,
+  // porque un valor distinto solo puede ser un abono o un descuento y la demo
+  // no los admite. registerPayment igual lo revalida.
+  form.elements.amount.readOnly = true;
+  form.querySelector('[type="submit"]').disabled = paid || required.amount === null;
   document.querySelector('#paymentFormMessage').textContent = paid
     ? 'Este mes ya está pagado. El registro existente se conserva y no se puede reemplazar desde este formulario.'
-    : existing ? 'Se registrará la liquidación completa de esta mensualidad pendiente.' : 'Se creará un registro para el período elegido. No cancela deudas de otros meses.';
+    : required.amount === null
+    ? `El plan guardado de este alumno (${required.plan.planName}) no figura en el catálogo de la demo. No se le asigna una cuota: corregí el plan del alumno antes de registrar el pago.`
+    : existing
+      ? `Se registrará la liquidación completa de la mensualidad pendiente: Q ${formatAmount(required.amount)}.`
+      : `Sin deuda registrada para ese mes, el importe es la cuota del ${required.plan.planName}: Q ${formatAmount(required.amount)}. No cancela deudas de otros meses.`;
 }
 
 function openNewStudentModal() {
@@ -1345,7 +2250,7 @@ function openNewStudentModal() {
       <form id="studentForm">
         <div class="form-grid">
           <label class="field field--wide"><span>Nombre completo</span><input name="name" required placeholder="Nombre y apellido" /></label>
-          <label class="field"><span>Plan</span><select name="plan"><option>Plan 4 clases</option><option selected>Plan 8 clases</option><option>Plan ilimitado</option></select></label>
+          <label class="field"><span>Plan</span><select name="plan">${membershipPlans.map((item) => `<option ${item.id === DEFAULT_PLAN.id ? 'selected' : ''}>${escapeHtml(item.planName)}</option>`).join('')}</select></label>
           <label class="field"><span>Teléfono</span><input name="phone" inputmode="tel" placeholder="5555-0000" /></label>
           <label class="field field--wide"><span>Notas internas</span><textarea name="notes" placeholder="Opcional"></textarea></label>
         </div>
@@ -1360,25 +2265,39 @@ function openNewStudentModal() {
 function openClassDetail(classId) {
   const item = findClass(classId);
   if (!item) return;
+  const isEnrolled = (studentById(DEMO_STUDENT_ID)?.classIds || []).includes(item.id);
+  const rosterCount = rosterFor(item.id).length;
   openModal({
     title: item.name,
     eyebrow: `${item.day} · ${item.dateLabel} · ${item.time}`,
     body: `
-      <div class="surface-card" style="padding:20px;margin-bottom:16px"><p class="eyebrow">Detalle de clase</p><h3>${escapeHtml(item.level)}</h3><p class="payment-meta">${escapeHtml(item.teacher)} · ${escapeHtml(item.room)}<br/>${escapeHtml(capacityText(item))} alumnos inscritos</p></div>
-      <p class="modal-note">Esta pantalla permite consultar horarios y cupos de demostración. Las reservas no están habilitadas en este prototipo.</p>
-      <div class="form-actions"><button class="button button--red" type="button" data-close-modal>Entendido</button></div>
+      <div class="surface-card" style="padding:20px;margin-bottom:16px">
+        <p class="eyebrow">Detalle de clase</p>
+        <h3>${escapeHtml(item.level)}</h3>
+        <p class="payment-meta">
+          ${escapeHtml(item.teacher)} · ${escapeHtml(item.room)}<br/>
+          ${escapeHtml(capacityText(item))} cupos ocupados · ${escapeHtml(rosterCount)} alumno${rosterCount === 1 ? '' : 's'} inscrito${rosterCount === 1 ? '' : 's'} en la demo
+        </p>
+        ${isEnrolled ? '<p style="margin-top:12px"><span class="tag tag--red">Estás inscrito en esta clase</span></p>' : ''}
+      </div>
+      <p class="modal-note">Esta pantalla es de consulta. La inscripción a una clase la administra la academia; el prototipo no habilita reservas por sesión.</p>
+      <div class="form-actions">
+        <button class="button button--light" type="button" data-close-modal>Cerrar</button>
+      </div>
     `
   });
 }
 
+
 function openStudentPayment() {
-  const payment = monthlyPaymentFor('IM-0241');
+  const payment = monthlyPaymentFor(DEMO_STUDENT_ID);
+  const plan = planForStudent(DEMO_STUDENT_ID);
   const paid = payment?.status === 'Pagado';
   openModal({
     title: paid ? 'Comprobante interno' : payment ? 'Mensualidad pendiente' : 'Mensualidad sin registro',
     eyebrow: monthLabel(TODAY),
     body: `
-      <article class="surface-card"><p class="eyebrow">${escapeHtml(paymentStatus(payment))}</p><p class="payment-amount">Q ${escapeHtml(payment?.amount ?? '—')}</p><p class="payment-meta">${paid ? `${escapeHtml(payment.method)} · ` : ''}${escapeHtml(paymentDateText(payment))}</p></article>
+      <article class="surface-card"><p class="eyebrow">${escapeHtml(paymentStatus(payment))}</p><p class="payment-amount">Q ${escapeHtml(payment ? formatAmount(payment.amount) : '—')}</p><p class="payment-meta">${paid ? `${escapeHtml(payment.method)} · ` : ''}${escapeHtml(paymentDateText(payment))}<br/>${escapeHtml(plan.planName)}${planReviewTag(plan)} · ${escapeHtml(priceText(plan.price))}${plan.needsReview ? '' : ' al mes'}</p></article>
       <p class="modal-note" style="margin-top:16px">La academia cobra por sus medios habituales. La app solo refleja el registro interno; no hay pasarela ni pago con tarjeta.</p>
     `
   });
@@ -1412,22 +2331,25 @@ function openChildPayment(studentId) {
     body: `
       <article class="surface-card">
         <p class="eyebrow">${escapeHtml(paymentStatus(payment))}</p>
-        <p class="payment-amount">Q ${payment ? escapeHtml(payment.amount) : '—'}</p>
-        <p class="payment-meta">${paid ? `${escapeHtml(payment.method)} · ` : ''}${escapeHtml(paymentDateText(payment))}</p>
+        <p class="payment-amount">Q ${payment ? escapeHtml(formatAmount(payment.amount)) : '—'}</p>
+        <p class="payment-meta">${paid ? `${escapeHtml(payment.method)} · ` : ''}${escapeHtml(paymentDateText(payment))}<br/>${escapeHtml(planForStudent(child.id).planName)}${planReviewTag(planForStudent(child.id))} · ${escapeHtml(priceText(planForStudent(child.id).price))}${planForStudent(child.id).needsReview ? '' : ' al mes'}</p>
       </article>
       <p class="modal-note" style="margin-top:16px">La academia cobra por sus medios habituales. La app solo refleja el registro interno; no hay pasarela ni pago con tarjeta.</p>
     `
   });
 }
 
+// El comprobante separa el mes al que se aplica el pago de la fecha en que se
+// registro: antes mostraba un texto libre que no distinguia una cosa de la otra.
 function openReceipt(paymentId) {
   const payment = state.payments.find((item) => item.id === paymentId);
   if (!payment) return;
+  const recordedAt = payment.paidAt ? `${shortDate(parseDayKey(payment.paidAt))} ${parseDayKey(payment.paidAt).getFullYear()}` : payment.date || 'Sin fecha registrada';
   openModal({
     title: 'Comprobante interno',
     eyebrow: `Registro ${payment.id}`,
     body: `
-      <article class="surface-card"><p class="eyebrow">Pago registrado</p><p class="payment-amount">Q ${escapeHtml(payment.amount)}</p><h3>${escapeHtml(payment.student)}</h3><p class="payment-meta">${escapeHtml(payment.month)} · ${escapeHtml(payment.method)} · ${escapeHtml(payment.date)}</p></article>
+      <article class="surface-card"><p class="eyebrow">Pago registrado</p><p class="payment-amount">Q ${escapeHtml(formatAmount(payment.amount))}</p><h3>${escapeHtml(payment.student)}</h3><p class="payment-meta">Mes aplicado · ${escapeHtml(payment.month)}<br/>Registrado el · ${escapeHtml(recordedAt)}<br/>Método · ${escapeHtml(payment.method)}${payment.reference ? `<br/>Referencia · ${escapeHtml(payment.reference)}` : ''}</p></article>
       <p class="modal-note" style="margin-top:16px">Documento de demostración. No es factura FEL ni comprobante tributario.</p>
     `
   });
@@ -1436,22 +2358,103 @@ function openReceipt(paymentId) {
 function openStudentDetail(studentId) {
   const student = state.students.find((item) => item.id === studentId);
   if (!student) return;
+  const enrolled = classesForStudent(student.id);
   openModal({
     title: student.name,
     eyebrow: `Ficha ${student.id}`,
     body: `
-      <article class="surface-card"><div class="person-cell"><span class="avatar" style="width:54px;height:54px">${escapeHtml(initials(student.name))}</span><span><strong>${escapeHtml(student.name)}</strong><small>${escapeHtml(student.plan)}</small></span></div><p class="payment-meta" style="margin-top:22px">Teléfono · ${escapeHtml(student.phone || 'Sin registrar')}<br/>Estado de pago · ${escapeHtml(studentPaymentStatus(student.id))}</p></article>
+      <article class="surface-card"><div class="person-cell"><span class="avatar" style="width:54px;height:54px" aria-hidden="true">${escapeHtml(initials(student.name))}</span><span><strong>${escapeHtml(student.name)}</strong><small>${escapeHtml(planForStudent(student.id).planName)}</small></span></div><p class="payment-meta" style="margin-top:22px">Teléfono · ${escapeHtml(student.phone || 'Sin registrar')}<br/>Estado de pago · ${escapeHtml(studentPaymentStatus(student.id))}</p></article>
+      <article class="surface-card" style="margin-top:16px">
+        <p class="eyebrow">Clases inscritas</p>
+        ${enrolled.length
+          ? `<p class="payment-meta">${enrolled.map((item) => `${escapeHtml(item.name)} · ${escapeHtml(WEEKDAY_SHORT[item.weekday])} ${escapeHtml(item.time)}`).join('<br/>')}</p>`
+          : '<p class="payment-meta">Sin clases asignadas. Mientras no tenga inscripciones no aparece en el calendario del alumno ni en ninguna lista de asistencia.</p>'}
+        <div class="form-actions"><button class="button button--red button--small" type="button" data-student-classes="${escapeHtml(student.id)}" aria-label="Gestionar clases de ${escapeHtml(student.name)}">Gestionar clases</button></div>
+      </article>
       <p class="modal-note" style="margin-top:16px">Ficha demo sin información sensible real.</p>
     `
   });
 }
 
+// ---------------------------------------------------------------------------
+// Inscripcion en clases. Asigna y retira clases de la semana, nada mas: no es
+// reserva por sesion ni lista de espera, no toca pagos y no borra asistencias
+// ya registradas. Persiste en classIds con el mismo almacenamiento existente.
+// ---------------------------------------------------------------------------
+function openStudentClassesModal(studentId) {
+  const student = studentById(studentId);
+  if (!student) return;
+  const selected = student.classIds || [];
+  openModal({
+    title: `Clases de ${student.name}`,
+    eyebrow: `Inscripciones · ${student.id}`,
+    body: `
+      <form id="enrollmentForm" data-student-id="${escapeHtml(student.id)}">
+        <p class="modal-note">Marcá las clases en las que queda inscrito. Se guarda en este navegador, no reserva sesiones ni crea lista de espera y no modifica pagos.</p>
+        <div class="attendance-roster" role="group" aria-label="Clases de la semana">
+          ${scheduledClasses().map((item) => {
+            const isOn = selected.includes(item.id);
+            return `
+          <label class="student-check">
+            <input type="checkbox" name="classIds" value="${escapeHtml(item.id)}" ${isOn ? 'checked' : ''} />
+            <span class="avatar" aria-hidden="true">${escapeHtml(WEEKDAY_SHORT[item.weekday])}</span>
+            <span><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(WEEKDAY_SHORT[item.weekday])} ${escapeHtml(item.time)} · ${escapeHtml(item.room)} · ${escapeHtml(item.level)}</small></span>
+            <span>${isOn ? 'Inscrito' : 'Sin inscribir'}</span>
+          </label>`;
+          }).join('')}
+        </div>
+        <p class="modal-note">Los cupos que muestra el calendario son cifras de referencia de la demo (una academia de 50 alumnos): no se calculan con estas inscripciones y no representan disponibilidad real.</p>
+        <p class="payment-meta" id="enrollmentFormMessage" role="status"></p>
+        <div class="form-actions"><button class="button button--light" type="button" data-close-modal>Cancelar</button><button class="button button--red" type="submit">Guardar inscripciones</button></div>
+      </form>
+    `
+  });
+}
+
+function handleEnrollmentSubmit(event) {
+  event.preventDefault();
+  const form = event.target;
+  const message = document.querySelector('#enrollmentFormMessage');
+  const student = studentById(form.dataset.studentId);
+  if (!student) {
+    if (message) message.textContent = 'El alumno ya no existe en esta demo. Cerrá y volvé a abrir la ficha.';
+    return;
+  }
+  const knownClassIds = classData.map((item) => item.id);
+  const classIds = [...new Set([...form.querySelectorAll('input[name="classIds"]:checked')]
+    .map((input) => input.value)
+    .filter((value) => knownClassIds.includes(value)))];
+  const before = student.classIds || [];
+  const added = classIds.filter((id) => !before.includes(id)).length;
+  const removed = before.filter((id) => !classIds.includes(id)).length;
+  try {
+    // attendanceLog no se toca: retirar una inscripcion no borra las sesiones
+    // ya registradas de ese alumno.
+    persistState({
+      ...state,
+      students: state.students.map((item) => (item.id === student.id ? { ...item, classIds } : item))
+    });
+  } catch (error) {
+    if (message) message.textContent = error.message;
+    return;
+  }
+  closeModal();
+  const detail = added || removed
+    ? `${student.name} · ${added} asignada${added === 1 ? '' : 's'}, ${removed} retirada${removed === 1 ? '' : 's'}`
+    : `${student.name} · sin cambios`;
+  showToast('Inscripciones guardadas', detail);
+  renderAndFocus();
+}
+
 function openProfile() {
+  const student = studentById(DEMO_STUDENT_ID);
+  const guardian = currentGuardian();
+  const children = childrenOf(guardian).map((child) => child.name);
   const profiles = {
-    student: ['Valeria Ruiz', 'Alumno · Plan 8 clases', 'IM-0241'],
-    teacher: ['Alex Aquino', 'Maestro', `${teacherClasses().length} clase${teacherClasses().length === 1 ? '' : 's'} asignada${teacherClasses().length === 1 ? '' : 's'}`],
+    student: [student?.name || 'Alumno demo', `Alumno · ${planForStudent(DEMO_STUDENT_ID).planName}`, student?.id || DEMO_STUDENT_ID],
+    teacher: [TEACHER_NAME, 'Maestro', `${teacherClasses().length} clase${teacherClasses().length === 1 ? '' : 's'} asignada${teacherClasses().length === 1 ? '' : 's'}`],
     admin: ['Majo Borrayo', 'Administración', 'Acceso de demostración'],
-    guardian: ['Carmen Ruiz', 'Tutor', 'Valeria Ruiz y Diego Ruiz a su cargo']
+    guardian: [guardian?.name || 'Tutor demo', 'Tutor', children.length ? `${children.join(' y ')} a su cargo` : 'Sin alumnos a cargo']
   };
   const [name, role, meta] = profiles[activeRole] || profiles.student;
   openModal({
@@ -1466,17 +2469,19 @@ function openProfile() {
 
 function simulateScan() {
   TODAY = new Date();
+  const student = studentById(DEMO_STUDENT_ID);
   const target = scanClasses().find((item) => item.id === document.querySelector('#scanClass')?.value);
   try {
+    if (!student) throw new Error('El alumno de la demostración ya no existe. Reiniciá la demo.');
     if (!target) throw new Error('No hay una clase válida para registrar esta lectura.');
-    recordAttendance(target.id, ['IM-0241'], document.querySelector('#simulateScan').dataset.sessionDate);
+    recordAttendance(target.id, [student.id], document.querySelector('#simulateScan').dataset.sessionDate);
   } catch (error) {
     showToast('No se registró la asistencia', error.message);
     return;
   }
   closeModal();
-  showToast('Asistencia registrada', `Valeria Ruiz · ${target.name} · ${target.time}`);
-  renderApp();
+  showToast('Asistencia registrada', `${student?.name || DEMO_STUDENT_ID} · ${target.name} · ${target.time}`);
+  renderAndFocus();
 }
 
 function openResetModal() {
@@ -1494,7 +2499,7 @@ function openResetModal() {
 function resetDemo() {
   // Se escribe el estado inicial encima del guardado: nada se borra antes de
   // comprobar que el reinicio se puede persistir.
-  const fresh = structuredClone(defaultState);
+  const fresh = createDefaultState();
   fresh.role = activeRole;
   try {
     persistState(fresh);
@@ -1508,11 +2513,13 @@ function resetDemo() {
   activeChildId = null;
   closeModal();
   showToast('Demo reiniciada', 'Los datos volvieron a su estado inicial.');
-  renderApp();
+  renderAndFocus();
 }
 
 function handleModalClick(event) {
   if (event.target.closest('#confirmWebMcp')) return resolveWebMcp(true);
+  const studentClasses = event.target.closest('[data-student-classes]');
+  if (studentClasses) return openStudentClassesModal(studentClasses.dataset.studentClasses);
   if (event.target.closest('[data-close-modal]')) return closeModal();
   if (event.target.closest('#simulateScan')) return simulateScan();
   if (event.target.closest('#confirmReset')) return resetDemo();
@@ -1521,6 +2528,43 @@ function handleModalClick(event) {
 function handleModalSubmit(event) {
   if (event.target.id === 'paymentForm') handlePaymentSubmit(event);
   if (event.target.id === 'studentForm') handleStudentSubmit(event);
+  if (event.target.id === 'enrollmentForm') handleEnrollmentSubmit(event);
+}
+
+// ---------------------------------------------------------------------------
+// Mientras la demo solo admita liquidaciones completas, el importe de un
+// registro no es libre: es la deuda ya registrada de ese mes o, cuando no hay
+// ninguna, la cuota del plan vigente del alumno. Antes, un mes sin registro
+// aceptaba cualquier monto positivo -Q 1 incluido- y lo dejaba como Pagado.
+// ---------------------------------------------------------------------------
+function requiredPaymentFor(studentId, period) {
+  const existing = state.payments.find((item) => item.studentId === studentId && item.period === period);
+  const plan = planForStudent(studentId);
+  return {
+    existing,
+    plan,
+    // 'deuda' = hay una mensualidad registrada para ese mes.
+    // 'plan'  = no hay historial de ese mes: la referencia es el plan actual.
+    source: existing ? 'deuda' : 'plan',
+    // Sin deuda registrada y con un plan fuera del catalogo no hay cuota que
+    // derivar. Se devuelve null y el registro se bloquea: deducir un importe
+    // seria cobrarle al alumno una cifra que nadie definio.
+    amount: existing ? existing.amount : (Number.isFinite(plan.price) ? plan.price : null)
+  };
+}
+
+function requiredPaymentText(required) {
+  if (required.amount === null) {
+    return `la cuota del plan guardado (${required.plan.planName}), que no figura en el catálogo de la demo y debe corregirse desde administración antes de registrar un pago`;
+  }
+  return required.source === 'deuda'
+    ? `la mensualidad pendiente registrada de Q ${formatAmount(required.amount)}`
+    : `la cuota del ${required.plan.planName}, Q ${formatAmount(required.amount)} (no hay una deuda registrada para ese mes, así que la referencia de la demo es el plan actual del alumno)`;
+}
+
+// Comparacion en centavos: 450 y 450.00 son el mismo importe.
+function sameAmount(a, b) {
+  return Math.round(Number(a) * 100) === Math.round(Number(b) * 100);
 }
 
 function registerPayment({ studentId, period, amount, method, reference = '' }) {
@@ -1529,10 +2573,16 @@ function registerPayment({ studentId, period, amount, method, reference = '' }) 
   if (!student) throw new Error('Alumno no encontrado.');
   if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(period)) throw new Error('Elegí un período válido.');
   if (!Number.isFinite(amount) || amount <= 0) throw new Error('El monto debe ser mayor que cero.');
-  if (!['POS', 'Transferencia', 'Efectivo', 'Depósito'].includes(method)) throw new Error('Método de pago no válido.');
-  const existing = state.payments.find((item) => item.studentId === student.id && item.period === period);
+  if (!PAYMENT_METHODS.includes(method)) throw new Error('Método de pago no válido.');
+  const required = requiredPaymentFor(student.id, period);
+  const existing = required.existing;
   if (existing?.status === 'Pagado') throw new Error('Este mes ya está pagado. El registro existente no se reemplazó.');
-  if (existing && amount !== existing.amount) throw new Error(`La mensualidad pendiente es de Q ${existing.amount}. Este formulario registra su liquidación completa.`);
+  if (required.amount === null) {
+    throw new Error(`El plan guardado de este alumno (${required.plan.planName}) no figura en el catálogo de la demo, así que no hay cuota que registrar. Corregí el plan del alumno antes de registrar el pago.`);
+  }
+  if (!sameAmount(amount, required.amount)) {
+    throw new Error(`El registro debe cubrir ${requiredPaymentText(required)}. La demo solo admite liquidaciones completas: no registra abonos, descuentos ni cargos adicionales.`);
+  }
   const record = {
     id: existing?.id || nextPaymentId(),
     studentId: student.id,
@@ -1547,7 +2597,14 @@ function registerPayment({ studentId, period, amount, method, reference = '' }) 
     status: 'Pagado',
     reference: String(reference)
   };
-  const nextState = { ...state, payments: existing ? state.payments.map((item) => item.id === existing.id ? record : item) : [record, ...state.payments] };
+  // Se reemplaza por alumno + periodo, que es lo que identifica una mensualidad:
+  // dos registros con el mismo id habrian quedado liquidados de una sola vez.
+  const nextState = {
+    ...state,
+    payments: existing
+      ? state.payments.map((item) => (item.studentId === record.studentId && item.period === record.period ? record : item))
+      : [record, ...state.payments]
+  };
   persistState(nextState);
   return record;
 }
@@ -1563,8 +2620,8 @@ function handlePaymentSubmit(event) {
     return;
   }
   closeModal();
-  showToast('Pago guardado', `${record.student} · Q ${record.amount} · ${record.method}`);
-  renderApp();
+  showToast('Pago guardado', `${record.student} · Q ${formatAmount(record.amount)} · ${record.method}`);
+  renderAndFocus();
 }
 
 function handleStudentSubmit(event) {
@@ -1580,7 +2637,7 @@ function handleStudentSubmit(event) {
     id: nextStudentId(),
     name: name.slice(0, 80),
     initials: initials(name),
-    plan: String(data.get('plan')),
+    plan: PLAN_NAMES.includes(String(data.get('plan'))) ? String(data.get('plan')) : DEFAULT_PLAN.planName,
     phone: String(data.get('phone') || '').trim().slice(0, 24) || 'Sin registrar',
     status: 'Pendiente',
     level: 'Sin nivel',
@@ -1596,7 +2653,7 @@ function handleStudentSubmit(event) {
   }
   closeModal();
   showToast('Alumno creado', `${student.name} · registro local`);
-  renderApp();
+  renderAndFocus();
 }
 
 function registerWebMcpTools() {
@@ -1646,7 +2703,7 @@ function registerWebMcpTools() {
       });
       if (!approved) throw new Error('La confirmación se canceló en pantalla. No se registró ninguna asistencia.');
       recordAttendance(classItem.id, [student.id], dayKey(new Date()));
-      if (!elements.app.classList.contains('is-hidden')) renderApp();
+      if (!elements.app.classList.contains('is-hidden')) renderAndFocus();
       return { classId: classItem.id, studentId: student.id, status: 'present' };
     }
   });
@@ -1654,7 +2711,7 @@ function registerWebMcpTools() {
   register({
     name: 'register_demo_payment',
     title: 'Registrar pago demo',
-    description: 'Registra localmente un pago ya realizado fuera de la plataforma; no cobra ni procesa tarjetas.',
+    description: 'Registra localmente un pago ya realizado fuera de la plataforma; no cobra ni procesa tarjetas. El monto debe cubrir la mensualidad completa: la deuda registrada del mes o, si no hay ninguna, la cuota del plan del alumno.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -1669,14 +2726,26 @@ function registerWebMcpTools() {
     async execute(input) {
       const student = state.students.find((item) => item.id === input?.studentId);
       if (!student) throw new Error('Alumno demo no encontrado.');
+      const period = monthKey(new Date());
+      const required = requiredPaymentFor(student.id, period);
+      if (required.existing?.status === 'Pagado') throw new Error('Este mes ya está pagado. El registro existente no se reemplazó.');
+      if (!sameAmount(input?.amount, required.amount)) {
+        throw new Error(`El registro debe cubrir ${requiredPaymentText(required)}. La demo solo admite liquidaciones completas: no registra abonos, descuentos ni cargos adicionales.`);
+      }
       const approved = await confirmWebMcpWrite({
         title: 'Confirmar pago',
-        lines: [`Alumno · ${student.name} (${student.id})`, `Monto · Q ${input?.amount}`, `Método · ${input?.method}`, `Mes aplicado · ${monthLabel(new Date())}`],
+        lines: [
+          `Alumno · ${student.name} (${student.id})`,
+          `Monto · Q ${formatAmount(input?.amount)} (liquidación completa)`,
+          `Referencia del importe · ${required.source === 'deuda' ? 'mensualidad pendiente registrada' : `cuota del ${required.plan.planName}`}`,
+          `Método · ${input?.method}`,
+          `Mes aplicado · ${monthLabel(new Date())}`
+        ],
         confirmLabel: 'Sí, registrar pago'
       });
       if (!approved) throw new Error('La confirmación se canceló en pantalla. No se registró ningún pago.');
-      const record = registerPayment({ studentId: input?.studentId, amount: input?.amount, method: input?.method, period: monthKey(new Date()) });
-      if (!elements.app.classList.contains('is-hidden')) renderApp();
+      const record = registerPayment({ studentId: input?.studentId, amount: input?.amount, method: input?.method, period });
+      if (!elements.app.classList.contains('is-hidden')) renderAndFocus();
       return { paymentId: record.id, studentId: record.studentId, amount: record.amount, status: 'recorded' };
     }
   });
@@ -1687,14 +2756,15 @@ function handleAttendanceSubmit(event) {
   const form = event.target;
   const classId = form.dataset.classId;
   const studentIds = [...form.querySelectorAll('input[name="attendance"]:checked')].map((input) => input.value);
+  const scope = [...form.querySelectorAll('input[name="attendance"]')].map((input) => input.value);
   try {
-    recordAttendance(classId, studentIds, form.dataset.sessionDate, { replaceDay: true });
+    recordAttendance(classId, studentIds, form.dataset.sessionDate, { replaceDay: true, scope });
   } catch (error) {
     showToast('No se guardó la asistencia', error.message);
     return;
   }
-  showToast('Asistencia guardada', `${studentIds.length} alumnos marcados como presentes.`);
-  renderApp();
+  showToast('Asistencia guardada', `${studentIds.length} alumno${studentIds.length === 1 ? '' : 's'} marcado${studentIds.length === 1 ? '' : 's'} como presente${studentIds.length === 1 ? '' : 's'}.`);
+  renderAndFocus();
 }
 
 function openClassAttendance(classId) {
@@ -1702,15 +2772,20 @@ function openClassAttendance(classId) {
   activeRole = 'teacher';
   activeRoute = 'asistencia';
   history.pushState(null, '', '#/asistencia');
-  renderApp();
+  renderAndFocus();
 }
 
 function applyClassFilter(button) {
-  elements.content.querySelectorAll('[data-class-filter]').forEach((chip) => chip.classList.toggle('is-active', chip === button));
+  elements.content.querySelectorAll('.filter-row [data-class-filter]').forEach((chip) => {
+    const active = chip.dataset.classFilter === button.dataset.classFilter;
+    chip.classList.toggle('is-active', active);
+    chip.setAttribute('aria-pressed', String(active));
+  });
   const filter = button.dataset.classFilter;
   const classes = scheduledClasses();
   const filtered = filter === 'today' ? classes.filter((item) => item.day === 'Hoy')
     : filter === 'initial' ? classes.filter((item) => item.level.toLowerCase().includes('inicial'))
+    : filter === 'intermediate' ? classes.filter((item) => item.level.toLowerCase().includes('intermedio'))
     : filter === 'advanced' ? classes.filter((item) => item.level.toLowerCase().includes('avanzado'))
     : classes;
   elements.content.querySelector('#studentSchedule').innerHTML = scheduleList(filtered);
@@ -1719,16 +2794,26 @@ function applyClassFilter(button) {
 // Se redibuja solo el carne para no perder la posicion de scroll al cambiar de hijo.
 function applyChildSelect(button) {
   activeChildId = button.dataset.childSelect;
-  elements.content.querySelectorAll('[data-child-select]').forEach((chip) => chip.classList.toggle('is-active', chip === button));
+  elements.content.querySelectorAll('[data-child-select]').forEach((chip) => {
+    const active = chip === button;
+    chip.classList.toggle('is-active', active);
+    chip.setAttribute('aria-pressed', String(active));
+  });
   const panel = elements.content.querySelector('#guardianCarnet');
   if (panel) panel.innerHTML = guardianCarnetMarkup();
 }
 
 function applyPaymentFilter(button) {
-  elements.content.querySelectorAll('[data-payment-filter]').forEach((chip) => chip.classList.toggle('is-active', chip === button));
+  elements.content.querySelectorAll('[data-payment-filter]').forEach((chip) => {
+    const active = chip === button;
+    chip.classList.toggle('is-active', active);
+    chip.setAttribute('aria-pressed', String(active));
+  });
   const filter = button.dataset.paymentFilter;
   const filtered = filter === 'all' ? state.payments : state.payments.filter((item) => paymentStatus(item) === filter);
-  elements.content.querySelector('#paymentTableBody').innerHTML = adminPaymentRows(filtered);
+  elements.content.querySelector('#paymentTableBody').innerHTML = adminPaymentRows(filtered, filter === 'all'
+    ? { title: 'Sin pagos registrados', detail: 'Registrá el primer cobro con “+ Registrar pago”.' }
+    : { title: 'Sin pagos con este estado', detail: 'Probá con otro filtro o mirá todos los registros.' });
 }
 
 // Un solo manejador delegado para toda la página: el contenido se redibuja en cada
@@ -1737,6 +2822,49 @@ function handleContentClick(event) {
   TODAY = new Date();
   const find = (selector) => event.target.closest(selector);
 
+  const scheduleClassBtn = find('[data-toggle-schedule-class]');
+  if (scheduleClassBtn) {
+    const classId = scheduleClassBtn.dataset.toggleScheduleClass;
+    if (selectedScheduleClassIds.has(classId)) {
+      selectedScheduleClassIds.delete(classId);
+    } else {
+      selectedScheduleClassIds.add(classId);
+    }
+    updateScheduleViews();
+    return;
+  }
+
+  const scheduleAction = find('[data-schedule-action]');
+  if (scheduleAction) {
+    const action = scheduleAction.dataset.scheduleAction;
+    if (action === 'select-all') {
+      SCHEDULE_CLASSES.forEach((c) => selectedScheduleClassIds.add(c.id));
+    } else if (action === 'clear-selection') {
+      selectedScheduleClassIds.clear();
+    }
+    updateScheduleViews();
+    return;
+  }
+
+  const attendanceAction = find('[data-attendance-action]');
+  if (attendanceAction) {
+    const form = elements.content.querySelector('#attendanceForm');
+    if (form) {
+      const shouldCheck = attendanceAction.dataset.attendanceAction === 'check-all';
+      form.querySelectorAll('input[name="attendance"]:not(:disabled)').forEach((input) => {
+        input.checked = shouldCheck;
+        const label = input.closest('.student-check')?.querySelector('span:last-child');
+        if (label) label.textContent = shouldCheck ? 'Presente' : 'Sin registro';
+      });
+    }
+    return;
+  }
+
+  const adminExport = find('[data-admin-export]');
+  if (adminExport) return exportTableToCsv(adminExport.dataset.adminExport);
+
+  const planDetail = find('[data-plan-detail]');
+  if (planDetail) return openPlanDetail(planDetail.dataset.planDetail);
   const go = find('[data-go]');
   if (go) return routeTo(go.dataset.go);
   if (find('[data-open-scan]')) return openScanModal();
@@ -1777,18 +2905,28 @@ function handleContentInput(event) {
   const query = event.target.value.trim().toLowerCase();
   const filtered = state.students.filter((item) => `${item.name} ${item.id}`.toLowerCase().includes(query));
   elements.content.querySelector('#studentTableBody').innerHTML = studentRows(filtered);
+  // El resultado del filtro se anuncia: sin esto el cambio de la tabla pasaba
+  // inadvertido para quien usa lector de pantalla.
+  const status = elements.content.querySelector('#studentSearchStatus');
+  if (status) status.textContent = `${filtered.length} de ${state.students.length} alumnos.`;
 }
 
 function handleContentSubmit(event) {
   if (event.target.id === 'attendanceForm') handleAttendanceSubmit(event);
 }
 
-document.querySelectorAll('[data-enter-role]').forEach((button) => button.addEventListener('click', () => enterDemo(button.dataset.enterRole)));
+document.querySelectorAll('[data-enter-role]').forEach((button) => button.addEventListener('click', () => enterDemo(button.dataset.enterRole, button.dataset.entryRoute || 'inicio')));
 document.querySelector('#exitDemo').addEventListener('click', leaveDemo);
 document.querySelector('#resetDemo')?.addEventListener('click', openResetModal);
 elements.content.addEventListener('click', handleContentClick);
 elements.content.addEventListener('input', handleContentInput);
 elements.content.addEventListener('submit', handleContentSubmit);
+elements.content.addEventListener('change', (event) => {
+  if (event.target.matches('input[name="attendance"]')) {
+    const label = event.target.closest('.student-check')?.querySelector('span:last-child');
+    if (label) label.textContent = event.target.checked ? 'Presente' : 'Sin registro';
+  }
+});
 elements.modalLayer.addEventListener('click', handleModalClick);
 elements.modalLayer.addEventListener('submit', handleModalSubmit);
 elements.modalLayer.addEventListener('change', (event) => {
