@@ -364,7 +364,13 @@ export async function fetchRemoteStudents() {
   const memberships = await db.get('memberships', 'select=*');
 
   const profileMap = new Map((profiles || []).map((p) => [p.id, p]));
-  const membershipMap = new Map((memberships || []).map((m) => [m.student_id, m]));
+  const studentMembershipsMap = new Map();
+  for (const m of memberships || []) {
+    if (!studentMembershipsMap.has(m.student_id)) {
+      studentMembershipsMap.set(m.student_id, []);
+    }
+    studentMembershipsMap.get(m.student_id).push(m);
+  }
   const enrollmentsMap = new Map();
 
   for (const e of enrollments || []) {
@@ -382,7 +388,9 @@ export async function fetchRemoteStudents() {
     const p = profileMap.get(c.student_id);
     if (!p) continue;
 
-    const mem = membershipMap.get(c.student_id);
+    const studentMems = studentMembershipsMap.get(c.student_id) || [];
+    studentMems.sort((a, b) => new Date(b.created_at || b.start_date || 0) - new Date(a.created_at || a.start_date || 0));
+    const mem = studentMems[0] || null;
     const fullName = `${p.first_name || ''} ${p.last_name || ''}`.trim() || 'Alumno In Motion';
     const initials = fullName
       .split(/\s+/)
@@ -403,6 +411,7 @@ export async function fetchRemoteStudents() {
       userId: p.user_id || null,
       name: fullName,
       initials: initials || 'IM',
+      memberships: studentMems,
       plan: planName,
       phone: p.phone || 'Sin registrar',
       status: planStatus,
@@ -603,9 +612,18 @@ export async function syncRemotePayment({ studentCardId, amount, method, period,
     period: row.period,
     amount: Number(row.amount),
     method: row.payment_method,
-    reference: notes || '',
+    reference: row.notes !== undefined && row.notes !== null ? row.notes : (notes || ''),
+    recordedAt: row.recorded_at,
     isDuplicate: Boolean(row.is_duplicate)
   };
+}
+
+/**
+ * Recupera el listado de membresías registradas en Supabase
+ */
+export async function fetchRemoteMemberships() {
+  const rows = await db.get('memberships', 'select=*&order=created_at.desc');
+  return Array.isArray(rows) ? rows : [];
 }
 
 /**

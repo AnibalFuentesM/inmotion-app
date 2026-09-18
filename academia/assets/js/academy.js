@@ -668,7 +668,8 @@ function currentGuardian() {
       name,
       firstName: authenticatedProfile.first_name || 'Tutor',
       phone: authenticatedProfile.phone || '',
-      consentSignedAt: authenticatedProfile.created_at ? dayKey(new Date(authenticatedProfile.created_at)) : dayKey(TODAY)
+      consentSignedAt: authenticatedProfile.consent_signed_at ? dayKey(new Date(authenticatedProfile.consent_signed_at)) : null,
+      isDemo: false
     };
   }
   return guardians[0] || null;
@@ -801,7 +802,7 @@ function createBaseStudents() {
 
 // Los tutores no se editan desde la app: solo se consultan.
 const guardians = [
-  { id: GUARDIAN_ID, name: 'Carmen Ruiz', initials: 'CR', phone: '5555-0177', childrenIds: ['IM-0241', 'IM-0262'], consentSignedAt: dayKey(addDays(TODAY, -35)) }
+  { id: GUARDIAN_ID, name: 'Carmen Ruiz', initials: 'CR', phone: '5555-0177', childrenIds: ['IM-0241', 'IM-0262'], consentSignedAt: dayKey(addDays(TODAY, -35)), isDemo: true }
 ];
 
 // El monto de cada mensualidad demo sale del plan del alumno, no de una cifra
@@ -2637,12 +2638,27 @@ function childCardMarkup(child) {
 }
 
 function consentCardMarkup(guardian) {
-  const signed = parseDayKey(guardian.consentSignedAt);
+  const hasConsent = Boolean(guardian?.consentSignedAt);
+  const signed = hasConsent ? parseDayKey(guardian.consentSignedAt) : null;
+  const isDemo = Boolean(guardian?.isDemo);
+
+  if (!hasConsent) {
+    return `
+      <article class="surface-card">
+        <p class="eyebrow">Manejo de datos de menores</p>
+        <h3>Sin constancia registrada</h3>
+        <p class="payment-meta">${escapeHtml(guardian.name)}<br/>No se ha registrado una constancia de consentimiento para este tutor.</p>
+        <p class="payment-meta" style="margin-top:16px">Como tutor accedés únicamente a la información de tus propios hijos.</p>
+        <div class="form-actions"><button class="button button--light button--small" type="button" data-open-consent>Ver constancia</button></div>
+      </article>
+    `;
+  }
+
   return `
     <article class="surface-card">
-      <p class="eyebrow">Manejo de datos de menores</p>
+      <p class="eyebrow">Manejo de datos de menores${isDemo ? ' · Ejemplo demo' : ''}</p>
       <h3>Consentimiento firmado</h3>
-      <p class="payment-meta">${escapeHtml(guardian.name)}<br/>Firmado el ${escapeHtml(shortDate(signed))} ${signed.getFullYear()}</p>
+      <p class="payment-meta">${escapeHtml(guardian.name)}<br/>Firmado el ${escapeHtml(shortDate(signed))} ${signed.getFullYear()}${isDemo ? ' (ejemplo demo)' : ''}</p>
       <p class="payment-meta" style="margin-top:16px">Como tutor accedés únicamente a la información de tus propios hijos.</p>
       <div class="form-actions"><button class="button button--light button--small" type="button" data-open-consent>Ver constancia</button></div>
     </article>
@@ -2938,7 +2954,8 @@ function updatePaymentForm() {
   const form = document.querySelector('#paymentForm');
   if (!form) return;
   const studentId = form.elements.studentId.value;
-  const required = requiredPaymentFor(studentId, form.elements.period.value);
+  const period = form.elements.period.value;
+  const required = requiredPaymentFor(studentId, period);
   const existing = required.existing;
   const paid = existing?.status === 'Pagado';
   form.elements.amount.value = required.amount === null ? '' : required.amount;
@@ -2950,10 +2967,12 @@ function updatePaymentForm() {
   document.querySelector('#paymentFormMessage').textContent = paid
     ? 'Este mes ya está pagado. El registro existente se conserva y no se puede reemplazar desde este formulario.'
     : required.amount === null
-    ? `El plan guardado de este alumno (${required.plan.planName}) no figura en el catálogo de la demo. No se le asigna una cuota: corregí el plan del alumno antes de registrar el pago.`
+    ? (required.source === 'sin_cuota'
+        ? `No existe una cuota registrada para el período ${period}. No se puede registrar el pago sin información suficiente de la cuota correspondiente.`
+        : `El plan guardado de este alumno (${required.plan.planName}) no figura en el catálogo de la demo. No se le asigna una cuota: corregí el plan del alumno antes de registrar el pago.`)
     : existing
-      ? `Se registrará la liquidación completa de la mensualidad pendiente: Q ${formatAmount(required.amount)}.`
-      : `Sin deuda registrada para ese mes, el importe es la cuota del ${required.plan.planName}: Q ${formatAmount(required.amount)}. No cancela deudas de otros meses.`;
+      ? `Se registrará la liquidación completa de la mensualidad del período ${period}: Q ${formatAmount(required.amount)}.`
+      : `Cuota correspondiente al período ${period}: Q ${formatAmount(required.amount)}. No cancela deudas de otros meses.`;
 }
 
 function openNewStudentModal() {
@@ -3030,13 +3049,34 @@ function openConsentModal() {
     showToast('Sin tutor', 'No hay un tutor vinculado para consultar consentimiento.');
     return;
   }
-  const signed = guardian.consentSignedAt ? parseDayKey(guardian.consentSignedAt) : TODAY;
+  const hasConsent = Boolean(guardian.consentSignedAt);
+  const signed = hasConsent ? parseDayKey(guardian.consentSignedAt) : null;
+  const isDemo = Boolean(guardian.isDemo);
+
+  if (!hasConsent) {
+    openModal({
+      title: 'Constancia de consentimiento',
+      eyebrow: 'Menores de edad',
+      body: `
+        <article class="surface-card">
+          <p class="eyebrow">Estado de consentimiento</p>
+          <h3>Sin constancia registrada</h3>
+          <p class="payment-meta">No existe evidencia de consentimiento firmada para ${escapeHtml(guardian.name)} en los registros de la academia.</p>
+          <p class="payment-meta" style="margin-top:12px">Como tutor accedés únicamente a la información de tus propios hijos.</p>
+        </article>
+        <p class="modal-note" style="margin-top:16px">El consentimiento se firma con la academia fuera del sistema. Una vez firmado y validado físicamente, la administración registra la constancia en la ficha del tutor.</p>
+        <div class="form-actions"><button class="button button--red" type="button" data-close-modal>Entendido</button></div>
+      `
+    });
+    return;
+  }
+
   openModal({
     title: 'Constancia de consentimiento',
-    eyebrow: 'Menores de edad',
+    eyebrow: isDemo ? 'Menores de edad · Ejemplo demo' : 'Menores de edad',
     body: `
       <article class="surface-card">
-        <p class="eyebrow">Firmado el ${escapeHtml(shortDate(signed))} ${signed.getFullYear()}</p>
+        <p class="eyebrow">Firmado el ${escapeHtml(shortDate(signed))} ${signed.getFullYear()}${isDemo ? ' (demostración)' : ''}</p>
         <p class="payment-meta">Como tutor accedés únicamente a la información de tus propios hijos.</p>
       </article>
       <p class="modal-note" style="margin-top:16px">El consentimiento se firma con la academia fuera del sistema. Esta pantalla no contiene el documento: solo deja constancia de que existe y de su fecha.</p>
@@ -3345,33 +3385,82 @@ function handleModalSubmit(event) {
 
 // ---------------------------------------------------------------------------
 // Mientras la demo solo admita liquidaciones completas, el importe de un
-// registro no es libre: es la deuda ya registrada de ese mes o, cuando no hay
-// ninguna, la cuota del plan vigente del alumno. Antes, un mes sin registro
-// aceptaba cualquier monto positivo -Q 1 incluido- y lo dejaba como Pagado.
+// registro no es libre: es la cuota correspondiente al mes solicitado (según
+// membresía u obligación registrada). Si no hay información suficiente, no se
+// inventan importes.
 // ---------------------------------------------------------------------------
 function requiredPaymentFor(studentId, period) {
   const existing = state.payments.find((item) => item.studentId === studentId && item.period === period);
+  const student = studentById(studentId);
   const plan = planForStudent(studentId);
+
+  // En modo Supabase, validar contra la membresía del mes solicitado
+  if (isSupabaseConnected) {
+    const mems = student?.memberships || [];
+    const mem = mems.find((m) => (m.period === period) || (m.start_date && m.start_date.slice(0, 7) === period));
+    if (!mem || !Number.isFinite(Number(mem.price))) {
+      return {
+        existing,
+        plan,
+        source: 'sin_cuota',
+        amount: null,
+        period
+      };
+    }
+    return {
+      existing,
+      plan,
+      source: 'membresia',
+      amount: Number(mem.price),
+      period
+    };
+  }
+
+  // En modo demo / almacenamiento local:
+  // Si existe una obligación registrada para ese mes en particular, esa es su cuota.
+  if (existing && Number.isFinite(existing.amount)) {
+    return {
+      existing,
+      plan,
+      source: 'deuda',
+      amount: existing.amount,
+      period
+    };
+  }
+
+  // Si no hay deuda previa y se consulta el mes en curso, se usa el plan vigente
+  if (period === monthKey(TODAY)) {
+    return {
+      existing: null,
+      plan,
+      source: 'plan',
+      amount: Number.isFinite(plan.price) ? plan.price : null,
+      period
+    };
+  }
+
+  // Para períodos sin información suficiente, no inventar importes
   return {
-    existing,
+    existing: null,
     plan,
-    // 'deuda' = hay una mensualidad registrada para ese mes.
-    // 'plan'  = no hay historial de ese mes: la referencia es el plan actual.
-    source: existing ? 'deuda' : 'plan',
-    // Sin deuda registrada y con un plan fuera del catalogo no hay cuota que
-    // derivar. Se devuelve null y el registro se bloquea: deducir un importe
-    // seria cobrarle al alumno una cifra que nadie definio.
-    amount: existing ? existing.amount : (Number.isFinite(plan.price) ? plan.price : null)
+    source: 'sin_cuota',
+    amount: null,
+    period
   };
 }
 
 function requiredPaymentText(required) {
   if (required.amount === null) {
+    if (required.source === 'sin_cuota') {
+      return `la cuota del período solicitado (${required.period}), pero no existe información suficiente de cuota registrada para ese mes. La academia debe registrar la membresía u obligación antes de procesar el pago`;
+    }
     return `la cuota del plan guardado (${required.plan.planName}), que no figura en el catálogo de la demo y debe corregirse desde administración antes de registrar un pago`;
   }
   return required.source === 'deuda'
-    ? `la mensualidad pendiente registrada de Q ${formatAmount(required.amount)}`
-    : `la cuota del ${required.plan.planName}, Q ${formatAmount(required.amount)} (no hay una deuda registrada para ese mes, así que la referencia de la demo es el plan actual del alumno)`;
+    ? `la mensualidad correspondiente registrada de Q ${formatAmount(required.amount)}`
+    : required.source === 'membresia'
+    ? `la cuota de membresía de Q ${formatAmount(required.amount)} registrada para el período ${required.period}`
+    : `la cuota del ${required.plan.planName}, Q ${formatAmount(required.amount)}`;
 }
 
 // Comparacion en centavos: 450 y 450.00 son el mismo importe.
@@ -3390,6 +3479,9 @@ function preparePaymentRecord({ studentId, period, amount, method, reference = '
   const existing = required.existing;
   if (existing?.status === 'Pagado') throw new Error('Este mes ya está pagado. El registro existente no se reemplazó.');
   if (required.amount === null) {
+    if (required.source === 'sin_cuota') {
+      throw new Error(`No existe información suficiente de cuota para el período ${period} y este alumno. No se pueden inventar importes; definí la membresía u obligación correspondiente antes de registrar el pago.`);
+    }
     throw new Error(`El plan guardado de este alumno (${required.plan.planName}) no figura en el catálogo de la demo, así que no hay cuota que registrar. Corregí el plan del alumno antes de registrar el pago.`);
   }
   if (!sameAmount(amount, required.amount)) {
@@ -3413,11 +3505,28 @@ function preparePaymentRecord({ studentId, period, amount, method, reference = '
 }
 
 function commitPaymentRecord({ student, record, existing }) {
+  const nextPayments = existing
+    ? state.payments.map((item) => (item.studentId === record.studentId && item.period === record.period ? record : item))
+    : [record, ...state.payments];
+
+  // Actualizar únicamente la obligación de este período pagado en memoria local
+  const nextStudents = state.students.map((item) => {
+    if (item.id !== student.id) return item;
+    if (!Array.isArray(item.memberships)) return item;
+    const nextMems = item.memberships.map((mem) => {
+      const matchPeriod = (mem.period === record.period) || (mem.start_date && mem.start_date.slice(0, 7) === record.period);
+      if (matchPeriod && mem.status === 'past_due') {
+        return { ...mem, status: 'active' };
+      }
+      return mem;
+    });
+    return { ...item, memberships: nextMems };
+  });
+
   const nextState = {
     ...state,
-    payments: existing
-      ? state.payments.map((item) => (item.studentId === record.studentId && item.period === record.period ? record : item))
-      : [record, ...state.payments]
+    students: nextStudents,
+    payments: nextPayments
   };
   persistState(nextState);
   return record;
@@ -3469,18 +3578,20 @@ async function handlePaymentSubmit(event) {
         idempotencyKey: `PAY-${student.id}-${record.period}`
       });
 
-      // El frontend registra el registro devuelto por el servidor, no un borrador local
+      // El frontend registra y muestra el registro confirmado devuelto por el servidor;
+      // no sustituirlo por la fecha actual ni por datos del intento
+      const confirmedDate = serverResult.recordedAt ? new Date(serverResult.recordedAt) : TODAY;
       record.id = serverResult.id;
       record.amount = serverResult.amount;
       record.method = serverResult.method;
       record.period = serverResult.period;
-      record.reference = serverResult.reference || record.reference;
+      record.reference = serverResult.reference !== undefined && serverResult.reference !== null ? serverResult.reference : record.reference;
       record.status = 'Pagado';
-      record.paidAt = dayKey(TODAY);
-      record.date = shortDate(TODAY);
+      record.paidAt = dayKey(confirmedDate);
+      record.date = shortDate(confirmedDate);
 
       if (serverResult.isDuplicate) {
-        showToast('Pago ya confirmado', `Se recuperó el registro existente de ${record.student} (${record.id}).`);
+        showToast('Pago ya confirmado', `Se recuperó el registro original de ${record.student} (${record.id}) con fecha ${record.date}.`);
       }
     } catch (err) {
       if (submitBtn) {

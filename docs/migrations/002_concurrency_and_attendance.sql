@@ -74,7 +74,7 @@ begin
 
   -- 6. Verificar que la sesión no esté cerrada
   if exists (select 1 from public.class_sessions where id = v_session_id and closed_at is not null) then
-    raise exception 'La sesión de clase para la fecha % ya está cerrada.' using errcode = '22000';
+    raise exception 'La sesión de clase para la fecha % ya está cerrada.', p_session_date using errcode = '22000';
   end if;
 
   return v_session_id;

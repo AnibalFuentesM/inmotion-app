@@ -364,6 +364,14 @@ create trigger trg_validate_attendance_record
 -- ------------------------------------------------------------------------------
 -- 6. POLÍTICAS ROW LEVEL SECURITY (RLS) RESTRICTIVAS Y GRANULARES
 -- ------------------------------------------------------------------------------
+alter table public.profiles enable row level security;
+alter table public.cards enable row level security;
+alter table public.classes enable row level security;
+alter table public.enrollments enable row level security;
+alter table public.class_sessions enable row level security;
+alter table public.attendances enable row level security;
+alter table public.memberships enable row level security;
+alter table public.payments enable row level security;
 
 -- TABLA: classes
 -- Regla: El catálogo y horarios son públicos para consulta; gestión solo admin.
