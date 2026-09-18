@@ -75,3 +75,29 @@ select option {
 ::-webkit-scrollbar-thumb:hover {
   background: #ed2630;
 }
+
+/* Responsive mobile adjustments (375px) */
+@media (max-width: 640px) {
+  #viewTabs {
+    width: 100%;
+    display: flex;
+    justify-content: stretch;
+  }
+
+  #viewTabs .view-tab {
+    flex: 1;
+    justify-content: center;
+    padding-left: 0.5rem;
+    padding-right: 0.5rem;
+    font-size: 0.75rem;
+  }
+
+  .video-card .save-video-btn {
+    opacity: 1; /* Always visible on mobile */
+  }
+
+  #modalNavToolbar {
+    padding-left: 0.75rem;
+    padding-right: 0.75rem;
+  }
+}

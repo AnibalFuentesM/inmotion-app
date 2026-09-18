@@ -3,6 +3,8 @@
  * @property {string} searchText
  * @property {string} style
  * @property {string} level
+ * @property {'all' | 'saved' | 'recent'} view
+ * @property {'all' | '7d' | '30d'} period
  */
 
 /**
@@ -12,7 +14,9 @@ export function buildFilterState() {
   return {
     searchText: '',
     style: 'all',
-    level: 'all'
+    level: 'all',
+    view: 'all',
+    period: 'all'
   };
 }
 
@@ -38,27 +42,138 @@ function searchBlob(record) {
 }
 
 /**
- * @param {Array<{ step_name: string; style: string; level: string; tags: string[] }>} records
- * @param {FilterState} filterState
- * @returns {typeof records}
+ * @param {{ parsedDate: Date | null }} record
+ * @param {'all' | '7d' | '30d' | string} period
+ * @returns {boolean}
  */
-export function applyFilters(records, filterState) {
+function matchesPeriod(record, period) {
+  if (!period || period === 'all') return true;
+  if (!record.parsedDate || !(record.parsedDate instanceof Date) || Number.isNaN(record.parsedDate.getTime())) {
+    return false;
+  }
+
+  const now = new Date();
+  const timeDiff = now.getTime() - record.parsedDate.getTime();
+  // Future dates (e.g. timezone variations) are included in recent windows
+  if (timeDiff < 0) {
+    return true;
+  }
+  const daysDiff = timeDiff / (1000 * 60 * 60 * 24);
+  if (period === '7d') return daysDiff <= 7;
+  if (period === '30d') return daysDiff <= 30;
+  return true;
+}
+
+/**
+ * @param {Array<any>} records
+ * @param {FilterState} filterState
+ * @param {{ savedIds?: string[]; recentIds?: string[] }} [options={}]
+ * @returns {Array<any>}
+ */
+export function applyFilters(records, filterState, options = {}) {
   const safeRecords = Array.isArray(records) ? records : [];
   const searchText = normalizeSearchText(filterState?.searchText).trim();
   const selectedStyle = String(filterState?.style || 'all').toLowerCase();
   const selectedLevel = String(filterState?.level || 'all').toLowerCase();
+  const selectedPeriod = String(filterState?.period || 'all');
+  const selectedView = String(filterState?.view || 'all');
 
-  return safeRecords.filter((record) => {
-    const matchesSearch = !searchText || searchBlob(record).includes(searchText);
+  const savedIds = new Set(options.savedIds || []);
+  const recentIds = Array.isArray(options.recentIds) ? options.recentIds : [];
+  const recentMap = new Map(recentIds.map((id, index) => [id, index]));
 
+  const filtered = safeRecords.filter((record) => {
+    // View filtering
+    if (selectedView === 'saved') {
+      const isSaved = savedIds.has(record.stableId) || savedIds.has(record.id);
+      if (!isSaved) return false;
+    } else if (selectedView === 'recent') {
+      const isRecent = recentMap.has(record.stableId) || recentMap.has(record.id);
+      if (!isRecent) return false;
+    }
+
+    // Relative date period filtering
+    if (!matchesPeriod(record, selectedPeriod)) {
+      return false;
+    }
+
+    // Style
     const recordStyle = String(record.style || '').toLowerCase();
-    const matchesStyle = selectedStyle === 'all' || recordStyle === selectedStyle;
+    if (selectedStyle !== 'all' && recordStyle !== selectedStyle) {
+      return false;
+    }
 
+    // Level
     const recordLevel = String(record.level || '').toLowerCase();
-    const matchesLevel = selectedLevel === 'all' || recordLevel === selectedLevel;
+    if (selectedLevel !== 'all' && recordLevel !== selectedLevel) {
+      return false;
+    }
 
-    return matchesSearch && matchesStyle && matchesLevel;
+    // Search text
+    if (searchText && !searchBlob(record).includes(searchText)) {
+      return false;
+    }
+
+    return true;
   });
+
+  if (selectedView === 'recent') {
+    filtered.sort((a, b) => {
+      const idxA = recentMap.has(a.stableId)
+        ? recentMap.get(a.stableId)
+        : (recentMap.has(a.id) ? recentMap.get(a.id) : 9999);
+      const idxB = recentMap.has(b.stableId)
+        ? recentMap.get(b.stableId)
+        : (recentMap.has(b.id) ? recentMap.get(b.id) : 9999);
+      return idxA - idxB;
+    });
+  }
+
+  return filtered;
+}
+
+/**
+ * Return active filter descriptors for chip rendering.
+ *
+ * @param {FilterState} filterState
+ * @returns {Array<{ key: 'searchText' | 'style' | 'level' | 'period'; label: string }>}
+ */
+export function getActiveFilters(filterState) {
+  const active = [];
+
+  if (filterState?.searchText?.trim()) {
+    active.push({
+      key: 'searchText',
+      label: `"${filterState.searchText.trim()}"`
+    });
+  }
+
+  if (filterState?.style && filterState.style !== 'all') {
+    active.push({
+      key: 'style',
+      label: `Estilo: ${filterState.style}`
+    });
+  }
+
+  if (filterState?.level && filterState.level !== 'all') {
+    active.push({
+      key: 'level',
+      label: `Nivel: ${filterState.level}`
+    });
+  }
+
+  if (filterState?.period && filterState.period !== 'all') {
+    const periodMap = {
+      '7d': 'Últimos 7 días',
+      '30d': 'Últimos 30 días'
+    };
+    active.push({
+      key: 'period',
+      label: periodMap[filterState.period] || filterState.period
+    });
+  }
+
+  return active;
 }
 
 /**

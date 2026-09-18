@@ -1,6 +1,7 @@
 /**
  * @typedef {Object} VideoRecord
  * @property {string} id
+ * @property {string} stableId
  * @property {string} step_name
  * @property {string} style
  * @property {string} level
@@ -71,6 +72,15 @@ function parseDate(dateValue) {
     const year = Number(gvizDateMatch[1]);
     const monthIndex = Number(gvizDateMatch[2]);
     const day = Number(gvizDateMatch[3]);
+    const parsed = new Date(year, monthIndex, day);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+
+  const isoDateMatch = raw.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if (isoDateMatch) {
+    const year = Number(isoDateMatch[1]);
+    const monthIndex = Number(isoDateMatch[2]) - 1;
+    const day = Number(isoDateMatch[3]);
     const parsed = new Date(year, monthIndex, day);
     return Number.isNaN(parsed.getTime()) ? null : parsed;
   }
@@ -254,6 +264,30 @@ export function sortVideoRecords(records, sortOrder = 'recent') {
 }
 
 /**
+ * Extract Google Drive file ID from a Drive URL.
+ * @param {string} url
+ * @returns {string | null}
+ */
+export function getDriveFileId(url) {
+  if (!url) return null;
+  const text = String(url);
+  const dPathMatch = text.match(/\/d\/([a-zA-Z0-9_-]{20,})/);
+  if (dPathMatch) {
+    return dPathMatch[1];
+  }
+  try {
+    const parsed = new URL(text);
+    const idParam = parsed.searchParams.get('id');
+    if (idParam) {
+      return idParam;
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+/**
  * Convert any row into a canonical record with safe defaults.
  *
  * @param {Record<string, unknown>} row
@@ -280,9 +314,12 @@ function normalizeRow(row, index) {
   const parsed = parseDate(date);
   const sanitizedStepName = sanitizeStepName(stepName, style, parsed, date);
   const sanitizedLevel = sanitizeLevel(level);
+  const driveFileId = getDriveFileId(videoUrl);
+  const stableId = driveFileId ? `drive-${driveFileId}` : (idValue || `vid-${index + 1}`);
 
   return {
     id: idValue || `video-${index + 1}`,
+    stableId,
     step_name: sanitizedStepName,
     raw_step_name: stepName,
     style: style || 'Unspecified',

@@ -1855,7 +1855,7 @@ function renderStudentHome() {
 
     <div class="journey-actions" role="group" aria-label="Explorá la academia">
       <button type="button" data-go="planes"><span class="journey-icon">${icon('money')}</span><span><strong>Encontrá tu plan</strong><small>Compará opciones a tu ritmo</small></span><span aria-hidden="true">↗</span></button>
-      <a href="../index.html"><span class="journey-icon">▷</span><span><strong>Seguí practicando</strong><small>Explorá los videos de tus clases</small></span><span aria-hidden="true">↗</span></a>
+      <a href="../index.html"><span class="journey-icon">▷</span><span><strong>Videos para practicar</strong><small>Explorá los recaps y movimientos</small></span><span aria-hidden="true">↗</span></a>
     </div>
     <section class="section">
       <div class="section-head"><div><h2>Esta semana</h2><p>Tu agenda de clases del ${escapeHtml(weekRange())}.</p></div><button class="text-button" type="button" data-go="clases">Ver calendario →</button></div>

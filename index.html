@@ -57,8 +57,9 @@
     <img src="./assets/inmotion-logo.svg" alt="inMOTION Dance Academy" class="h-10 w-auto"
       style="mix-blend-mode: lighten;" />
     <a href="./academia/"
-      class="rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-slate-200 transition hover:border-primary/50 hover:text-primary">
-      Abrir la app de la academia
+      class="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-3.5 py-2 text-sm font-semibold text-slate-200 transition hover:border-primary/50 hover:text-primary">
+      <span class="material-symbols-outlined text-base">arrow_back</span>
+      <span>Volver a la academia</span>
     </a>
   </nav>
 
@@ -90,18 +91,56 @@
   </header>
 
   <main class="relative -mt-6 mx-auto max-w-7xl px-4 pb-20 sm:px-6 lg:px-8">
+    <!-- View Tabs -->
+    <div class="mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+      <div id="viewTabs" class="inline-flex rounded-xl bg-white/5 p-1 border border-white/10 backdrop-blur-md" role="tablist" aria-label="Vistas del catálogo">
+        <button id="tabViewAll" type="button" role="tab" aria-selected="true" data-view="all"
+          class="view-tab inline-flex items-center gap-2 rounded-lg px-3.5 py-2 text-xs sm:text-sm font-bold text-white transition bg-primary shadow-glow">
+          <span class="material-symbols-outlined text-base">grid_view</span>
+          <span>Todos</span>
+          <span id="badgeCountAll" class="rounded-full bg-black/40 px-2 py-0.5 text-[11px] font-semibold">0</span>
+        </button>
+        <button id="tabViewSaved" type="button" role="tab" aria-selected="false" data-view="saved"
+          class="view-tab inline-flex items-center gap-2 rounded-lg px-3.5 py-2 text-xs sm:text-sm font-semibold text-slate-300 transition hover:text-white">
+          <span class="material-symbols-outlined text-base">bookmark</span>
+          <span>Guardados</span>
+          <span id="badgeCountSaved" class="rounded-full bg-white/10 px-2 py-0.5 text-[11px] font-semibold">0</span>
+        </button>
+        <button id="tabViewRecent" type="button" role="tab" aria-selected="false" data-view="recent"
+          class="view-tab inline-flex items-center gap-2 rounded-lg px-3.5 py-2 text-xs sm:text-sm font-semibold text-slate-300 transition hover:text-white">
+          <span class="material-symbols-outlined text-base">history</span>
+          <span>Recientes</span>
+          <span id="badgeCountRecent" class="rounded-full bg-white/10 px-2 py-0.5 text-[11px] font-semibold">0</span>
+        </button>
+      </div>
+
+      <p class="text-[11px] text-slate-500 italic">
+        * Guardados y recientes se conservan únicamente en este navegador.
+      </p>
+    </div>
+
     <!-- Filters Section -->
     <section class="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-md p-4 shadow-card sm:p-6"
       aria-label="Filtros">
-      <form id="filtersForm" class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-6">
-        <label class="sm:col-span-2 lg:col-span-3">
+      <form id="filtersForm" class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-12">
+        <label class="sm:col-span-2 lg:col-span-4">
           <span class="mb-1.5 block text-xs font-bold uppercase tracking-[0.15em] text-slate-400">Buscar</span>
           <input id="searchInput" type="search" placeholder="Buscar por nombre, etiquetas, estilo o nivel"
             class="w-full rounded-xl border-white/10 bg-white/5 text-sm text-white placeholder-slate-500 shadow-sm focus:border-primary focus:ring-primary transition-all"
             autocomplete="off" />
         </label>
 
-        <label>
+        <label class="sm:col-span-1 lg:col-span-2">
+          <span class="mb-1.5 block text-xs font-bold uppercase tracking-[0.15em] text-slate-400">Fecha</span>
+          <select id="periodFilter"
+            class="w-full rounded-xl border-white/10 bg-white/5 text-sm text-white shadow-sm focus:border-primary focus:ring-primary transition-all">
+            <option value="all">Cualquier fecha</option>
+            <option value="7d">Últimos 7 días</option>
+            <option value="30d">Últimos 30 días</option>
+          </select>
+        </label>
+
+        <label class="sm:col-span-1 lg:col-span-2">
           <span class="mb-1.5 block text-xs font-bold uppercase tracking-[0.15em] text-slate-400">Estilo</span>
           <select id="styleFilter"
             class="w-full rounded-xl border-white/10 bg-white/5 text-sm text-white shadow-sm focus:border-primary focus:ring-primary transition-all">
@@ -109,7 +148,7 @@
           </select>
         </label>
 
-        <label>
+        <label class="sm:col-span-1 lg:col-span-2">
           <span class="mb-1.5 block text-xs font-bold uppercase tracking-[0.15em] text-slate-400">Nivel</span>
           <select id="levelFilter"
             class="w-full rounded-xl border-white/10 bg-white/5 text-sm text-white shadow-sm focus:border-primary focus:ring-primary transition-all">
@@ -117,7 +156,7 @@
           </select>
         </label>
 
-        <label class="sm:col-span-2 lg:col-span-1">
+        <label class="sm:col-span-1 lg:col-span-2">
           <span class="mb-1.5 block text-xs font-bold uppercase tracking-[0.15em] text-slate-400">Orden</span>
           <select id="sortOrder"
             class="w-full rounded-xl border-white/10 bg-white/5 text-sm text-white shadow-sm focus:border-primary focus:ring-primary transition-all">
@@ -128,7 +167,10 @@
         </label>
       </form>
 
-      <div class="mt-4 flex flex-wrap items-center justify-between gap-3">
+      <!-- Active Filter Chips Bar -->
+      <div id="activeFiltersBar" class="mt-4 flex flex-wrap items-center gap-2 empty:hidden"></div>
+
+      <div class="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-white/5 pt-3">
         <p id="resultsMeta" class="text-sm text-slate-400" aria-live="polite"></p>
         <button id="clearFiltersBtn" type="button"
           class="inline-flex items-center rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-slate-300 transition hover:border-primary/50 hover:text-primary hover:shadow-glow">
@@ -225,17 +267,48 @@
   <!-- Video Modal -->
   <div id="videoModal" class="fixed inset-0 z-50 hidden items-center justify-center p-4 sm:p-6" role="dialog"
     aria-modal="true" aria-labelledby="modalTitle">
-    <div data-modal-backdrop class="absolute inset-0 bg-black/80 backdrop-blur-sm"></div>
+    <div data-modal-backdrop class="absolute inset-0 bg-black/85 backdrop-blur-sm"></div>
     <div
-      class="modal-panel relative z-10 w-full max-w-4xl overflow-hidden rounded-2xl bg-bg-card border border-white/10 shadow-modal">
-      <div class="flex items-center justify-between border-b border-white/10 px-5 py-4">
-        <h2 id="modalTitle" class="text-base font-bold text-white">Detalles del video</h2>
-        <button data-modal-close type="button"
-          class="rounded-lg border border-white/10 bg-white/5 px-4 py-1.5 text-sm font-semibold text-slate-300 transition hover:border-primary/50 hover:text-primary">
-          Cerrar
+      class="modal-panel relative z-10 w-full max-w-4xl overflow-hidden rounded-2xl bg-bg-card border border-white/10 shadow-modal flex flex-col max-h-[90vh]">
+      <!-- Modal Header -->
+      <div class="flex items-center justify-between border-b border-white/10 px-5 py-3.5 bg-bg-card shrink-0">
+        <div class="flex items-center gap-2.5 pr-2 min-w-0">
+          <h2 id="modalTitle" class="text-base sm:text-lg font-bold text-white truncate">Detalles del video</h2>
+          <span id="modalPosition"
+            class="hidden shrink-0 rounded-full bg-white/10 px-2.5 py-0.5 text-xs font-semibold text-slate-300"></span>
+        </div>
+        <div class="flex items-center gap-2 shrink-0">
+          <button id="modalSaveBtn" type="button"
+            class="flex h-9 w-9 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-white transition hover:border-primary/50 hover:text-primary focus:outline-none focus:ring-2 focus:ring-primary"
+            aria-label="Guardar video" title="Guardar video">
+            <span class="material-symbols-outlined text-xl">bookmark</span>
+          </button>
+          <button data-modal-close type="button"
+            class="inline-flex items-center gap-1 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm font-semibold text-slate-300 transition hover:border-primary/50 hover:text-primary focus:outline-none focus:ring-2 focus:ring-primary">
+            <span class="material-symbols-outlined text-base">close</span>
+            <span class="hidden sm:inline">Cerrar</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Navigation Toolbar -->
+      <div id="modalNavToolbar"
+        class="flex items-center justify-between border-b border-white/10 bg-black/40 px-5 py-2 shrink-0">
+        <button id="modalPrevBtn" type="button"
+          class="inline-flex items-center gap-1 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-semibold text-slate-300 transition hover:border-primary/50 hover:text-primary disabled:opacity-30 disabled:pointer-events-none">
+          <span class="material-symbols-outlined text-base">arrow_back</span>
+          <span>Anterior</span>
+        </button>
+        <span id="modalNavCounter" class="text-xs font-medium text-slate-400"></span>
+        <button id="modalNextBtn" type="button"
+          class="inline-flex items-center gap-1 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-semibold text-slate-300 transition hover:border-primary/50 hover:text-primary disabled:opacity-30 disabled:pointer-events-none">
+          <span>Siguiente</span>
+          <span class="material-symbols-outlined text-base">arrow_forward</span>
         </button>
       </div>
-      <div id="modalBody" class="max-h-[80vh] overflow-y-auto p-5 sm:p-6"></div>
+
+      <!-- Modal Body -->
+      <div id="modalBody" class="max-h-[75vh] overflow-y-auto p-5 sm:p-6 flex-1"></div>
     </div>
   </div>
 
