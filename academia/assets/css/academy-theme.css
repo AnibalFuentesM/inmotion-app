@@ -645,6 +645,8 @@
 .status-pill { background: #f1f2f5; }
 .status-pill.is-paid { background: #d8f3ea; color: #0e7c61; }
 .status-pill.is-due { background: #fdebcb; color: #96620a; }
+.status-pill.is-mora { background: #fee2e2; color: #b91c1c; }
+.status-pill.is-undefined { background: #f1f2f5; color: #64748b; }
 
 /* ---- Filtros ---- */
 .filter-chip {

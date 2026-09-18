@@ -316,7 +316,7 @@ function formatAmount(value) {
 }
 
 function planByName(name) {
-  if (!name) return DEFAULT_PLAN;
+  if (!name) return null;
   const clean = String(name).trim().toLowerCase();
   const match = membershipPlans.find((plan) =>
     plan.planName.toLowerCase() === clean ||
@@ -342,6 +342,21 @@ function unknownPlan(name) {
     weeklyRhythm: null,
     subtitle: 'Plan fuera del catálogo',
     description: 'Este plan no figura en el catálogo de la demo. Se conserva tal como fue guardado y necesita revisión antes de cobrarlo o asignarle cupos.',
+    needsReview: true
+  };
+}
+
+function noPlanDefined() {
+  return {
+    id: null,
+    planName: 'Sin plan asignado',
+    name: 'Sin plan asignado',
+    price: null,
+    monthlyClasses: null,
+    unlimited: false,
+    weeklyRhythm: null,
+    subtitle: 'Sin cuota definida',
+    description: 'Este alumno no tiene un plan o cuota asignada. Registrá su membresía antes de procesar cobros.',
     needsReview: true
   };
 }
@@ -626,14 +641,25 @@ function paymentDateText(payment) {
 }
 
 function studentPaymentStatus(studentId) {
+  const student = studentById(studentId);
+  if (!student) return 'Sin registro';
+
   const due = state.payments.filter((item) => item.studentId === studentId && item.period <= monthKey(TODAY) && item.status !== 'Pagado');
   if (due.some((item) => paymentStatus(item) === 'En mora')) return 'En mora';
   if (due.length) return 'Pendiente';
-  return monthlyPaymentFor(studentId)?.status === 'Pagado' ? 'Al día' : 'Sin registro';
+
+  const monthly = monthlyPaymentFor(studentId);
+  if (monthly?.status === 'Pagado') return 'Al día';
+
+  const required = requiredPaymentFor(studentId, monthKey(TODAY));
+  if (required.amount === null) return 'Sin cuota definida';
+  return 'Pendiente';
 }
 
 function planForStudent(studentId) {
-  return planByName(studentById(studentId)?.plan) || DEFAULT_PLAN;
+  const student = studentById(studentId);
+  if (!student?.plan) return noPlanDefined();
+  return planByName(student.plan) || noPlanDefined();
 }
 
 function planAmount(studentId) {
@@ -998,15 +1024,16 @@ function sanitizeStudent(raw) {
   const name = cleanText(raw.name, 80);
   if (!/^IM-\d{3,6}$/.test(id) || !name) return null;
   const knownClassIds = classData.map((item) => item.id);
-  // El plan se conserva tal como vino. Reescribirlo al predeterminado borraba
-  // la evidencia de lo que se habia guardado y dejaba el error invisible.
-  const plan = cleanText(raw.plan, 80) || DEFAULT_PLAN.planName;
+  // El plan se conserva tal como vino sin forzar DEFAULT_PLAN
+  const plan = raw.plan !== undefined && raw.plan !== null ? cleanText(raw.plan, 80) : null;
   return {
     id,
     profileId: cleanText(raw.profileId, 40) || undefined,
+    cardId: cleanText(raw.cardId, 40) || undefined,
     userId: cleanText(raw.userId, 40) || undefined,
     name,
     initials: cleanText(raw.initials, 4) || initials(name),
+    memberships: Array.isArray(raw.memberships) ? raw.memberships : [],
     plan,
     phone: cleanText(raw.phone, 24) || 'Sin registrar',
     status: cleanText(raw.status, 20) || 'Pendiente',
@@ -1036,18 +1063,21 @@ function sanitizePayment(raw, studentIds) {
   // Un pago liquidado sin fecha utilizable no puede quedar como pagado a ciegas.
   if (isPaid && !paidAt) return null;
   return {
-    id: cleanText(payment.id, 24) || `P-${payment.period}-${studentId}`,
+    id: cleanText(payment.id, 40) || `P-${payment.period}-${studentId}`,
+    membershipId: cleanText(payment.membershipId, 40) || undefined,
+    remoteId: cleanText(payment.remoteId, 40) || undefined,
     studentId,
+    studentUuid: cleanText(payment.studentUuid, 40) || undefined,
     student: cleanText(payment.student, 80) || studentId,
     month: cleanText(payment.month, 40) || monthLabel(parseDayKey(`${payment.period}-01`)),
     period: payment.period,
     amount,
     method: PAYMENT_METHODS.includes(payment.method) ? payment.method : (isPaid ? 'Efectivo' : 'Pendiente'),
-    date: cleanText(payment.date, 40),
+    date: cleanText(payment.date, 60),
     paidAt: isPaid ? paidAt : null,
     dueDate: isPaid ? null : (isValidDayKey(payment.dueDate) ? payment.dueDate : null),
     status: isPaid ? 'Pagado' : 'Pendiente',
-    reference: cleanText(payment.reference, 60)
+    reference: cleanText(payment.reference, 120)
   };
 }
 
@@ -2496,7 +2526,7 @@ function adminPaymentRows(payments = state.payments, empty = null) {
       <td>${escapeHtml(item.month)}</td>
       <td><strong>Q ${escapeHtml(formatAmount(item.amount))}</strong></td>
       <td>${escapeHtml(item.method)}</td>
-      <td><span class="status-pill ${item.status === 'Pagado' ? 'is-paid' : 'is-due'}">${escapeHtml(paymentStatus(item))}</span></td>
+      <td><span class="status-pill ${item.status === 'Pagado' ? 'is-paid' : (paymentStatus(item) === 'En mora' ? 'is-mora' : 'is-due')}">${escapeHtml(paymentStatus(item))}</span></td>
       <td>${item.status === 'Pagado'
         ? `<button class="table-action" type="button" data-receipt="${escapeHtml(item.id)}" aria-label="Comprobante de ${escapeHtml(item.student)}, ${escapeHtml(item.month)}">Comprobante</button>`
         : `<button class="table-action" type="button" data-register-for="${escapeHtml(item.studentId)}" data-payment-period="${escapeHtml(item.period)}" aria-label="Registrar pago de ${escapeHtml(item.student)}, ${escapeHtml(item.month)}">Registrar</button>`}</td>
@@ -2508,12 +2538,19 @@ function studentRows(students = state.students) {
   if (!students.length) return '<tr><td colspan="5"><div class="empty-state"><strong>Sin coincidencias</strong>Revisá el nombre o número de carnet.</div></td></tr>';
   return students.map((student) => {
     const status = studentPaymentStatus(student.id);
+    const pillClass = (status === 'Al día' || status === 'Pagado')
+      ? 'is-paid'
+      : (status === 'En mora')
+      ? 'is-mora'
+      : (status === 'Pendiente')
+      ? 'is-due'
+      : 'is-undefined';
     return `
     <tr>
       <td><div class="person-cell"><span class="avatar" aria-hidden="true">${escapeHtml(initials(student.name))}</span><span><strong>${escapeHtml(student.name)}</strong><small>${escapeHtml(student.id)}</small></span></div></td>
       <td>${escapeHtml(planForStudent(student.id).planName)}${planReviewTag(planForStudent(student.id))}</td>
       <td>${escapeHtml(student.phone)}</td>
-      <td><span class="status-pill ${status === 'Al día' ? 'is-paid' : 'is-due'}">${escapeHtml(status)}</span></td>
+      <td><span class="status-pill ${pillClass}">${escapeHtml(status)}</span></td>
       <td><button class="table-action" type="button" data-student-detail="${escapeHtml(student.id)}" aria-label="Ver ficha de ${escapeHtml(student.name)}">Ver ficha</button></td>
     </tr>
   `;
@@ -2627,7 +2664,7 @@ function childCardMarkup(child) {
       <p class="eyebrow" style="margin-top:20px">Última asistencia</p>
       <p class="payment-meta">${last ? `${escapeHtml(last.label)} · ${escapeHtml(last.className)}` : 'Sin registros todavía.'}</p>
       <p class="eyebrow" style="margin-top:20px">Mensualidad · ${escapeHtml(monthName(TODAY))}</p>
-      <h3>${payment ? escapeHtml(`Q ${formatAmount(payment.amount)}`) : escapeHtml(priceText(planForStudent(child.id).price))} <span class="status-pill ${paid ? 'is-paid' : 'is-due'}">${escapeHtml(paymentStatus(payment))}</span></h3>
+      <h3>${payment ? escapeHtml(`Q ${formatAmount(payment.amount)}`) : escapeHtml(priceText(planForStudent(child.id).price))} <span class="status-pill ${paid ? 'is-paid' : (paymentStatus(payment) === 'En mora' ? 'is-mora' : 'is-due')}">${escapeHtml(paymentStatus(payment))}</span></h3>
       <p class="payment-meta">${escapeHtml(planForStudent(child.id).planName)}${planReviewTag(planForStudent(child.id))}${payment ? '' : ' · cuota del plan, sin registro este mes'}</p>
       <div class="form-actions">
         <button class="button button--light button--small" type="button" data-child-payment="${escapeHtml(child.id)}" aria-label="Ver mensualidad de ${escapeHtml(child.name)}">Ver mensualidad</button>
@@ -3398,6 +3435,15 @@ function requiredPaymentFor(studentId, period) {
   if (isSupabaseConnected) {
     const mems = student?.memberships || [];
     const mem = mems.find((m) => (m.period === period) || (m.start_date && m.start_date.slice(0, 7) === period));
+    if (!mem && existing?.membershipId && Number.isFinite(existing.amount) && existing.amount > 0) {
+      return {
+        existing,
+        plan,
+        source: 'membresia',
+        amount: Number(existing.amount),
+        period
+      };
+    }
     if (!mem || !Number.isFinite(Number(mem.price))) {
       return {
         existing,
@@ -3559,6 +3605,7 @@ async function handlePaymentSubmit(event) {
   }
 
   const { student, record } = prepared;
+  let remoteConfirmed = false;
 
   // Si está conectado a Supabase, la confirmación remota es obligatoria antes de guardar
   if (isSupabaseConnected) {
@@ -3577,6 +3624,7 @@ async function handlePaymentSubmit(event) {
         notes: record.reference,
         idempotencyKey: `PAY-${student.id}-${record.period}`
       });
+      remoteConfirmed = true;
 
       // El frontend registra y muestra el registro confirmado devuelto por el servidor;
       // no sustituirlo por la fecha actual ni por datos del intento
@@ -3606,10 +3654,26 @@ async function handlePaymentSubmit(event) {
   }
 
   // Persistir solo tras confirmación
-  commitPaymentRecord(prepared);
-  closeModal();
-  showToast('Pago guardado', `${record.student} · Q ${formatAmount(record.amount)} · ${record.method}`);
-  renderAndFocus();
+  try {
+    commitPaymentRecord(prepared);
+    closeModal();
+    showToast('Pago guardado', `${record.student} · Q ${formatAmount(record.amount)} · ${record.method}`);
+    renderAndFocus();
+  } catch (error) {
+    if (remoteConfirmed) {
+      console.warn('[In Motion] Pago confirmado en servidor pero falló persistencia/render:', error.message);
+      const nextPayments = state.payments.map((item) => (item.studentId === record.studentId && item.period === record.period ? record : item));
+      if (!nextPayments.some((item) => item.id === record.id)) {
+        nextPayments.unshift(record);
+      }
+      state.payments = nextPayments;
+      closeModal();
+      showToast('Pago confirmado en la nube', `El pago (${record.id}) de ${record.student} fue registrado exitosamente en Supabase. Advertencia: ${error.message}.`);
+      renderAndFocus();
+    } else {
+      if (message) message.textContent = error.message;
+    }
+  }
 }
 
 async function handleStudentSubmit(event) {
@@ -3623,17 +3687,24 @@ async function handleStudentSubmit(event) {
     if (message) message.textContent = 'Escribí el nombre completo del alumno.';
     return;
   }
+  const selectedPlanName = PLAN_NAMES.includes(String(data.get('plan'))) ? String(data.get('plan')) : DEFAULT_PLAN.planName;
+  const selectedPlan = planByName(selectedPlanName);
+
   const student = {
     id: nextStudentId(),
     name: name.slice(0, 80),
     initials: initials(name),
-    plan: PLAN_NAMES.includes(String(data.get('plan'))) ? String(data.get('plan')) : DEFAULT_PLAN.planName,
+    plan: selectedPlanName,
     phone: String(data.get('phone') || '').trim().slice(0, 24) || 'Sin registrar',
     status: 'Pendiente',
     level: 'Sin nivel',
     classIds: [],
-    notes: String(data.get('notes') || '').trim().slice(0, 280)
+    notes: String(data.get('notes') || '').trim().slice(0, 280),
+    memberships: []
   };
+
+  let remoteRow = null;
+  let remoteConfirmed = false;
 
   if (isSupabaseConnected) {
     try {
@@ -3641,8 +3712,7 @@ async function handleStudentSubmit(event) {
         submitBtn.disabled = true;
         submitBtn.textContent = 'Guardando en la nube...';
       }
-      const selectedPlan = planByName(student.plan);
-      await createRemoteStudent({
+      remoteRow = await createRemoteStudent({
         id: student.id,
         name: student.name,
         phone: student.phone,
@@ -3651,6 +3721,7 @@ async function handleStudentSubmit(event) {
         level: student.level,
         notes: student.notes
       });
+      remoteConfirmed = true;
     } catch (err) {
       if (submitBtn) {
         submitBtn.disabled = false;
@@ -3661,16 +3732,96 @@ async function handleStudentSubmit(event) {
     }
   }
 
-  // Se guarda antes de tocar la memoria: si el navegador no puede, no se creo nada.
-  try {
-    persistState({ ...state, students: [student, ...state.students] });
-  } catch (error) {
-    if (message) message.textContent = error.message;
-    return;
+  const currentPeriod = monthKey(TODAY);
+
+  // Si se confirmó en Supabase, incorporar identificadores remotos y membresía
+  if (isSupabaseConnected && remoteRow) {
+    student.profileId = remoteRow.profile_id;
+    student.cardId = remoteRow.card_id;
+    student.id = remoteRow.card_number || student.id;
+
+    if (remoteRow.membership_id) {
+      const newMembership = {
+        id: remoteRow.membership_id,
+        student_id: remoteRow.profile_id,
+        plan_name: student.plan,
+        price: selectedPlan?.price || 0,
+        status: 'past_due',
+        period: currentPeriod,
+        start_date: dayKey(TODAY),
+        end_date: dayKey(addDays(TODAY, 30))
+      };
+      student.memberships = [newMembership];
+
+      // Incorporar la obligación de pago pendiente en state.payments para este período
+      const pendingPayment = {
+        id: `MEM-${remoteRow.membership_id.slice(0, 8)}`,
+        membershipId: remoteRow.membership_id,
+        studentId: student.id,
+        studentUuid: remoteRow.profile_id,
+        student: student.name,
+        month: monthLabel(parseDayKey(`${currentPeriod}-01`)),
+        period: currentPeriod,
+        amount: Number(selectedPlan?.price) || 0,
+        method: 'Pendiente',
+        reference: `Membresía: ${student.plan}`,
+        date: 'Sin fecha de vencimiento',
+        paidAt: null,
+        dueDate: null,
+        status: 'Pendiente'
+      };
+      state.payments = [pendingPayment, ...state.payments.filter((p) => !(p.studentId === student.id && p.period === currentPeriod))];
+    }
+  } else if (!isSupabaseConnected) {
+    // Modo demo: si tiene plan con precio, crear obligación pendiente en state.payments
+    if (selectedPlan && Number.isFinite(selectedPlan.price) && selectedPlan.price > 0) {
+      const pendingPayment = {
+        id: `P-${currentPeriod}-${student.id}`,
+        studentId: student.id,
+        student: student.name,
+        month: monthLabel(parseDayKey(`${currentPeriod}-01`)),
+        period: currentPeriod,
+        amount: selectedPlan.price,
+        method: 'Pendiente',
+        reference: `Plan: ${student.plan}`,
+        date: 'Sin fecha de vencimiento',
+        paidAt: null,
+        dueDate: null,
+        status: 'Pendiente'
+      };
+      state.payments = [pendingPayment, ...state.payments.filter((p) => !(p.studentId === student.id && p.period === currentPeriod))];
+    }
   }
-  closeModal();
-  showToast('Alumno creado', `${student.name} · ${isSupabaseConnected ? 'guardado en la nube' : 'registro local'}`);
-  renderAndFocus();
+
+  // Incorporar alumno al estado en memoria
+  state.students = [student, ...state.students.filter((s) => s.id !== student.id)];
+
+  // Persistir en almacenamiento local y actualizar interfaz
+  try {
+    persistState(state);
+  } catch (storageError) {
+    console.warn('[In Motion] Fallo de localStorage al persistir nuevo alumno:', storageError.message);
+    if (remoteConfirmed) {
+      closeModal();
+      showToast('Alumno creado en la nube', `${student.name} (${student.id}) fue creado en Supabase. Advertencia: no se pudo guardar en este navegador (${storageError.message}). Podés registrar su pago o consultar su ficha.`);
+      renderAndFocus();
+      return;
+    } else {
+      if (message) message.textContent = storageError.message;
+      return;
+    }
+  }
+
+  try {
+    closeModal();
+    showToast('Alumno creado', `${student.name} · ${isSupabaseConnected ? 'guardado en la nube' : 'registro local'}`);
+    renderAndFocus();
+  } catch (renderError) {
+    console.error('[In Motion] Error al actualizar la interfaz tras alta de alumno:', renderError);
+    if (remoteConfirmed) {
+      showToast('Alumno creado en la nube', `${student.name} (${student.id}) ya fue creado en Supabase. Falla de interfaz: ${renderError.message}. Podés consultar la ficha del alumno.`);
+    }
+  }
 }
 
 function registerWebMcpTools() {
@@ -3709,6 +3860,9 @@ function registerWebMcpTools() {
     },
     annotations: { readOnlyHint: false, untrustedContentHint: false },
     async execute(input) {
+      if (isSupabaseConnected) {
+        throw new Error('Esta herramienta demo está bloqueada en modo conectado con Supabase. Usá la interfaz de asistencia conectada.');
+      }
       const classItem = classData.find((item) => item.id === input?.classId);
       const student = state.students.find((item) => item.id === input?.studentId);
       if (!classItem) throw new Error('Clase demo no encontrada.');
@@ -3719,6 +3873,9 @@ function registerWebMcpTools() {
         confirmLabel: 'Sí, registrar asistencia'
       });
       if (!approved) throw new Error('La confirmación se canceló en pantalla. No se registró ninguna asistencia.');
+      if (isSupabaseConnected) {
+        throw new Error('Esta herramienta demo está bloqueada en modo conectado con Supabase. No se modificó el estado.');
+      }
       recordAttendance(classItem.id, [student.id], dayKey(new Date()));
       if (!elements.app.classList.contains('is-hidden')) renderAndFocus();
       return { classId: classItem.id, studentId: student.id, status: 'present' };
@@ -3741,6 +3898,9 @@ function registerWebMcpTools() {
     },
     annotations: { readOnlyHint: false, untrustedContentHint: false },
     async execute(input) {
+      if (isSupabaseConnected) {
+        throw new Error('Esta herramienta demo está bloqueada en modo conectado con Supabase. Los pagos deben confirmarse remotamente en la nube.');
+      }
       const student = state.students.find((item) => item.id === input?.studentId);
       if (!student) throw new Error('Alumno demo no encontrado.');
       const period = monthKey(new Date());
@@ -3761,6 +3921,9 @@ function registerWebMcpTools() {
         confirmLabel: 'Sí, registrar pago'
       });
       if (!approved) throw new Error('La confirmación se canceló en pantalla. No se registró ningún pago.');
+      if (isSupabaseConnected) {
+        throw new Error('Esta herramienta demo está bloqueada en modo conectado con Supabase. No se modificó el estado.');
+      }
       const record = registerPayment({ studentId: input?.studentId, amount: input?.amount, method: input?.method, period });
       if (!elements.app.classList.contains('is-hidden')) renderAndFocus();
       return { paymentId: record.id, studentId: record.studentId, amount: record.amount, status: 'recorded' };
@@ -4225,7 +4388,7 @@ async function syncWithSupabase() {
     }
 
     // 3. Pagos remotos (las respuestas remotas vacías reemplazan el ámbito, sin mezclar datos demo)
-    const remotePayments = await fetchRemotePayments();
+    const remotePayments = await fetchRemotePayments(state.students);
     if (Array.isArray(remotePayments)) {
       state.payments = remotePayments;
       persistState(state);

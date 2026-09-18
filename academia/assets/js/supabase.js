@@ -618,6 +618,30 @@ export async function syncRemotePayment({ studentCardId, amount, method, period,
   };
 }
 
+export function formatPeriodMonth(periodStr) {
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(periodStr)) return periodStr || 'Período actual';
+  try {
+    const [year, month] = periodStr.split('-').map(Number);
+    const date = new Date(year, month - 1, 1);
+    const name = new Intl.DateTimeFormat('es-GT', { month: 'long' }).format(date);
+    return `${name.charAt(0).toUpperCase() + name.slice(1)} ${year}`;
+  } catch {
+    return periodStr;
+  }
+}
+
+export function formatShortDate(dateOrStr) {
+  if (!dateOrStr) return '';
+  try {
+    const date = typeof dateOrStr === 'string' ? new Date(dateOrStr.length === 10 ? `${dateOrStr}T12:00:00` : dateOrStr) : dateOrStr;
+    if (isNaN(date.getTime())) return String(dateOrStr);
+    const month = new Intl.DateTimeFormat('es-GT', { month: 'short' }).format(date).replace('.', '').toLowerCase();
+    return `${date.getDate()} ${month} ${date.getFullYear()}`;
+  } catch {
+    return String(dateOrStr);
+  }
+}
+
 /**
  * Recupera el listado de membresías registradas en Supabase
  */
@@ -627,28 +651,96 @@ export async function fetchRemoteMemberships() {
 }
 
 /**
- * Recupera el listado de pagos registrados en Supabase
+ * Recupera el listado de pagos y obligaciones en Supabase,
+ * conciliando membresías con pagos confirmados sin inventar cuotas ni vencimientos.
+ *
+ * @param {Array} [students=[]] Listado de alumnos en memoria para resolver nombres y carnés
+ * @returns {Promise<Array>} Listado conciliado de pagos y obligaciones
  */
-export async function fetchRemotePayments() {
-  const rows = await db.get('payments', 'select=*&order=recorded_at.desc');
-  if (!Array.isArray(rows) || rows.length === 0) return [];
+export async function fetchRemotePayments(students = []) {
+  const [rows, membershipRows] = await Promise.all([
+    db.get('payments', 'select=*&order=recorded_at.desc'),
+    db.get('memberships', 'select=*&order=created_at.desc')
+  ]);
 
   const payments = [];
-  for (const r of rows) {
-    const cardNumber = profileUuidToCard.get(r.student_id);
-    if (!cardNumber) continue;
+  const paidSet = new Set();
 
-    payments.push({
-      id: r.receipt_number || `REC-${r.id.slice(0, 8)}`,
-      studentId: cardNumber,
-      period: r.period || 'Período actual',
-      amount: Number(r.amount) || 0,
-      method: r.payment_method || 'transferencia',
-      reference: r.notes || '',
-      date: r.recorded_at?.slice(0, 10) || '',
-      paidAt: r.recorded_at?.slice(0, 10) || '',
-      status: 'Pagado'
-    });
+  if (Array.isArray(rows)) {
+    for (const r of rows) {
+      const cardNumber = profileUuidToCard.get(r.student_id) || students.find((s) => s.profileId === r.student_id)?.id;
+      if (!cardNumber) continue;
+
+      const student = students.find((s) => s.id === cardNumber || s.profileId === r.student_id);
+      const studentName = student?.name || cardNumber;
+      const period = r.period || 'Período actual';
+      paidSet.add(`${cardNumber}|${period}`);
+      if (r.student_id) paidSet.add(`${r.student_id}|${period}`);
+
+      payments.push({
+        id: r.receipt_number || `REC-${r.id.slice(0, 8)}`,
+        remoteId: r.id,
+        membershipId: r.membership_id || undefined,
+        studentId: cardNumber,
+        studentUuid: r.student_id,
+        student: studentName,
+        month: formatPeriodMonth(period),
+        period,
+        amount: Number(r.amount) || 0,
+        method: r.payment_method || 'transferencia',
+        reference: r.notes || '',
+        date: r.recorded_at ? formatShortDate(r.recorded_at) : '',
+        paidAt: r.recorded_at?.slice(0, 10) || '',
+        dueDate: null,
+        status: 'Pagado'
+      });
+    }
   }
+
+  if (Array.isArray(membershipRows)) {
+    for (const m of membershipRows) {
+      if (m.status === 'canceled') continue;
+      const period = m.period || (m.start_date ? m.start_date.slice(0, 7) : null);
+      if (!period) continue;
+
+      const cardNumber = profileUuidToCard.get(m.student_id) || students.find((s) => s.profileId === m.student_id)?.id;
+      if (!cardNumber) continue;
+
+      if (paidSet.has(`${cardNumber}|${period}`) || paidSet.has(`${m.student_id}|${period}`)) {
+        continue;
+      }
+      paidSet.add(`${cardNumber}|${period}`);
+      if (m.student_id) paidSet.add(`${m.student_id}|${period}`);
+
+      const student = students.find((s) => s.id === cardNumber || s.profileId === m.student_id);
+      const studentName = student?.name || cardNumber;
+      const amount = Number(m.price);
+
+      const dueDate = m.due_date || null;
+      let dateText = 'Sin fecha de vencimiento';
+      if (dueDate) {
+        const todayStr = new Date().toISOString().slice(0, 10);
+        dateText = `${dueDate < todayStr ? 'Venció' : 'Vence'} ${formatShortDate(dueDate)}`;
+      }
+
+      payments.push({
+        id: `MEM-${m.id.slice(0, 8)}`,
+        membershipId: m.id,
+        studentId: cardNumber,
+        studentUuid: m.student_id,
+        student: studentName,
+        month: formatPeriodMonth(period),
+        period,
+        amount: Number.isFinite(amount) ? amount : 0,
+        method: 'Pendiente',
+        reference: m.plan_name ? `Membresía: ${m.plan_name}` : '',
+        date: dateText,
+        paidAt: null,
+        dueDate,
+        status: 'Pendiente'
+      });
+    }
+  }
+
   return payments;
 }
