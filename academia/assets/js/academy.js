@@ -1654,15 +1654,31 @@ function qrMarkup(seed = DEMO_STUDENT_ID) {
 // aprobo, y porque escondia detras de una interaccion lo unico que hay que ver.
 // El QR vive en su propio panel, al lado: se lee sin girar nada.
 function memberCardMarkup(student) {
-  const plan = planForStudent(student.id);
-  const [firstName, ...rest] = String(student.name).split(' ');
   return `
     <article class="member-card">
-      <img class="member-logo" src="./assets/inmotion-logo.svg" alt="In Motion Dance Academy" />
-      <p class="member-card-label">Carné de alumno · ${escapeHtml(plan.planName)}</p>
-      <h2>${escapeHtml(firstName)}${rest.length ? `<br/>${escapeHtml(rest.join(' '))}` : ''}</h2>
-      <span class="member-id">${escapeHtml(student.id)} · ${escapeHtml(student.level)}</span>
-      <div class="member-validity"><span>Carné</span><strong>Permanente</strong></div>
+      <div class="member-card-header">
+        <img class="member-logo" src="./assets/inmotion-logo.svg" alt="In Motion Dance Academy" />
+        <span class="member-validity-badge">Permanente</span>
+      </div>
+      <div class="member-card-body">
+        <div class="member-card-identity">
+          <p class="member-card-label">Carné de alumno</p>
+          <h2 class="member-name">${escapeHtml(student.name)}</h2>
+          <div class="member-meta">
+            <div class="member-id-tag">
+              <span class="member-id-label">N.º</span>
+              <strong class="member-id-number">${escapeHtml(student.id)}</strong>
+            </div>
+            ${student.level ? `<span class="member-level">${escapeHtml(student.level)}</span>` : ''}
+          </div>
+        </div>
+        <div class="member-qr-block">
+          <div class="member-qr-frame">
+            ${qrMarkup(student.id)}
+          </div>
+          <span class="member-qr-note">Recepción</span>
+        </div>
+      </div>
     </article>`;
 }
 
@@ -1698,16 +1714,26 @@ function renderStudentCard() {
     <header class="page-heading"><div><p class="eyebrow">Identificación digital</p><h1>Tu carnet.<br/>Siempre listo.</h1></div></header>
     <div class="empty-state"><strong>Sin alumno en la demo</strong>Reiniciá la demostración para recuperar el padrón inicial.</div>`;
   }
-  const plan = planForStudent(student.id);
   return `
-    <header class="page-heading"><div><p class="eyebrow">Identificación digital</p><h1>Tu carnet.<br/>Siempre listo.</h1><p>Tu número de carné es permanente y no caduca. El código QR está al lado, listo para mostrarlo en recepción.</p></div></header>
+    <header class="page-heading"><div><p class="eyebrow">Identificación digital</p><h1>Tu carnet.<br/>Siempre listo.</h1><p>Tu número de carné es permanente y no caduca. Presentá tu credencial en recepción al llegar a clase.</p></div></header>
     <div class="member-card-wrap">
       ${memberCardMarkup(student)}
-      <aside class="qr-panel">
-        <h2>Registro rápido</h2>
-        <p>Mostrá este código en recepción para registrar tu llegada a clase. ${escapeHtml(plan.planName)} · ${escapeHtml(planAllowanceText(plan))}.</p>
-        <div class="qr-code">${qrMarkup(student.id)}</div>
-        <p class="qr-demo-label">QR de demostración · ${escapeHtml(student.id)}</p>
+      <aside class="surface-card member-info-card">
+        <div>
+          <p class="eyebrow">Uso del carné</p>
+          <h2>Acceso a la academia</h2>
+          <p class="payment-meta">Tu credencial digital es permanente e intransferible. Mostrala en recepción desde tu teléfono o impresa al llegar a tu clase; la asistencia se registra en el dispositivo de la academia.</p>
+        </div>
+        <div class="member-info-badges">
+          <div class="info-badge">
+            <span class="info-badge-label">Tipo de credencial</span>
+            <strong>Permanente · Digital e impresa</strong>
+          </div>
+          <div class="info-badge">
+            <span class="info-badge-label">Identificación en puerta</span>
+            <strong>${escapeHtml(student.id)} · Válida todo el ciclo</strong>
+          </div>
+        </div>
       </aside>
     </div>
     ${membershipStatusMarkup(student)}
@@ -2011,11 +2037,22 @@ function guardianCarnetMarkup() {
   return `
     <div class="member-card-wrap">
       ${memberCardMarkup(child)}
-      <aside class="qr-panel">
-        <h2>Registro en recepción</h2>
-        <p>${next ? `Mostrá este código al llegar a ${escapeHtml(next.name)}, ${escapeHtml(next.day.toLowerCase())} a las ${escapeHtml(next.time)}.` : 'Mostrá este código al llegar a la academia.'}</p>
-        <div class="qr-code">${qrMarkup(child.id)}</div>
-        <p class="qr-demo-label">QR de demostración · ${escapeHtml(child.id)}</p>
+      <aside class="surface-card member-info-card">
+        <div>
+          <p class="eyebrow">Recepción</p>
+          <h2>${escapeHtml(child.name.split(' ')[0])} en la academia</h2>
+          <p class="payment-meta">${next ? `Mostrá este carné al llegar a <strong>${escapeHtml(next.name)}</strong>, ${escapeHtml(next.day.toLowerCase())} a las ${escapeHtml(next.time)}.` : 'Mostrá este carné en recepción al llegar a la academia.'} El carné es permanente y no caduca con el ciclo de pago.</p>
+        </div>
+        <div class="member-info-badges">
+          <div class="info-badge">
+            <span class="info-badge-label">N.º de carné</span>
+            <strong>${escapeHtml(child.id)}</strong>
+          </div>
+          <div class="info-badge">
+            <span class="info-badge-label">Nivel asignado</span>
+            <strong>${escapeHtml(child.level)}</strong>
+          </div>
+        </div>
       </aside>
     </div>
     ${membershipStatusMarkup(child)}

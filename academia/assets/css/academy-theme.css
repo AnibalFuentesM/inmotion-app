@@ -404,11 +404,240 @@
   border-radius: 20px;
   border-color: var(--line);
 }
-/* El brochazo es decorativo: isolation crea el contexto de apilamiento para que
-   el ::after quede detras del texto sin tocar el posicionamiento de la vigencia. */
-.member-card { isolation: isolate; }
-.member-card::after { border-color: var(--brand-red); z-index: -1; }
-.member-logo { mix-blend-mode: normal; }
+/* ---- Carné Permanente y Credencial Digital ---- */
+.member-card-wrap {
+  display: grid;
+  grid-template-columns: minmax(340px, 1.25fr) minmax(280px, 0.75fr);
+  gap: 24px;
+  align-items: stretch;
+}
+
+.member-card {
+  position: relative;
+  min-height: auto;
+  padding: 26px 28px;
+  overflow: hidden;
+  border-radius: 20px;
+  background: #0d0e10;
+  color: var(--white);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  box-shadow: 0 8px 24px -6px rgba(0, 0, 0, 0.35);
+  isolation: isolate;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+/* Ondas rojas discretas en sustitución del aro */
+.member-card::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  right: 0;
+  bottom: 0;
+  border: none;
+  border-radius: 0;
+  transform: none;
+  background-image:
+    linear-gradient(to right, rgba(13, 14, 16, 0.85) 0%, rgba(13, 14, 16, 0.4) 60%, rgba(13, 14, 16, 0.18) 100%),
+    url('../ondas-rojas.webp');
+  background-repeat: no-repeat;
+  background-position: right -15px bottom -20px;
+  background-size: 260px auto;
+  opacity: 0.36;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.member-card-header {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 22px;
+}
+
+.member-logo {
+  width: auto;
+  height: 24px;
+  max-width: 125px;
+  mix-blend-mode: normal;
+  display: block;
+}
+
+.member-validity-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.9);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.member-card-body {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.member-card-identity {
+  flex: 1;
+  min-width: 0;
+}
+
+.member-card-label {
+  margin: 0 0 6px 0;
+  color: rgba(255, 255, 255, 0.52);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.member-card h2,
+.member-name {
+  margin: 0 0 10px 0;
+  color: #ffffff;
+  font-size: clamp(1.35rem, 3.2vw, 1.85rem);
+  line-height: 1.15;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+
+.member-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+
+.member-id-tag {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  background: rgba(255, 255, 255, 0.08);
+  padding: 3px 8px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+}
+
+.member-id-label {
+  font-size: 0.62rem;
+  color: rgba(255, 255, 255, 0.55);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.member-id-number {
+  font-size: 0.88rem;
+  font-weight: 800;
+  color: #ffffff;
+  letter-spacing: 0.04em;
+}
+
+.member-level {
+  font-size: 0.78rem;
+  color: rgba(255, 255, 255, 0.68);
+  font-weight: 500;
+}
+
+.member-validity {
+  display: none;
+}
+
+/* Representación QR integrada dentro de la credencial */
+.member-qr-block {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.member-qr-frame {
+  background: #ffffff;
+  padding: 9px;
+  border-radius: 12px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+  width: 108px;
+  height: 108px;
+  display: grid;
+  place-items: center;
+}
+
+.member-qr-frame svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.member-qr-note {
+  display: block;
+  margin-top: 6px;
+  font-size: 0.62rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.6);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  text-align: center;
+}
+
+/* Ficha informativa de uso del carné */
+.member-info-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 24px;
+}
+
+.member-info-card h2 {
+  margin: 4px 0 10px;
+  font-size: 1.25rem;
+}
+
+.member-info-badges {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.info-badge {
+  background: #f8f9fa;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 10px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.info-badge-label {
+  font-size: 0.68rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.info-badge strong {
+  font-size: 0.88rem;
+  color: var(--ink);
+}
 
 /* ---- Estados ---- */
 .status-pill { background: #f1f2f5; }
@@ -1426,39 +1655,85 @@
   .journey-actions strong { font-size: .85rem; }
   .journey-actions small { font-size: .7rem; }
 
-  /* 4. Carné de Alumno y QR - visibilidad inmediata */
+  /* 4. Carné compacto y QR integrado para móvil (375px) */
   .member-card-wrap {
+    grid-template-columns: 1fr;
     gap: 16px;
   }
   .member-card {
     min-height: auto;
-    padding: 22px 20px 24px;
+    padding: 18px 18px 20px;
   }
   .member-card::after {
-    width: 320px;
-    height: 150px;
-    right: -150px;
-    bottom: -50px;
-    border-width: 18px;
+    width: 100%;
+    height: 100%;
+    right: 0;
+    bottom: 0;
+    border: none;
+    border-radius: 0;
+    transform: none;
+    background-size: 200px auto;
+    background-position: right -10px bottom -20px;
+    opacity: 0.32;
+  }
+  .member-card-header {
+    margin-bottom: 14px;
+  }
+  .member-logo {
+    height: 20px;
+    max-width: 105px;
+  }
+  .member-validity-badge {
+    padding: 3px 8px;
+    font-size: 0.62rem;
+  }
+  .member-card-body {
+    gap: 12px;
   }
   .member-card-label {
-    margin-top: 24px;
+    margin-top: 0;
+    font-size: 0.62rem;
   }
-  .member-card h2 {
-    font-size: clamp(1.8rem, 7.5vw, 2.4rem);
-    margin-bottom: 2px;
+  .member-card h2,
+  .member-name {
+    font-size: clamp(1.1rem, 4.5vw, 1.35rem);
+    margin-bottom: 6px;
+    line-height: 1.15;
+  }
+  .member-meta {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+  .member-id-tag {
+    padding: 2px 6px;
+  }
+  .member-id-label {
+    font-size: 0.58rem;
+  }
+  .member-id-number {
+    font-size: 0.82rem;
+  }
+  .member-level {
+    font-size: 0.72rem;
   }
   .member-validity {
-    position: static;
-    margin-top: 20px;
-    text-align: left;
+    display: none;
   }
-  .qr-panel {
-    padding: 20px;
+  .member-qr-frame {
+    width: 94px;
+    height: 94px;
+    padding: 7px;
+    border-radius: 10px;
   }
-  .qr-code {
-    width: min(100%, 220px);
-    padding: 14px;
+  .member-qr-note {
+    font-size: 0.58rem;
+  }
+  .member-info-card {
+    padding: 18px;
+  }
+  .member-info-card h2 {
+    font-size: 1.15rem;
   }
 
   /* 5. Vista de Horarios y Clases */
