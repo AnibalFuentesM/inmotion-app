@@ -25,6 +25,35 @@ const pendingLocalStudentEdits = new Set();
 
 const STORAGE_KEY = 'inmotion-academy-demo-v1';
 const STATE_VERSION = 3;
+
+function getStorageKey() {
+  if (isSupabaseConnected && authenticatedUser?.id) {
+    return `inmotion-academy-user-${authenticatedUser.id}`;
+  }
+  return STORAGE_KEY;
+}
+
+function createEmptyConnectedState() {
+  return {
+    role: authenticatedProfile?.role || null,
+    students: [],
+    payments: [],
+    attendanceLog: [],
+    musicSuggestions: []
+  };
+}
+
+function clearCurrentSessionState() {
+  state = {
+    role: null,
+    students: [],
+    payments: [],
+    attendanceLog: [],
+    musicSuggestions: []
+  };
+  activeChildId = null;
+  supabaseSyncError = null;
+}
 let TODAY = new Date();
 const WEEKDAY_SHORT = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
 
@@ -443,7 +472,32 @@ function upcomingClasses(classes) {
 
 const TEACHER_NAME = 'Alex Aquino';
 
+function currentTeacher() {
+  if (isSupabaseConnected) {
+    if (authenticatedProfile?.role !== 'teacher') return null;
+    const name = `${authenticatedProfile.first_name || ''} ${authenticatedProfile.last_name || ''}`.trim() || 'Maestro';
+    return {
+      id: authenticatedProfile.id,
+      name,
+      firstName: authenticatedProfile.first_name || 'Maestro'
+    };
+  }
+  return {
+    id: 'demo-teacher',
+    name: TEACHER_NAME,
+    firstName: 'Alex'
+  };
+}
+
 function teacherClasses() {
+  const teacher = currentTeacher();
+  if (isSupabaseConnected) {
+    if (!teacher) return [];
+    return scheduledClasses().filter((item) =>
+      (item.teacherId && item.teacherId === teacher.id) ||
+      (teacher.name && item.teacher === teacher.name)
+    );
+  }
   return scheduledClasses().filter((item) => item.teacher === TEACHER_NAME);
 }
 
@@ -515,6 +569,17 @@ function currentPeriodLabel() {
 
 function studentById(studentId) {
   return state.students.find((item) => item.id === studentId);
+}
+
+function currentStudent() {
+  if (isSupabaseConnected) {
+    if (!authenticatedProfile && !authenticatedUser) return null;
+    return state.students.find((s) =>
+      (authenticatedUser && s.userId === authenticatedUser.id) ||
+      (authenticatedProfile && s.profileId === authenticatedProfile.id)
+    ) || null;
+  }
+  return studentById(DEMO_STUDENT_ID) || state.students[0] || null;
 }
 
 function classesForStudent(studentId) {
@@ -595,10 +660,29 @@ function rosterFor(classId) {
 }
 
 function currentGuardian() {
-  return guardians[0];
+  if (isSupabaseConnected) {
+    if (authenticatedProfile?.role !== 'guardian') return null;
+    const name = `${authenticatedProfile.first_name || ''} ${authenticatedProfile.last_name || ''}`.trim() || authenticatedUser?.email || 'Tutor';
+    return {
+      id: authenticatedProfile.id,
+      name,
+      firstName: authenticatedProfile.first_name || 'Tutor',
+      phone: authenticatedProfile.phone || '',
+      consentSignedAt: authenticatedProfile.created_at ? dayKey(new Date(authenticatedProfile.created_at)) : dayKey(TODAY)
+    };
+  }
+  return guardians[0] || null;
 }
 
 function childrenOf(guardian) {
+  if (isSupabaseConnected) {
+    if (!guardian) return [];
+    return state.students.filter((student) =>
+      student.rawGuardianUuid === guardian.id ||
+      student.guardianId === guardian.id ||
+      (student.guardianId && student.guardianId === guardian.name)
+    );
+  }
   return (guardian?.childrenIds || []).map(studentById).filter(Boolean);
 }
 
@@ -918,6 +1002,8 @@ function sanitizeStudent(raw) {
   const plan = cleanText(raw.plan, 80) || DEFAULT_PLAN.planName;
   return {
     id,
+    profileId: cleanText(raw.profileId, 40) || undefined,
+    userId: cleanText(raw.userId, 40) || undefined,
     name,
     initials: cleanText(raw.initials, 4) || initials(name),
     plan,
@@ -925,7 +1011,8 @@ function sanitizeStudent(raw) {
     status: cleanText(raw.status, 20) || 'Pendiente',
     level: cleanText(raw.level, 40) || 'Sin nivel',
     classIds: Array.isArray(raw.classIds) ? [...new Set(raw.classIds.filter((value) => knownClassIds.includes(value)))] : [],
-    guardianId: guardians.some((item) => item.id === raw.guardianId) ? raw.guardianId : undefined,
+    guardianId: cleanText(raw.guardianId, 40) || (guardians.some((item) => item.id === raw.guardianId) ? raw.guardianId : undefined),
+    rawGuardianUuid: cleanText(raw.rawGuardianUuid, 40) || undefined,
     notes: cleanText(raw.notes, 280)
   };
 }
@@ -1005,7 +1092,7 @@ function sanitizeMusicSuggestion(raw) {
   };
 }
 
-function sanitizeState(saved) {
+function sanitizeState(saved, isConnected = isSupabaseConnected) {
   const dropped = { students: 0, payments: 0, attendance: 0 };
 
   const rawStudents = Array.isArray(saved.students) ? saved.students : [];
@@ -1020,9 +1107,10 @@ function sanitizeState(saved) {
     seenStudents.add(student.id);
     students.push(student);
   });
-  // Sin alumnos la app no tiene nada que mostrar: se vuelve al padron base.
-  const usableStudents = students.length ? students : createBaseStudents();
-  if (!students.length && rawStudents.length) dropped.students = rawStudents.length;
+  // Sin alumnos la app no tiene nada que mostrar en demo: se vuelve al padrón base.
+  // En modo conectado, una respuesta remota vacía se respeta como tal sin inventar alumnos demo.
+  const usableStudents = isConnected ? students : (students.length ? students : createBaseStudents());
+  if (!isConnected && !students.length && rawStudents.length) dropped.students = rawStudents.length;
   const studentIds = new Set(usableStudents.map((item) => item.id));
 
   const rawPayments = Array.isArray(saved.payments) ? saved.payments : [];
@@ -1076,7 +1164,7 @@ function sanitizeState(saved) {
     seenSugIds.add(sug.id);
     musicSuggestions.push(sug);
   });
-  const usableMusicSuggestions = musicSuggestions.length ? musicSuggestions : createBaseMusicSuggestions();
+  const usableMusicSuggestions = isConnected ? musicSuggestions : (musicSuggestions.length ? musicSuggestions : createBaseMusicSuggestions());
 
   const total = dropped.students + dropped.payments + dropped.attendance;
   if (total) recoveryReport = { total, ...dropped };
@@ -1092,19 +1180,22 @@ function sanitizeState(saved) {
 }
 
 function loadState() {
+  const key = getStorageKey();
   let saved;
   try {
-    saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
+    saved = JSON.parse(localStorage.getItem(key));
   } catch {
-    // Almacenamiento bloqueado o JSON corrupto: arrancamos con la demo limpia.
-    return createDefaultState();
+    // Almacenamiento bloqueado o JSON corrupto: arrancamos con estado limpio.
+    return isSupabaseConnected ? createEmptyConnectedState() : createDefaultState();
   }
-  if (!isPlainObject(saved) || ![2, STATE_VERSION].includes(saved.version)) return createDefaultState();
+  if (!isPlainObject(saved) || ![2, STATE_VERSION].includes(saved.version)) {
+    return isSupabaseConnected ? createEmptyConnectedState() : createDefaultState();
+  }
   try {
-    return sanitizeState(saved);
+    return sanitizeState(saved, isSupabaseConnected);
   } catch {
     recoveryReport = { total: 0, students: 0, payments: 0, attendance: 0, fatal: true };
-    return createDefaultState();
+    return isSupabaseConnected ? createEmptyConnectedState() : createDefaultState();
   }
 }
 
@@ -1144,7 +1235,8 @@ const elements = {
 
 function persistState(nextState) {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...nextState, version: STATE_VERSION }));
+    const key = getStorageKey();
+    localStorage.setItem(key, JSON.stringify({ ...nextState, version: STATE_VERSION }));
   } catch {
     throw new Error('No se pudo guardar en este navegador. Revisá el almacenamiento e intentá de nuevo.');
   }
@@ -1203,7 +1295,10 @@ function updateShell() {
     elements.roleSwitcher.title = 'Cambiar rol en modo demostración';
   }
   elements.kicker.textContent = config.label;
-  elements.initials.textContent = config.initials;
+  const userInitials = (isSupabaseConnected && authenticatedProfile)
+    ? (initials(`${authenticatedProfile.first_name || ''} ${authenticatedProfile.last_name || ''}`) || config.initials)
+    : config.initials;
+  elements.initials.textContent = userInitials;
   elements.date.textContent = longDate(TODAY);
   if (elements.demoBadge) {
     elements.demoBadge.style.cursor = 'pointer';
@@ -1261,7 +1356,22 @@ function renderApp() {
   updateShell();
   const key = `${activeRole}:${activeRoute}`;
   const renderer = renderers[key] || renderers[`${activeRole}:inicio`];
-  elements.content.innerHTML = `<div class="page-enter">${renderer()}</div>`;
+  const errorBanner = (isSupabaseConnected && supabaseSyncError) ? `
+    <div class="empty-state" style="margin-bottom:24px;border:1px solid var(--red);text-align:left;">
+      <strong style="color:var(--red)">Error de sincronización con Supabase</strong>
+      <p class="payment-meta" style="margin:8px 0">${escapeHtml(supabaseSyncError)}</p>
+      <button class="button button--red button--small" type="button" id="retrySupabaseSync">Reintentar conexión</button>
+    </div>
+  ` : '';
+  elements.content.innerHTML = `<div class="page-enter">${errorBanner}${renderer()}</div>`;
+  document.querySelector('#retrySupabaseSync')?.addEventListener('click', async () => {
+    const btn = document.querySelector('#retrySupabaseSync');
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = 'Reintentando...';
+    }
+    await syncWithSupabase();
+  });
   setMenuOpen(false);
   window.scrollTo({ top: 0, behavior: REDUCED_MOTION.matches ? 'auto' : 'smooth' });
 }
@@ -1343,8 +1453,26 @@ function nextMusicSuggestionId() {
 }
 
 function studentMusicSection() {
-  const suggestions = (state.musicSuggestions || []).filter((s) => s.studentId === DEMO_STUDENT_ID);
-  const enrolledClasses = classesForStudent(DEMO_STUDENT_ID);
+  const student = currentStudent();
+  if (isSupabaseConnected && !student) {
+    return `
+      <section class="section music-section">
+        <div class="section-head">
+          <div>
+            <span class="eyebrow">La Rockola In Motion</span>
+            <h2>Pedí tu rola para la clase</h2>
+            <p>Elegí una de tus clases y sugerile una canción a tu maestro.</p>
+          </div>
+        </div>
+        <div class="empty-state">
+          <strong>Sin ficha de alumno</strong>
+          Tu usuario no tiene una ficha de estudiante vinculada para sugerir canciones.
+        </div>
+      </section>
+    `;
+  }
+  const suggestions = student ? (state.musicSuggestions || []).filter((s) => s.studentId === student.id) : [];
+  const enrolledClasses = student ? classesForStudent(student.id) : [];
 
   return `
     <section class="section music-section">
@@ -1416,9 +1544,12 @@ function studentMusicSection() {
 }
 
 function teacherMusicSection() {
+  const teacher = currentTeacher();
   const allSuggestions = state.musicSuggestions || [];
   const teacherClassIds = teacherClasses().map((c) => c.id);
-  const forTeacher = allSuggestions.filter((s) => s.teacherName === TEACHER_NAME || teacherClassIds.includes(s.classId));
+  const forTeacher = teacher
+    ? allSuggestions.filter((s) => (s.teacherName && s.teacherName === teacher.name) || teacherClassIds.includes(s.classId))
+    : [];
 
   const filtered = musicTeacherFilter === 'pending'
     ? forTeacher.filter((s) => s.status === 'pending')
@@ -1506,7 +1637,12 @@ function teacherMusicSection() {
 }
 
 function openMusicSuggestionModal(preselectedClassId = null) {
-  const studentClasses = classesForStudent(DEMO_STUDENT_ID);
+  const student = currentStudent();
+  if (!student) {
+    showToast('Acción no disponible', 'No tienes un carné o perfil de alumno vinculado.');
+    return;
+  }
+  const studentClasses = classesForStudent(student.id);
   const options = studentClasses.length ? studentClasses : classData;
   const defaultClassId = preselectedClassId || options[0]?.id || 'bachata-inter';
   const targetClass = findClass(defaultClassId) || options[0];
@@ -1581,14 +1717,19 @@ function handleMusicSuggestionSubmit(event) {
     return;
   }
 
+  const student = currentStudent();
+  if (!student) {
+    showToast('Acción no disponible', 'No tienes una ficha de alumno vinculada para enviar sugerencias.');
+    return;
+  }
+
   const mood = findMusicMood(moodId);
   const targetClass = findClass(classId) || scheduledClasses()[0];
-  const student = studentById(DEMO_STUDENT_ID);
 
   const newSuggestion = {
     id: nextMusicSuggestionId(),
-    studentId: DEMO_STUDENT_ID,
-    studentName: student?.name || 'Valeria Rosales',
+    studentId: student.id,
+    studentName: student.name || 'Alumno',
     classId: targetClass.id,
     className: targetClass.name,
     teacherName: targetClass.teacher,
@@ -1599,7 +1740,6 @@ function handleMusicSuggestionSubmit(event) {
     moodLabel: mood.label,
     status: 'pending',
     liked: false,
-    createdAt: dayKey(TODAY)
   };
 
   const nextSuggestions = [newSuggestion, ...(state.musicSuggestions || [])];
@@ -1611,20 +1751,37 @@ function handleMusicSuggestionSubmit(event) {
 }
 
 function renderStudentHome() {
-  const student = studentById(DEMO_STUDENT_ID);
-  const plan = planForStudent(DEMO_STUDENT_ID);
+  const student = currentStudent();
+  if (isSupabaseConnected && !student) {
+    return `
+      <section class="student-hero">
+        <div class="student-hero-copy">
+          <div>
+            <p class="eyebrow">${escapeHtml(shortDayLabel(TODAY))}</p>
+            <h1 class="hero-title">Hola.<br/><span>Sin alumno vinculado.</span></h1>
+          </div>
+        </div>
+      </section>
+      <div class="empty-state">
+        <strong>Ficha de alumno no vinculada</strong>
+        Tu usuario autenticado (${escapeHtml(authenticatedUser?.email || '')}) no tiene un perfil de estudiante o carné asignado en la academia. Contactá a administración.
+      </div>
+    `;
+  }
+  const studentId = student?.id || DEMO_STUDENT_ID;
+  const plan = planForStudent(studentId);
   const firstName = (student?.name || 'Valeria').split(' ')[0];
-  const attended = attendedThisMonth(DEMO_STUDENT_ID);
-  const allowance = monthlyAllowanceFor(DEMO_STUDENT_ID);
-  const checkedIn = state.attendanceLog.some((entry) => entry.studentId === DEMO_STUDENT_ID && entry.at === dayKey(TODAY));
+  const attended = attendedThisMonth(studentId);
+  const allowance = monthlyAllowanceFor(studentId);
+  const checkedIn = state.attendanceLog.some((entry) => entry.studentId === studentId && entry.at === dayKey(TODAY));
   // Sin cupo no hay resta posible: el plan ilimitado se cuenta, no se descuenta.
   // Un plan fuera del catalogo tampoco se descuenta, pero por otra razon: no
   // sabemos cual es su cupo y no se inventa uno.
   const allowanceUnknown = allowance === undefined;
   const remaining = allowance === null || allowanceUnknown ? null : Math.max(0, allowance - attended);
-  const payment = monthlyPaymentFor(DEMO_STUDENT_ID);
+  const payment = monthlyPaymentFor(studentId);
   const paid = payment?.status === 'Pagado';
-  const own = upcomingClasses(classesForStudent(DEMO_STUDENT_ID));
+  const own = upcomingClasses(classesForStudent(studentId));
   const next = own[0];
   const [hour, meridiem] = next?.time.split(' ') || [];
   const allowanceLine = allowanceUnknown
@@ -1666,7 +1823,7 @@ function renderStudentHome() {
     </div>
     <section class="section">
       <div class="section-head"><div><h2>Esta semana</h2><p>Tu agenda de clases del ${escapeHtml(weekRange())}.</p></div><button class="text-button" type="button" data-go="clases">Ver calendario →</button></div>
-      ${weekStrip(classesForStudent(DEMO_STUDENT_ID))}
+      ${weekStrip(classesForStudent(studentId))}
     </section>
 
     <section class="section">
@@ -1912,7 +2069,8 @@ function renderScheduleRecommendations() {
 
   const cards = recommendations.map((rec, index) => {
     const isBest = index === 0;
-    const currentPlan = activeRole === 'student' ? planForStudent(DEMO_STUDENT_ID) : null;
+    const student = currentStudent();
+    const currentPlan = (activeRole === 'student' && student) ? planForStudent(student.id) : null;
     const isCurrentPlan = currentPlan && (currentPlan.planName.toLowerCase() === rec.title.toLowerCase() || currentPlan.name.toLowerCase() === rec.title.toLowerCase());
     return `
       <article class="rec-card ${isBest ? 'is-best' : ''}">
@@ -2165,11 +2323,11 @@ function membershipStatusMarkup(student) {
 }
 
 function renderStudentCard() {
-  const student = studentById(DEMO_STUDENT_ID) || state.students[0];
+  const student = currentStudent();
   if (!student) {
     return `
     <header class="page-heading"><div><p class="eyebrow">Identificación digital</p><h1>Tu carnet.<br/>Siempre listo.</h1></div></header>
-    <div class="empty-state"><strong>Sin alumno en la demo</strong>Reiniciá la demostración para recuperar el padrón inicial.</div>`;
+    <div class="empty-state"><strong>${isSupabaseConnected ? 'Sin carné vinculado' : 'Sin alumno en la demo'}</strong>${isSupabaseConnected ? 'Tu usuario conectado no tiene un carné o ficha de estudiante asociada en el sistema.' : 'Reiniciá la demostración para recuperar el padrón inicial.'}</div>`;
   }
   return `
     <header class="page-heading"><div><p class="eyebrow">Identificación digital</p><h1>Tu carnet.<br/>Siempre listo.</h1><p>Tu número de carné es permanente y no caduca. Presentá tu credencial en recepción al llegar a clase.</p></div></header>
@@ -2199,9 +2357,11 @@ function renderStudentCard() {
 
 
 function teacherCards() {
+  const teacher = currentTeacher();
   const own = teacherClasses().slice(0, 4);
   if (!own.length) {
-    return `<div class="empty-state"><strong>Sin clases asignadas</strong>${escapeHtml(TEACHER_NAME)} no tiene clases en la agenda de demostración.</div>`;
+    const teacherName = teacher?.name || 'El maestro';
+    return `<div class="empty-state"><strong>Sin clases asignadas</strong>${escapeHtml(teacherName)} no tiene clases en la agenda asignada.</div>`;
   }
   return `<div class="teacher-day-grid">${own.map((item, index) => `
     <article class="teacher-class">
@@ -2213,17 +2373,31 @@ function teacherCards() {
 }
 
 function renderTeacherHome() {
+  const teacher = currentTeacher();
+  if (isSupabaseConnected && !teacher) {
+    return `
+      <section class="teacher-hero">
+        <p class="eyebrow">${escapeHtml(shortDayLabel(TODAY))}</p>
+        <h1>Hola,<br/><span>Sin perfil docente.</span></h1>
+      </section>
+      <div class="empty-state">
+        <strong>Perfil docente no vinculado</strong>
+        Tu usuario autenticado no tiene un perfil de maestro activo en el sistema.
+      </div>
+    `;
+  }
   const own = teacherClasses();
   const today = own.filter((item) => item.day === 'Hoy');
   const next = upcomingClasses(own)[0];
   const count = today.length;
+  const firstName = teacher?.firstName || 'Alex';
   return `
     <section class="teacher-hero">
       <p class="eyebrow">${escapeHtml(shortDayLabel(TODAY))} · ${count ? `${count} clase${count === 1 ? '' : 's'} programada${count === 1 ? '' : 's'}` : 'sin clases hoy'}</p>
-      <h1>${escapeHtml(greeting())},<br/><span>Alex.</span></h1>
+      <h1>${escapeHtml(greeting())},<br/><span>${escapeHtml(firstName)}.</span></h1>
       <div class="teacher-hero-foot">
         ${next ? `<button class="button button--red" type="button" data-take-attendance="${escapeHtml((today[0] || next).id)}">${count ? 'Abrir asistencia de hoy' : 'Abrir próxima clase'}</button>` : ''}
-        <p>${next ? `Tu siguiente clase es ${escapeHtml(next.day.toLowerCase())} a las ${escapeHtml(next.time)}<br/>en el ${escapeHtml(next.room)}.` : 'No tenés clases asignadas en esta demostración.'}</p>
+        <p>${next ? `Tu siguiente clase es ${escapeHtml(next.day.toLowerCase())} a las ${escapeHtml(next.time)}<br/>en el ${escapeHtml(next.room)}.` : 'No tenés clases asignadas.'}</p>
       </div>
     </section>
     <section class="section"><div class="section-head"><div><h2>Tu agenda</h2><p>Próximas clases asignadas.</p></div><button class="text-button" type="button" data-go="agenda">Ver semana →</button></div>${teacherCards()}</section>
@@ -2232,8 +2406,16 @@ function renderTeacherHome() {
 }
 
 function renderTeacherAgenda() {
+  const teacher = currentTeacher();
+  if (isSupabaseConnected && !teacher) {
+    return `
+      <header class="page-heading"><div><p class="eyebrow">Agenda docente</p><h1>Sin clases<br/>asignadas.</h1></div></header>
+      <div class="empty-state"><strong>Sin perfil docente</strong>No tenés un perfil docente vinculado en el sistema.</div>
+    `;
+  }
+  const teacherName = teacher?.name || 'Alex Aquino';
   return `
-    <header class="page-heading"><div><p class="eyebrow">Agenda docente</p><h1>Una semana<br/>en movimiento.</h1><p>Clases asignadas a Alex Aquino en esta demostración.</p></div></header>
+    <header class="page-heading"><div><p class="eyebrow">Agenda docente</p><h1>Una semana<br/>en movimiento.</h1><p>Clases asignadas a ${escapeHtml(teacherName)}.</p></div></header>
     ${weekStrip(teacherClasses())}
     <section class="section">${teacherCards()}</section>
     ${teacherMusicSection()}
@@ -2270,7 +2452,7 @@ function renderTeacherAttendance() {
   const enrolledIds = enrolled.map((entry) => entry.id);
   const historyOnly = attendanceFor(item.id, item.date).filter((id) => !enrolledIds.includes(id));
   const canSubmit = live && enrolled.length > 0;
-  const student = studentById(DEMO_STUDENT_ID);
+  const student = currentStudent();
   return `
     <header class="page-heading"><div><p class="eyebrow">Control de asistencia</p><h1>¿Quién vino<br/>a bailar?</h1><p>Marcá la lista y guardá esta sesión localmente.</p></div></header>
     <section class="split-grid">
@@ -2291,9 +2473,9 @@ function renderTeacherAttendance() {
         </form>
       </article>
       <aside class="surface-card">
-        <p class="eyebrow">Lectura QR</p><h2>Escáner de recepción</h2><p class="payment-meta">Escanea la academia, no el alumno: el prototipo simula la lectura del carnet de ${escapeHtml(student?.name || 'la alumna demo')}. No solicita cámara ni envía datos.</p>
-        <div class="qr-code" style="max-width:220px;margin-top:24px">${qrMarkup(student?.id || DEMO_STUDENT_ID)}</div>
-        <button class="button" style="width:100%;margin-top:20px" type="button" data-open-scan>Simular escaneo</button>
+        <p class="eyebrow">Lectura QR</p><h2>Escáner de recepción</h2><p class="payment-meta">Escanea la academia, no el alumno: el prototipo simula la lectura del carnet ${student ? `de ${escapeHtml(student.name)}` : ''}. No solicita cámara ni envía datos.</p>
+        <div class="qr-code" style="max-width:220px;margin-top:24px">${student ? qrMarkup(student.id) : '<p class="payment-meta">Sin carné</p>'}</div>
+        <button class="button" style="width:100%;margin-top:20px" type="button" data-open-scan ${student ? '' : 'disabled'}>Simular escaneo</button>
       </aside>
     </section>
   `;
@@ -2469,12 +2651,27 @@ function consentCardMarkup(guardian) {
 
 function renderGuardianHome() {
   const guardian = currentGuardian();
+  if (isSupabaseConnected && !guardian) {
+    return `
+      <header class="page-heading">
+        <div>
+          <p class="eyebrow">${escapeHtml(shortDayLabel(TODAY))}</p>
+          <h1>Hola,<br/><span>Sin perfil de tutor.</span></h1>
+        </div>
+      </header>
+      <div class="empty-state">
+        <strong>Perfil de tutor no vinculado</strong>
+        Tu cuenta autenticada (${escapeHtml(authenticatedUser?.email || '')}) no tiene un perfil de tutor asociado en el sistema.
+      </div>
+    `;
+  }
   const children = childrenOf(guardian);
+  const firstName = guardian?.firstName || (guardian?.name ? guardian.name.split(' ')[0] : 'Tutor');
   return `
     <header class="page-heading">
       <div>
         <p class="eyebrow">${escapeHtml(shortDayLabel(TODAY))}</p>
-        <h1>${escapeHtml(greeting())},<br/><span>${escapeHtml(guardian.name.split(' ')[0])}.</span></h1>
+        <h1>${escapeHtml(greeting())},<br/><span>${escapeHtml(firstName)}.</span></h1>
         <p>${children.length === 1 ? 'Seguimiento de tu hijo' : 'Seguimiento de tus hijos'} en la academia. Esta vista es de solo consulta.</p>
       </div>
       <button class="button" type="button" data-go="carnet">Ver carnés</button>
@@ -2482,8 +2679,8 @@ function renderGuardianHome() {
     <section class="section">
       <div class="section-head"><div><h2>A tu cargo</h2><p>Próxima clase, última asistencia y mensualidad del mes.</p></div><span class="tag">${children.length} alumno${children.length === 1 ? '' : 's'}</span></div>
       <div class="cards-grid">
-        ${children.length ? children.map(childCardMarkup).join('') : '<div class="empty-state"><strong>Sin alumnos a cargo</strong>Esta demostración no tiene hijos asignados a este tutor.</div>'}
-        ${consentCardMarkup(guardian)}
+        ${children.length ? children.map(childCardMarkup).join('') : '<div class="empty-state"><strong>Sin alumnos a cargo</strong>No hay alumnos vinculados a tu cuenta de tutor en el sistema.</div>'}
+        ${guardian ? consentCardMarkup(guardian) : ''}
       </div>
     </section>
   `;
@@ -2491,7 +2688,7 @@ function renderGuardianHome() {
 
 function guardianCarnetMarkup() {
   const child = studentById(activeChildId);
-  if (!child) return '<div class="empty-state"><strong>Sin alumnos a cargo</strong>Esta demostración no tiene hijos asignados.</div>';
+  if (!child) return '<div class="empty-state"><strong>Sin alumnos a cargo</strong>No hay ningún alumno seleccionado o vinculado a este tutor.</div>';
   const next = nextClassForStudent(child.id);
   return `
     <div class="member-card-wrap">
@@ -2519,14 +2716,23 @@ function guardianCarnetMarkup() {
 }
 
 function renderGuardianCard() {
-  const children = childrenOf(currentGuardian());
+  const guardian = currentGuardian();
+  if (isSupabaseConnected && !guardian) {
+    return `
+      <header class="page-heading"><div><p class="eyebrow">Identificación digital</p><h1>El carné<br/>de tus hijos.</h1></div></header>
+      <div class="empty-state"><strong>Sin perfil de tutor</strong>No tenés un perfil de tutor vinculado.</div>
+    `;
+  }
+  const children = childrenOf(guardian);
   if (!children.some((child) => child.id === activeChildId)) activeChildId = children[0]?.id || null;
   return `
     <header class="page-heading"><div><p class="eyebrow">Identificación digital</p><h1>El carné<br/>de tus hijos.</h1><p>El carné es permanente y no caduca. Se muestra en recepción para registrar la llegada; el estado de la mensualidad se consulta aparte. El tutor no marca la asistencia.</p></div></header>
-    <div class="filter-row" role="group" aria-label="Elegir alumno">
-      ${children.map((child) => `<button class="filter-chip ${child.id === activeChildId ? 'is-active' : ''}" type="button" aria-pressed="${child.id === activeChildId}" data-child-select="${escapeHtml(child.id)}">${escapeHtml(child.name)}</button>`).join('')}
-    </div>
-    <div id="guardianCarnet">${guardianCarnetMarkup()}</div>
+    ${children.length > 0 ? `
+      <div class="filter-row" role="group" aria-label="Elegir alumno">
+        ${children.map((child) => `<button class="filter-chip ${child.id === activeChildId ? 'is-active' : ''}" type="button" aria-pressed="${child.id === activeChildId}" data-child-select="${escapeHtml(child.id)}">${escapeHtml(child.name)}</button>`).join('')}
+      </div>
+      <div id="guardianCarnet">${guardianCarnetMarkup()}</div>
+    ` : '<div class="empty-state"><strong>Sin alumnos a cargo</strong>No hay carnés disponibles porque no tenés alumnos asociados.</div>'}
   `;
 }
 
@@ -2671,29 +2877,41 @@ function resolveWebMcp(value) {
 }
 
 function scanClasses() {
-  return classesForStudent(DEMO_STUDENT_ID).filter((item) => item.day === 'Hoy' &&
-    (activeRole !== 'teacher' || (item.id === activeClassId && item.teacher === TEACHER_NAME)));
+  const student = currentStudent();
+  if (!student) return [];
+  const teacher = currentTeacher();
+  return classesForStudent(student.id).filter((item) => item.day === 'Hoy' &&
+    (activeRole !== 'teacher' || (teacher && item.id === activeClassId && ((item.teacherId && item.teacherId === teacher.id) || item.teacher === teacher.name))));
 }
 
 function openScanModal() {
   TODAY = new Date();
+  const student = currentStudent();
+  if (!student) {
+    showToast('Acción no disponible', 'No hay un alumno seleccionado o vinculado para escanear.');
+    return;
+  }
   const classes = scanClasses();
-  const student = studentById(DEMO_STUDENT_ID);
   openModal({
     title: 'Escanear carnet',
     eyebrow: 'Asistencia QR · Simulación',
     body: `
       <div class="scan-stage"><span class="scan-line"></span><p class="scan-copy">Alineá el código dentro del recuadro</p></div>
-      <p class="modal-note">Demo local: no se activa la cámara. El botón simula la lectura del carnet ${escapeHtml(student?.id || DEMO_STUDENT_ID)}.</p>
-      ${classes.length ? `<label class="field"><span>Clase de hoy · ${escapeHtml(student?.name || DEMO_STUDENT_ID)}</span><select id="scanClass">${classes.map((item) => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.name)} · ${escapeHtml(item.time)}</option>`).join('')}</select></label>
+      <p class="modal-note">${isSupabaseConnected ? 'Modo conectado' : 'Demo local'}: no se activa la cámara. El botón simula la lectura del carnet ${escapeHtml(student.id)}.</p>
+      ${classes.length ? `<label class="field"><span>Clase de hoy · ${escapeHtml(student.name)}</span><select id="scanClass">${classes.map((item) => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.name)} · ${escapeHtml(item.time)}</option>`).join('')}</select></label>
       <div class="form-actions"><button class="button button--red" type="button" id="simulateScan" data-session-date="${escapeHtml(dayKey(TODAY))}">Simular lectura</button></div>`
-        : `<p class="modal-note">${escapeHtml((student?.name || 'La alumna demo').split(' ')[0])} no tiene una clase asignada para hoy en esta sesión. No se registrará ninguna asistencia.</p>`}
+        : `<p class="modal-note">${escapeHtml(student.name.split(' ')[0])} no tiene una clase asignada para hoy en esta sesión. No se registrará ninguna asistencia.</p>`}
     `
   });
 }
 
-function openPaymentModal(studentId = DEMO_STUDENT_ID, period = monthKey(TODAY)) {
-  const student = state.students.find((item) => item.id === studentId) || state.students[0];
+function openPaymentModal(studentId = null, period = monthKey(TODAY)) {
+  const defaultStudent = studentId ? studentById(studentId) : (currentStudent() || state.students[0]);
+  if (!defaultStudent) {
+    showToast('Sin alumnos', 'No hay alumnos registrados para procesar pagos.');
+    return;
+  }
+  const student = defaultStudent;
   const periods = [...new Set([monthKey(TODAY), monthKey(nextMonthDate()), period, ...pendingPayments().map((item) => item.period)])].sort();
   openModal({
     title: 'Registrar pago',
@@ -2761,7 +2979,8 @@ function openNewStudentModal() {
 function openClassDetail(classId) {
   const item = findClass(classId);
   if (!item) return;
-  const isEnrolled = (studentById(DEMO_STUDENT_ID)?.classIds || []).includes(item.id);
+  const student = currentStudent();
+  const isEnrolled = student ? (student.classIds || []).includes(item.id) : false;
   const rosterCount = rosterFor(item.id).length;
   openModal({
     title: item.name,
@@ -2787,8 +3006,13 @@ function openClassDetail(classId) {
 
 
 function openStudentPayment() {
-  const payment = monthlyPaymentFor(DEMO_STUDENT_ID);
-  const plan = planForStudent(DEMO_STUDENT_ID);
+  const student = currentStudent();
+  if (!student) {
+    showToast('Sin alumno', 'No hay una ficha de alumno vinculada.');
+    return;
+  }
+  const payment = monthlyPaymentFor(student.id);
+  const plan = planForStudent(student.id);
   const paid = payment?.status === 'Pagado';
   openModal({
     title: paid ? 'Comprobante interno' : payment ? 'Mensualidad pendiente' : 'Mensualidad sin registro',
@@ -2802,7 +3026,11 @@ function openStudentPayment() {
 
 function openConsentModal() {
   const guardian = currentGuardian();
-  const signed = parseDayKey(guardian.consentSignedAt);
+  if (!guardian) {
+    showToast('Sin tutor', 'No hay un tutor vinculado para consultar consentimiento.');
+    return;
+  }
+  const signed = guardian.consentSignedAt ? parseDayKey(guardian.consentSignedAt) : TODAY;
   openModal({
     title: 'Constancia de consentimiento',
     eyebrow: 'Menores de edad',
@@ -2963,6 +3191,45 @@ async function handleEnrollmentSubmit(event) {
 }
 
 function openProfile() {
+  if (isSupabaseConnected && authenticatedProfile) {
+    const roleLabels = { student: 'Alumno', teacher: 'Maestro', admin: 'Administración', guardian: 'Tutor' };
+    const fullName = `${authenticatedProfile.first_name || ''} ${authenticatedProfile.last_name || ''}`.trim() || authenticatedUser?.email || 'Usuario';
+    const roleTitle = roleLabels[authenticatedProfile.role] || activeRole;
+    let meta = `Cuenta: ${authenticatedUser?.email || ''}`;
+    if (activeRole === 'student') {
+      const student = currentStudent();
+      meta = student ? `Carné: ${student.id} · Plan: ${student.plan}` : 'Ficha de alumno sin vincular';
+    } else if (activeRole === 'teacher') {
+      const classes = teacherClasses();
+      meta = `${classes.length} clase${classes.length === 1 ? '' : 's'} asignada${classes.length === 1 ? '' : 's'}`;
+    } else if (activeRole === 'guardian') {
+      const kids = childrenOf(currentGuardian()).map((c) => c.name);
+      meta = kids.length ? `${kids.join(' y ')} a su cargo` : 'Sin alumnos a cargo';
+    }
+    openModal({
+      title: fullName,
+      eyebrow: roleConfig[activeRole]?.label || activeRole,
+      body: `
+        <article class="surface-card">
+          <div class="person-cell">
+            <span class="avatar" style="width:58px;height:58px">${escapeHtml(initials(fullName) || roleConfig[activeRole]?.initials)}</span>
+            <span><strong>${escapeHtml(fullName)}</strong><small>${escapeHtml(roleTitle)}</small></span>
+          </div>
+          <p class="payment-meta" style="margin-top:22px">${escapeHtml(meta)}</p>
+        </article>
+        <p class="modal-note" style="margin-top:16px">Sesión autenticada en Supabase con políticas de seguridad RLS activas.</p>
+        <div class="form-actions" style="margin-top:16px">
+          <button class="button button--red" type="button" id="profileSignOut">Cerrar sesión remota</button>
+        </div>
+      `
+    });
+    document.querySelector('#profileSignOut')?.addEventListener('click', async () => {
+      closeModal();
+      await handleSignOut();
+    });
+    return;
+  }
+
   const student = studentById(DEMO_STUDENT_ID);
   const guardian = currentGuardian();
   const children = childrenOf(guardian).map((child) => child.name);
@@ -2985,11 +3252,11 @@ function openProfile() {
 
 async function simulateScan() {
   TODAY = new Date();
-  const student = studentById(DEMO_STUDENT_ID);
+  const student = currentStudent();
   const target = scanClasses().find((item) => item.id === document.querySelector('#scanClass')?.value);
   const sessionDate = document.querySelector('#simulateScan')?.dataset?.sessionDate || dayKey(TODAY);
   try {
-    if (!student) throw new Error('El alumno de la demostración ya no existe. Reiniciá la demo.');
+    if (!student) throw new Error(isSupabaseConnected ? 'No hay un alumno seleccionado o vinculado para registrar la lectura.' : 'El alumno de la demostración ya no existe. Reiniciá la demo.');
     if (!target) throw new Error('No hay una clase válida para registrar esta lectura.');
 
     if (isSupabaseConnected) {
@@ -3007,7 +3274,7 @@ async function simulateScan() {
     return;
   }
   closeModal();
-  showToast('Asistencia registrada', `${student?.name || DEMO_STUDENT_ID} · ${target.name} · ${target.time}`);
+  showToast('Asistencia registrada', `${student.name} · ${target.name} · ${target.time}`);
   renderAndFocus();
 }
 
@@ -3192,7 +3459,7 @@ async function handlePaymentSubmit(event) {
         submitBtn.textContent = 'Guardando en la nube...';
       }
       if (message) message.textContent = '';
-      await syncRemotePayment({
+      const serverResult = await syncRemotePayment({
         studentCardId: student.id,
         amount: record.amount,
         method: record.method,
@@ -3201,6 +3468,20 @@ async function handlePaymentSubmit(event) {
         notes: record.reference,
         idempotencyKey: `PAY-${student.id}-${record.period}`
       });
+
+      // El frontend registra el registro devuelto por el servidor, no un borrador local
+      record.id = serverResult.id;
+      record.amount = serverResult.amount;
+      record.method = serverResult.method;
+      record.period = serverResult.period;
+      record.reference = serverResult.reference || record.reference;
+      record.status = 'Pagado';
+      record.paidAt = dayKey(TODAY);
+      record.date = shortDate(TODAY);
+
+      if (serverResult.isDuplicate) {
+        showToast('Pago ya confirmado', `Se recuperó el registro existente de ${record.student} (${record.id}).`);
+      }
     } catch (err) {
       if (submitBtn) {
         submitBtn.disabled = false;
@@ -3715,10 +3996,13 @@ if (recoveryReport) {
 
 async function handleSignOut() {
   await signOut();
+  clearCurrentSessionState();
   isSupabaseConnected = false;
   authenticatedUser = null;
   authenticatedProfile = null;
   clearLocalAuthCache(true);
+  state = loadState();
+  activeRole = state.role || 'student';
   updateShell();
   leaveDemo();
   showToast('Sesión cerrada', 'Has vuelto al modo demostración local.');
@@ -3790,12 +4074,14 @@ function openAuthModal() {
       if (errEl) errEl.textContent = '';
       try {
         const res = await signInWithPassword(email, password);
+        clearCurrentSessionState();
         authenticatedUser = res.user;
         authenticatedProfile = res.profile;
         isSupabaseConnected = true;
         if (res.profile?.role && roleConfig[res.profile.role]) {
           activeRole = res.profile.role;
         }
+        state = loadState();
         closeModal();
         showToast('Sesión iniciada', `Conectado como ${res.profile?.first_name || email} · Rol: ${activeRole}`);
         await syncWithSupabase();
@@ -3816,35 +4102,25 @@ async function syncWithSupabase() {
   try {
     // 1. Clases remotas
     const remoteClasses = await fetchRemoteClasses();
-    if (remoteClasses && remoteClasses.length > 0) {
+    if (Array.isArray(remoteClasses)) {
       classData = remoteClasses;
     }
 
-    // 2. Alumnos remotos (SIN escrituras automáticas ni semillas)
+    // 2. Alumnos remotos (las respuestas remotas vacías reemplazan el ámbito, sin mezclar datos demo)
     const remoteStudents = await fetchRemoteStudents();
-    if (remoteStudents && remoteStudents.length > 0) {
-      const pendingIds = new Set(pendingLocalStudentEdits);
-      const mergedStudents = remoteStudents.map((rem) => {
-        if (pendingIds.has(rem.id)) {
-          const local = state.students.find((s) => s.id === rem.id);
-          return local || rem;
-        }
-        return rem;
-      });
-      state.students = mergedStudents;
+    if (Array.isArray(remoteStudents)) {
+      state.students = remoteStudents;
       persistState(state);
     }
 
-    // 3. Pagos remotos (recupera pagos y preserva periodos sin duplicar)
+    // 3. Pagos remotos (las respuestas remotas vacías reemplazan el ámbito, sin mezclar datos demo)
     const remotePayments = await fetchRemotePayments();
-    if (remotePayments && remotePayments.length > 0) {
-      const paymentKeys = new Set(remotePayments.map((p) => `${p.studentId}|${p.period}`));
-      const localOnly = state.payments.filter((p) => !paymentKeys.has(`${p.studentId}|${p.period}`));
-      state.payments = [...remotePayments, ...localOnly];
+    if (Array.isArray(remotePayments)) {
+      state.payments = remotePayments;
       persistState(state);
     }
 
-    // 4. Asistencias remotas (acepta respuesta vacía como válida sin preservar marcas viejas)
+    // 4. Asistencias remotas (reemplaza sin preservar marcas viejas ni demo)
     const remoteAttendance = await fetchRemoteAttendance();
     if (Array.isArray(remoteAttendance)) {
       state.attendanceLog = remoteAttendance;
@@ -3860,6 +4136,9 @@ async function syncWithSupabase() {
   } catch (err) {
     supabaseSyncError = err.message;
     console.warn('[In Motion] No se pudo sincronizar con Supabase:', err.message);
+    if (!elements.app.classList.contains('is-hidden')) {
+      renderApp();
+    }
     showToast('Error de sincronización', `No se pudieron cargar datos remotos: ${err.message}.`);
   }
 }
@@ -3871,19 +4150,23 @@ async function initSessionAndBoot() {
   try {
     const authSession = await restoreSession();
     if (authSession && authSession.profile) {
+      clearCurrentSessionState();
       authenticatedUser = authSession.user;
       authenticatedProfile = authSession.profile;
       isSupabaseConnected = true;
       if (authSession.profile.role && roleConfig[authSession.profile.role]) {
         activeRole = authSession.profile.role;
       }
+      state = loadState();
       await syncWithSupabase();
     } else {
       isSupabaseConnected = false;
+      state = loadState();
     }
   } catch (e) {
     console.warn('[In Motion] Inicio en modo demostración local:', e.message);
     isSupabaseConnected = false;
+    state = loadState();
   }
   updateShell();
 }

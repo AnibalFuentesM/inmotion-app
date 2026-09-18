@@ -399,6 +399,8 @@ export async function fetchRemoteStudents() {
 
     students.push({
       id: c.card_number,
+      profileId: p.id,
+      userId: p.user_id || null,
       name: fullName,
       initials: initials || 'IM',
       plan: planName,
@@ -407,7 +409,8 @@ export async function fetchRemoteStudents() {
       level: p.level || 'Sin nivel',
       classIds: enrollmentsMap.get(c.student_id) || [],
       notes: p.notes || '',
-      guardianId: p.guardian_id ? (profileUuidToCard.get(p.guardian_id) || p.guardian_id) : null
+      guardianId: p.guardian_id ? (profileUuidToCard.get(p.guardian_id) || p.guardian_id) : null,
+      rawGuardianUuid: p.guardian_id || null
     });
   }
 
@@ -587,7 +590,22 @@ export async function syncRemotePayment({ studentCardId, amount, method, period,
     p_idempotency_key: idempotencyKey || receiptNumber || null
   });
 
-  return Array.isArray(res) ? res[0] : res;
+  const row = Array.isArray(res) ? res[0] : res;
+  if (!row) {
+    throw new Error('No se recibió respuesta del servidor para el pago registrado.');
+  }
+
+  return {
+    id: row.receipt_number || `REC-${row.id.slice(0, 8)}`,
+    remoteId: row.id,
+    studentId: studentCardId,
+    studentUuid: row.student_id,
+    period: row.period,
+    amount: Number(row.amount),
+    method: row.payment_method,
+    reference: notes || '',
+    isDuplicate: Boolean(row.is_duplicate)
+  };
 }
 
 /**

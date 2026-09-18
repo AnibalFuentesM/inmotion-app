@@ -267,6 +267,7 @@ as $$
 declare
   v_existing record;
   v_new_id uuid;
+  v_expected_price numeric;
 begin
   -- 1. Exigir autenticación y rol de administración
   if auth.uid() is null then
@@ -291,7 +292,26 @@ begin
     raise exception 'Alumno no encontrado: %', p_student_id using errcode = 'P0002';
   end if;
 
-  -- 5. Detección de conflicto por idempotency_key reutilizada
+  -- 5. Validar cuota vigente en servidor según membresía (sin inventar cuotas si falta información)
+  select m.price into v_expected_price
+  from public.memberships m
+  where m.student_id = p_student_id
+    and m.status in ('active', 'past_due')
+  order by m.created_at desc
+  limit 1;
+
+  if v_expected_price is null then
+    raise exception 'No se encontró una cuota o plan vigente para el alumno %.', p_student_id
+      using errcode = '22000';
+  end if;
+
+  if p_amount < v_expected_price then
+    raise exception 'El monto Q % no cubre la cuota requerida de Q % para este alumno.',
+      p_amount, v_expected_price
+      using errcode = '22003';
+  end if;
+
+  -- 6. Detección previa de conflicto por idempotency_key reutilizada
   if p_idempotency_key is not null then
     select p.id, p.student_id, p.period, p.amount, p.payment_method, p.receipt_number
     into v_existing
@@ -300,7 +320,6 @@ begin
     limit 1;
 
     if v_existing.id is not null then
-      -- Verificar si los parámetros son idénticos
       if v_existing.student_id = p_student_id
          and v_existing.period = p_period
          and v_existing.amount = p_amount then
@@ -314,14 +333,13 @@ begin
           true;
         return;
       else
-        -- Conflicto: misma clave de idempotencia enviada con datos diferentes
         raise exception 'Conflicto de idempotencia: la clave % ya fue utilizada con datos de pago distintos.',
           p_idempotency_key using errcode = '23505';
       end if;
     end if;
   end if;
 
-  -- 6. Detección de pago previo para el mismo alumno y período
+  -- 7. Detección previa de pago existente para el mismo alumno y período
   select p.id, p.student_id, p.period, p.amount, p.payment_method, p.receipt_number
   into v_existing
   from public.payments p
@@ -345,39 +363,76 @@ begin
     end if;
   end if;
 
-  -- 7. Insertar nuevo pago
-  insert into public.payments (
-    student_id,
-    period,
-    amount,
-    payment_method,
-    receipt_number,
-    notes,
-    idempotency_key,
-    recorded_by,
-    recorded_at
-  )
-  values (
-    p_student_id,
-    p_period,
-    p_amount,
-    coalesce(p_payment_method, 'transferencia'),
-    p_receipt_number,
-    p_notes,
-    p_idempotency_key,
-    public.current_profile_id(),
-    now()
-  )
-  returning public.payments.id into v_new_id;
+  -- 8. Inserción atómica con resolución de concurrencia simultánea
+  begin
+    insert into public.payments (
+      student_id,
+      period,
+      amount,
+      payment_method,
+      receipt_number,
+      notes,
+      idempotency_key,
+      recorded_by,
+      recorded_at
+    )
+    values (
+      p_student_id,
+      p_period,
+      p_amount,
+      coalesce(p_payment_method, 'transferencia'),
+      p_receipt_number,
+      p_notes,
+      p_idempotency_key,
+      public.current_profile_id(),
+      now()
+    )
+    returning public.payments.id into v_new_id;
 
-  return query select
-    v_new_id,
-    p_student_id,
-    p_period,
-    p_amount,
-    p_payment_method,
-    p_receipt_number,
-    false;
+    -- Actualizar membresía del alumno a active si estaba past_due (el carné sigue desacoplado e independiente)
+    update public.memberships
+    set status = 'active'
+    where student_id = p_student_id
+      and status = 'past_due';
+
+    return query select
+      v_new_id,
+      p_student_id,
+      p_period,
+      p_amount,
+      p_payment_method,
+      p_receipt_number,
+      false;
+    return;
+  exception when unique_violation then
+    -- Ante inserciones exactamente simultáneas que colisionan con constraints de unicidad
+    select p.id, p.student_id, p.period, p.amount, p.payment_method, p.receipt_number
+    into v_existing
+    from public.payments p
+    where (p_idempotency_key is not null and p.idempotency_key = p_idempotency_key)
+       or (p.student_id = p_student_id and p.period = p_period)
+    limit 1;
+
+    if v_existing.id is not null then
+      if v_existing.student_id = p_student_id
+         and v_existing.period = p_period
+         and v_existing.amount = p_amount then
+        return query select
+          v_existing.id,
+          v_existing.student_id,
+          v_existing.period,
+          v_existing.amount,
+          v_existing.payment_method,
+          v_existing.receipt_number,
+          true;
+        return;
+      else
+        raise exception 'Conflicto de concurrencia: el pago ya fue registrado con datos diferentes.'
+          using errcode = '23505';
+      end if;
+    end if;
+    raise;
+  end;
 end;
 $$;
 
