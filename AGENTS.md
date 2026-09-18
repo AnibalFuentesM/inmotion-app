@@ -20,10 +20,12 @@ Se trabaja **siempre sobre esta misma app**: `academia/`, dentro de
   `python3 -m http.server 5500` sirviendo una copia vieja. Antes de dar por bueno lo
   que ves en el navegador, confirmá desde qué carpeta sirve el puerto:
   `lsof -nP -iTCP:5500 -sTCP:LISTEN` y `lsof -a -p <pid> -d cwd`.
-- **Los comandos de git los ejecuta Mariano.** El agente los redacta y se los pasa
-  para pegarlos en la Terminal, en una sola tanda y **sin líneas de comentario**
-  (su zsh no las acepta). El agente no hace `commit`, no hace `push` y no borra
-  archivos de la carpeta.
+- **El agente puede ejecutar directamente los comandos normales de git**, incluidos
+  `add`, `commit` y `push`, cuando formen parte del trabajo solicitado. Antes de
+  commitear debe revisar el estado, incluir únicamente los archivos correspondientes
+  a su tarea y preservar cualquier cambio ajeno que ya exista. No debe usar operaciones
+  destructivas, reescribir historial, hacer force-push ni borrar archivos de la carpeta
+  salvo que Mariano lo pida explícitamente.
 - Usá `git --no-optional-locks status` para consultar: un `git status` normal puede
   dejar un `.git/index.lock` que el agente no puede borrar y que bloquea el siguiente
   comando de Mariano.
