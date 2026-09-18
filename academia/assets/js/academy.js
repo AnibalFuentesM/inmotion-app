@@ -39,7 +39,8 @@ function createEmptyConnectedState() {
     students: [],
     payments: [],
     attendanceLog: [],
-    musicSuggestions: []
+    musicSuggestions: [],
+    singlePasses: []
   };
 }
 
@@ -49,7 +50,8 @@ function clearCurrentSessionState() {
     students: [],
     payments: [],
     attendanceLog: [],
-    musicSuggestions: []
+    musicSuggestions: [],
+    singlePasses: []
   };
   activeChildId = null;
   supabaseSyncError = null;
@@ -65,7 +67,8 @@ const icons = {
   users: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>',
   money: '<rect x="3" y="6" width="18" height="12" rx="2"/><path d="M7 14h.01M17 10h.01"/><circle cx="12" cy="12" r="2.3"/>',
   list: '<path d="M8 6h13M8 12h13M8 18h13"/><path d="M3 6h.01M3 12h.01M3 18h.01"/>',
-  music: '<path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>'
+  music: '<path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>',
+  ticket: '<path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z"/><path d="M13 5v2M13 17v2M13 11v2"/>'
 };
 
 const roleConfig = {
@@ -95,7 +98,8 @@ const roleConfig = {
       ['inicio', 'Inicio', 'home'],
       ['alumnos', 'Alumnos', 'users'],
       ['pagos', 'Pagos', 'money'],
-      ['asistencia', 'Asistencia', 'list']
+      ['asistencia', 'Asistencia', 'list'],
+      ['pases', 'Pases', 'ticket']
     ]
   },
   guardian: {
@@ -979,6 +983,351 @@ function createBaseMusicSuggestions() {
   ];
 }
 
+function formatDayKeyReadable(key) {
+  if (!key) return '';
+  const date = parseDayKey(key);
+  return `${WEEKDAY_SHORT[date.getDay()]} ${date.getDate()} de ${monthName(date)}`;
+}
+
+function formatDateTime(isoStr) {
+  if (!isoStr) return '';
+  try {
+    const d = new Date(isoStr);
+    if (isNaN(d.getTime())) return String(isoStr);
+    return `${d.getDate()} ${monthName(d).slice(0, 3)} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  } catch {
+    return String(isoStr);
+  }
+}
+
+function createBaseSinglePasses() {
+  return [
+    {
+      id: 'PASS-8F2K9M',
+      code: '8F2K9M',
+      type: 'trial',
+      isVisitor: true,
+      studentId: null,
+      studentName: 'Mariana Morales',
+      contact: '5555-4421',
+      classId: 'bachata-inter',
+      className: 'Bachata Intermedio',
+      teacher: 'Alex Aquino',
+      date: dayKey(TODAY),
+      time: '6:00 PM',
+      validUntil: `${dayKey(TODAY)}T23:59:59`,
+      amount: 60,
+      paymentStatus: 'paid',
+      paymentMethod: 'Efectivo',
+      paidAt: dayKey(TODAY),
+      paymentReference: 'REC-0812',
+      status: 'available',
+      cancelReason: null,
+      cancelledAt: null,
+      cancelledBy: null,
+      attendedAt: null,
+      attendedBy: null,
+      attendedPendingAuth: false,
+      pendingAuthNote: null,
+      createdAt: dayKey(TODAY)
+    },
+    {
+      id: 'PASS-4N7Q2P',
+      code: '4N7Q2P',
+      type: 'private',
+      isVisitor: false,
+      studentId: 'IM-0218',
+      studentName: 'Luis Méndez',
+      contact: '5555-0188',
+      classId: 'salsa-particular',
+      className: 'Técnica de Giros Salsa (Particular)',
+      teacher: 'Luis Ramírez',
+      date: dayKey(TODAY),
+      time: '5:00 PM',
+      validUntil: `${dayKey(TODAY)}T23:59:59`,
+      amount: 150,
+      paymentStatus: 'pending',
+      paymentMethod: null,
+      paidAt: null,
+      paymentReference: '',
+      status: 'available',
+      cancelReason: null,
+      cancelledAt: null,
+      cancelledBy: null,
+      attendedAt: null,
+      attendedBy: null,
+      attendedPendingAuth: false,
+      pendingAuthNote: null,
+      createdAt: dayKey(TODAY)
+    },
+    {
+      id: 'PASS-3T8V5X',
+      code: '3T8V5X',
+      type: 'trial',
+      isVisitor: true,
+      studentId: null,
+      studentName: 'Esteban Cordón',
+      contact: '5555-9012',
+      classId: 'kpop-teens',
+      className: 'K-Pop Teens',
+      teacher: 'Majo Borrayo',
+      date: dayKey(previousDateFor(2)),
+      time: '5:00 PM',
+      validUntil: `${dayKey(previousDateFor(2))}T23:59:59`,
+      amount: 60,
+      paymentStatus: 'paid',
+      paymentMethod: 'Transferencia',
+      paidAt: dayKey(previousDateFor(2)),
+      paymentReference: 'TRANS-9941',
+      status: 'used',
+      cancelReason: null,
+      cancelledAt: null,
+      cancelledBy: null,
+      attendedAt: `${dayKey(previousDateFor(2))}T17:05:00`,
+      attendedBy: 'Administración (MB)',
+      attendedPendingAuth: false,
+      pendingAuthNote: null,
+      createdAt: dayKey(previousDateFor(2))
+    },
+    {
+      id: 'PASS-6W9X2Y',
+      code: '6W9X2Y',
+      type: 'trial',
+      isVisitor: true,
+      studentId: null,
+      studentName: 'Carlos Dávila',
+      contact: '5555-7788',
+      classId: 'salsa-inter',
+      className: 'Salsa Intermedio',
+      teacher: 'Luis Ramírez',
+      date: dayKey(TODAY),
+      time: '7:00 PM',
+      validUntil: `${dayKey(TODAY)}T23:59:59`,
+      amount: 60,
+      paymentStatus: 'paid',
+      paymentMethod: 'Tarjeta',
+      paidAt: dayKey(TODAY),
+      paymentReference: 'POS-1192',
+      status: 'cancelled',
+      cancelReason: 'Alumno notificó cancelación por viaje laboral',
+      cancelledAt: `${dayKey(TODAY)}T10:30:00`,
+      cancelledBy: 'Administración (MB)',
+      attendedAt: null,
+      attendedBy: null,
+      attendedPendingAuth: false,
+      pendingAuthNote: null,
+      createdAt: dayKey(TODAY)
+    },
+    {
+      id: 'PASS-5H8J1K',
+      code: '5H8J1K',
+      type: 'trial',
+      isVisitor: true,
+      studentId: null,
+      studentName: 'Andrea Salazar',
+      contact: '5555-3344',
+      classId: 'latino-kids',
+      className: 'Ritmos Latinos Kids',
+      teacher: 'Sofía Castillo',
+      date: dayKey(previousDateFor(3)),
+      time: '4:00 PM',
+      validUntil: `${dayKey(previousDateFor(3))}T23:59:59`,
+      amount: 60,
+      paymentStatus: 'pending',
+      paymentMethod: null,
+      paidAt: null,
+      paymentReference: '',
+      status: 'available',
+      cancelReason: null,
+      cancelledAt: null,
+      cancelledBy: null,
+      attendedAt: null,
+      attendedBy: null,
+      attendedPendingAuth: false,
+      pendingAuthNote: null,
+      createdAt: dayKey(previousDateFor(3))
+    },
+    {
+      id: 'PASS-4R9T2M',
+      code: '4R9T2M',
+      type: 'private',
+      isVisitor: false,
+      studentId: 'IM-0241',
+      studentName: 'Valeria Ruiz',
+      contact: '5555-0144',
+      classId: 'bachata-particular',
+      className: 'Bachata Sensual Estilo Femenino',
+      teacher: 'Sofía Castillo',
+      date: dayKey(addDays(TODAY, 1)),
+      time: '6:30 PM',
+      validUntil: `${dayKey(addDays(TODAY, 1))}T23:59:59`,
+      amount: 180,
+      paymentStatus: 'paid',
+      paymentMethod: 'Transferencia',
+      paidAt: dayKey(TODAY),
+      paymentReference: 'TR-5521',
+      status: 'available',
+      cancelReason: null,
+      cancelledAt: null,
+      cancelledBy: null,
+      attendedAt: null,
+      attendedBy: null,
+      attendedPendingAuth: false,
+      pendingAuthNote: null,
+      createdAt: dayKey(TODAY)
+    }
+  ];
+}
+
+function sanitizeSinglePass(raw) {
+  if (!isPlainObject(raw)) return null;
+  const id = cleanText(raw.id, 40);
+  const code = cleanText(raw.code, 20) || (id ? id.replace(/^PASS-/, '') : null);
+  if (!id || !code) return null;
+  const type = raw.type === 'private' ? 'private' : 'trial';
+  const isVisitor = Boolean(raw.isVisitor);
+  const studentId = raw.studentId ? cleanText(raw.studentId, 24) : null;
+  const studentName = cleanText(raw.studentName, 80);
+  if (!studentName) return null;
+  const contact = cleanText(raw.contact, 80);
+  const classId = cleanText(raw.classId, 40) || 'sesion-particular';
+  const className = cleanText(raw.className, 80) || (type === 'trial' ? 'Clase de prueba' : 'Clase particular');
+  const teacher = cleanText(raw.teacher, 80) || 'Profesor asignado';
+  const date = isValidDayKey(raw.date) ? raw.date : dayKey(TODAY);
+  const time = cleanText(raw.time, 30) || '6:00 PM';
+  const validUntil = raw.validUntil ? cleanText(raw.validUntil, 35) : `${date}T23:59:59`;
+  const amount = Number(raw.amount);
+  if (!Number.isFinite(amount) || amount <= 0) return null;
+  const paymentStatus = raw.paymentStatus === 'paid' ? 'paid' : 'pending';
+  const paymentMethod = raw.paymentMethod ? cleanText(raw.paymentMethod, 40) : null;
+  const paidAt = isValidDayKey(raw.paidAt) ? raw.paidAt : null;
+  const paymentReference = cleanText(raw.paymentReference, 80);
+  const status = ['used', 'cancelled'].includes(raw.status) ? raw.status : 'available';
+  const cancelReason = raw.cancelReason ? cleanText(raw.cancelReason, 200) : null;
+  const cancelledAt = raw.cancelledAt ? cleanText(raw.cancelledAt, 40) : null;
+  const cancelledBy = raw.cancelledBy ? cleanText(raw.cancelledBy, 60) : null;
+  const attendedAt = raw.attendedAt ? cleanText(raw.attendedAt, 40) : null;
+  const attendedBy = raw.attendedBy ? cleanText(raw.attendedBy, 60) : null;
+  const attendedPendingAuth = Boolean(raw.attendedPendingAuth);
+  const pendingAuthNote = raw.pendingAuthNote ? cleanText(raw.pendingAuthNote, 200) : null;
+  const createdAt = isValidDayKey(raw.createdAt) ? raw.createdAt : dayKey(TODAY);
+
+  return {
+    id,
+    code,
+    type,
+    isVisitor,
+    studentId,
+    studentName,
+    contact,
+    classId,
+    className,
+    teacher,
+    date,
+    time,
+    validUntil,
+    amount,
+    paymentStatus,
+    paymentMethod,
+    paidAt,
+    paymentReference,
+    status,
+    cancelReason,
+    cancelledAt,
+    cancelledBy,
+    attendedAt,
+    attendedBy,
+    attendedPendingAuth,
+    pendingAuthNote,
+    createdAt
+  };
+}
+
+function passById(id) {
+  if (!id) return null;
+  return (state?.singlePasses || []).find((p) => p.id === id) || null;
+}
+
+function passByCode(code) {
+  if (!code) return null;
+  const clean = String(code).trim().toUpperCase().replace(/^INM-PASS-/, '').replace(/^PASS-/, '');
+  return (state?.singlePasses || []).find((p) =>
+    p.code.toUpperCase() === clean ||
+    p.id.toUpperCase() === String(code).trim().toUpperCase() ||
+    p.id.toUpperCase() === `PASS-${clean}` ||
+    `INM-PASS-${p.code.toUpperCase()}` === String(code).trim().toUpperCase()
+  ) || null;
+}
+
+function passStatus(pass) {
+  if (!pass) return 'expired';
+  if (pass.status === 'cancelled') return 'cancelled';
+  if (pass.status === 'used') return 'used';
+  const validUntilStr = pass.validUntil || `${pass.date}T23:59:59`;
+  const validDate = new Date(validUntilStr);
+  const now = new Date();
+  if (now > validDate) return 'expired';
+  return 'available';
+}
+
+function passStatusLabel(status) {
+  switch (status) {
+    case 'available': return 'Disponible';
+    case 'used': return 'Utilizado';
+    case 'cancelled': return 'Cancelado';
+    case 'expired': return 'Vencido';
+    default: return status;
+  }
+}
+
+function passStatusPillClass(status) {
+  switch (status) {
+    case 'available': return 'status-pill is-available';
+    case 'used': return 'status-pill is-used';
+    case 'cancelled': return 'status-pill is-cancelled';
+    case 'expired': return 'status-pill is-expired';
+    default: return 'status-pill';
+  }
+}
+
+function passPaymentStatusLabel(paymentStatus) {
+  return paymentStatus === 'paid' ? 'Pagado' : 'Pendiente';
+}
+
+function passPaymentPillClass(paymentStatus) {
+  return paymentStatus === 'paid' ? 'status-pill is-paid' : 'status-pill is-due';
+}
+
+function passTypeLabel(type) {
+  return type === 'trial' ? 'Clase de prueba' : 'Clase particular';
+}
+
+function generatePassCode() {
+  const chars = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
+  let code = '';
+  for (let i = 0; i < 6; i += 1) {
+    code += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  if ((state?.singlePasses || []).some((p) => p.code === code)) {
+    return generatePassCode();
+  }
+  return code;
+}
+
+function passQrMarkup(pass) {
+  const opaqueRef = `INM-PASS-${pass.code || pass.id.replace(/^PASS-/, '')}`;
+  return `
+    <div class="pass-qr-frame" data-qr-ref="${escapeHtml(opaqueRef)}">
+      <svg viewBox="0 0 21 21" aria-label="Código QR individual: ${escapeHtml(opaqueRef)}" role="img" shape-rendering="crispEdges">
+        <rect width="21" height="21" fill="#ffffff"/>
+        ${qrPattern(opaqueRef).flatMap((row, y) => row.map((cell, x) => cell ? `<rect x="${x}" y="${y}" width="1" height="1" fill="#0b0b0c"/>` : '')).join('')}
+      </svg>
+      <span class="pass-qr-label">${escapeHtml(opaqueRef)}</span>
+      <span class="pass-qr-caption">Identificador visual opaco · Código único</span>
+    </div>
+  `;
+}
+
 // El estado inicial se arma en cada llamada: construido una sola vez al cargar,
 // una pestaña abierta desde el mes pasado reiniciaba la demo con fechas viejas.
 function createDefaultState() {
@@ -994,7 +1343,8 @@ function createDefaultState() {
       { studentId: 'IM-0241', classId: 'kpop-teens', at: dayKey(previousDateFor(4)) },
       { studentId: 'IM-0262', classId: 'latino-kids', at: dayKey(previousDateFor(6)) }
     ],
-    musicSuggestions: createBaseMusicSuggestions()
+    musicSuggestions: createBaseMusicSuggestions(),
+    singlePasses: createBaseSinglePasses()
   };
 }
 
@@ -1227,6 +1577,17 @@ function sanitizeState(saved, isConnected = isSupabaseConnected) {
   });
   const usableMusicSuggestions = isConnected ? musicSuggestions : (musicSuggestions.length ? musicSuggestions : createBaseMusicSuggestions());
 
+  const rawPasses = Array.isArray(saved.singlePasses) ? saved.singlePasses : [];
+  const singlePasses = [];
+  const seenPassIds = new Set();
+  rawPasses.forEach((raw) => {
+    const pass = sanitizeSinglePass(raw);
+    if (!pass || seenPassIds.has(pass.id)) return;
+    seenPassIds.add(pass.id);
+    singlePasses.push(pass);
+  });
+  const usableSinglePasses = isConnected ? singlePasses : (singlePasses.length ? singlePasses : createBaseSinglePasses());
+
   const total = dropped.students + dropped.payments + dropped.attendance;
   if (total) recoveryReport = { total, ...dropped };
 
@@ -1236,7 +1597,8 @@ function sanitizeState(saved, isConnected = isSupabaseConnected) {
     students: usableStudents,
     payments,
     attendanceLog,
-    musicSuggestions: usableMusicSuggestions
+    musicSuggestions: usableMusicSuggestions,
+    singlePasses: usableSinglePasses
   };
 }
 
@@ -2670,7 +3032,10 @@ function renderTeacherHome() {
       <p class="eyebrow">${escapeHtml(shortDayLabel(TODAY))} · ${count ? `${count} clase${count === 1 ? '' : 's'} programada${count === 1 ? '' : 's'}` : 'sin clases hoy'}</p>
       <h1>${escapeHtml(greeting())},<br/><span>${escapeHtml(firstName)}.</span></h1>
       <div class="teacher-hero-foot">
-        ${next ? `<button class="button button--red" type="button" data-take-attendance="${escapeHtml((today[0] || next).id)}">${count ? 'Abrir asistencia de hoy' : 'Abrir próxima clase'}</button>` : ''}
+        <div class="filter-row" style="margin-bottom:8px">
+          ${next ? `<button class="button button--red" type="button" data-take-attendance="${escapeHtml((today[0] || next).id)}">${count ? 'Abrir asistencia de hoy' : 'Abrir próxima clase'}</button>` : ''}
+          <button class="button button--light" type="button" data-open-validate-pass>Validar pase individual</button>
+        </div>
         <p>${next ? `Tu siguiente clase es ${escapeHtml(next.day.toLowerCase())} a las ${escapeHtml(next.time)}<br/>en el ${escapeHtml(next.room)}.` : 'No tenés clases asignadas.'}</p>
       </div>
     </section>
@@ -2698,6 +3063,9 @@ function renderTeacherAgenda() {
         <p class="eyebrow">Agenda docente</p>
         <h1>Una semana<br/>en movimiento.</h1>
         <p>Clases asignadas a ${escapeHtml(teacherName)} y programación de la academia.</p>
+      </div>
+      <div class="heading-actions">
+        <button class="button button--light" type="button" data-open-validate-pass>Validar pase</button>
       </div>
     </header>
     ${weekStrip(scheduledClasses())}
@@ -2769,7 +3137,16 @@ function renderTeacherAttendance() {
   const canSubmit = enrolled.length > 0;
   const student = currentStudent();
   return `
-    <header class="page-heading"><div><p class="eyebrow">Control de asistencia</p><h1>¿Quién vino<br/>a bailar?</h1><p>Marcá la lista y guardá esta sesión localmente.</p></div></header>
+    <header class="page-heading">
+      <div>
+        <p class="eyebrow">Control de asistencia</p>
+        <h1>¿Quién vino<br/>a bailar?</h1>
+        <p>Marcá la lista y guardá esta sesión localmente.</p>
+      </div>
+      <div class="heading-actions">
+        <button class="button button--red" type="button" data-open-validate-pass>Validar pase</button>
+      </div>
+    </header>
     <section class="split-grid">
       <article class="surface-card">
         <div class="section-head"><div><h2>${escapeHtml(item.name)}</h2><p>${escapeHtml(item.day)} · ${escapeHtml(item.time)} · ${escapeHtml(item.room)}</p></div><span class="tag ${live ? 'tag--red' : ''}">${live ? 'Programada para hoy' : `Programada · ${escapeHtml(item.day)}`}</span></div>
@@ -2787,9 +3164,16 @@ function renderTeacherAttendance() {
         </form>
       </article>
       <aside class="surface-card">
-        <p class="eyebrow">Lectura QR</p><h2>Escáner de recepción</h2><p class="payment-meta">Escanea la academia, no el alumno: el prototipo simula la lectura del carnet ${student ? `de ${escapeHtml(student.name)}` : ''}. No solicita cámara ni envía datos.</p>
-        <div class="qr-code" style="max-width:220px;margin-top:24px">${student ? qrMarkup(student.id) : '<p class="payment-meta">Sin carné</p>'}</div>
-        <button class="button" style="width:100%;margin-top:20px" type="button" data-open-scan ${student ? '' : 'disabled'}>Simular escaneo</button>
+        <p class="eyebrow">Validación de pases</p>
+        <h2>Pases y carné</h2>
+        <p class="payment-meta">Validá asistencia de alumnos con pase de prueba o particular mediante código corto.</p>
+        <button class="button button--red" style="width:100%;margin-top:16px" type="button" data-open-validate-pass>Validar pase individual</button>
+        
+        <hr style="margin:24px 0;border:none;border-top:1px solid rgba(255,255,255,0.08)" />
+        <p class="eyebrow">Lectura QR de alumno</p>
+        <p class="payment-meta">Simula la lectura del carnet ${student ? `de ${escapeHtml(student.name)}` : ''}.</p>
+        <div class="qr-code" style="max-width:220px;margin-top:16px">${student ? qrMarkup(student.id) : '<p class="payment-meta">Sin carné</p>'}</div>
+        <button class="button button--light" style="width:100%;margin-top:16px" type="button" data-open-scan ${student ? '' : 'disabled'}>Simular escaneo</button>
       </aside>
     </section>
   `;
@@ -2892,6 +3276,7 @@ function renderAdminPayments() {
       <article class="surface-card"><p class="eyebrow">Pendiente / mora</p><p class="payment-amount">Q ${escapeHtml(due.toLocaleString('es-GT'))}</p><p class="payment-meta">Requiere seguimiento administrativo.</p></article>
     </section>
     <div class="filter-row" id="paymentFilters" role="group" aria-label="Filtrar pagos por estado"><button class="filter-chip is-active" type="button" aria-pressed="true" data-payment-filter="all">Todos</button><button class="filter-chip" type="button" aria-pressed="false" data-payment-filter="Pagado">Pagados</button><button class="filter-chip" type="button" aria-pressed="false" data-payment-filter="Pendiente">Pendientes</button><button class="filter-chip" type="button" aria-pressed="false" data-payment-filter="En mora">En mora</button></div>
+    <div class="table-wrap"><table class="data-table"><thead><tr><th scope="col">Alumno</th><th scope="col">Mes</th><th scope="col">Monto</th><th scope="col">Método</th><th scope="col">Estado</th><th scope="col">Acción</th></tr></thead><tbody id="paymentTableBody">${adminPaymentRows()}</tbody></table></div>
   `;
 }
 
@@ -2912,7 +3297,17 @@ function renderAdminAttendance() {
     };
   });
   return `
-    <header class="page-heading"><div><p class="eyebrow">Registro de asistencia</p><h1>Cada llegada<br/>cuenta.</h1><p>Las ${classData.length} clases de la semana. Consulta operativa, sin gráficas ni analítica avanzada.</p></div><button class="button" type="button" data-open-scan>Simular escáner QR</button></header>
+    <header class="page-heading">
+      <div>
+        <p class="eyebrow">Registro de asistencia</p>
+        <h1>Cada llegada<br/>cuenta.</h1>
+        <p>Las ${classData.length} clases de la semana. Consulta operativa, sin gráficas ni analítica avanzada.</p>
+      </div>
+      <div class="heading-actions">
+        <button class="button button--red" type="button" data-open-validate-pass>Validar pase</button>
+        <button class="button button--light" type="button" data-open-scan>Simular escáner QR</button>
+      </div>
+    </header>
     <div class="table-wrap"><table class="data-table"><thead><tr><th scope="col">Fecha y hora</th><th scope="col">Clase</th><th scope="col">Maestro</th><th scope="col">Asistencia</th><th scope="col">Estado</th></tr></thead><tbody>${sessions.map((row) => `<tr>
       <td>${escapeHtml(row.when)}</td>
       <td>${escapeHtml(row.name)}</td>
@@ -2921,6 +3316,258 @@ function renderAdminAttendance() {
       <td><span class="status-pill ${row.live ? 'is-due' : ''}">${row.live ? 'Programada para hoy' : 'Programada'}</span></td>
     </tr>`).join('')}</tbody></table></div>
     <p class="modal-note">La columna de asistencia cuenta las marcas registradas y las inscripciones vigentes de los datos demo; pueden no coincidir si un alumno fue retirado de la clase después de asistir. Los cupos del calendario son cifras de referencia de una academia de 50 alumnos y no se calculan con estas inscripciones.</p>
+  `;
+}
+
+let passFilterDate = 'today';
+let passFilterType = 'all';
+let passFilterPayment = 'all';
+let passFilterStatus = 'all';
+let passSearchQuery = '';
+
+function filteredPassesList() {
+  const passes = state.singlePasses || [];
+  return passes.filter((pass) => {
+    if (passFilterDate === 'today') {
+      if (pass.date !== dayKey(TODAY)) return false;
+    } else if (passFilterDate !== 'all' && passFilterDate) {
+      if (pass.date !== passFilterDate) return false;
+    }
+    if (passFilterType !== 'all' && pass.type !== passFilterType) return false;
+    if (passFilterPayment !== 'all' && pass.paymentStatus !== passFilterPayment) return false;
+    const status = passStatus(pass);
+    if (passFilterStatus !== 'all' && status !== passFilterStatus) return false;
+    if (passSearchQuery) {
+      const q = passSearchQuery.toLowerCase().trim();
+      const matchName = (pass.studentName || '').toLowerCase().includes(q);
+      const matchCode = (pass.code || '').toLowerCase().includes(q);
+      const matchId = (pass.id || '').toLowerCase().includes(q);
+      const matchClass = (pass.className || '').toLowerCase().includes(q);
+      const matchTeacher = (pass.teacher || '').toLowerCase().includes(q);
+      const matchStudentId = (pass.studentId || '').toLowerCase().includes(q);
+      if (!matchName && !matchCode && !matchId && !matchClass && !matchTeacher && !matchStudentId) return false;
+    }
+    return true;
+  });
+}
+
+function adminPassRows(passes = filteredPassesList()) {
+  if (!passes.length) {
+    return `<tr><td colspan="9" style="text-align:center;padding:32px 16px"><div class="empty-state"><strong>Sin pases que coincidan</strong>Probá ajustando los filtros de fecha, tipo o estado, o emití un nuevo pase.</div></td></tr>`;
+  }
+  return passes.map((pass) => {
+    const status = passStatus(pass);
+    const isToday = pass.date === dayKey(TODAY);
+    return `
+      <tr data-pass-row="${escapeHtml(pass.id)}">
+        <td><strong class="code-mono">${escapeHtml(pass.code)}</strong></td>
+        <td>
+          <div class="person-cell">
+            <span class="avatar" aria-hidden="true">${escapeHtml(initials(pass.studentName))}</span>
+            <div>
+              <strong>${escapeHtml(pass.studentName)}</strong>
+              <small class="payment-meta">${pass.isVisitor ? `Visitante · ${escapeHtml(pass.contact || 'Sin contacto')}` : `Alumno (${escapeHtml(pass.studentId)})`}</small>
+            </div>
+          </div>
+        </td>
+        <td><span class="status-pill ${pass.type === 'trial' ? 'is-trial' : 'is-private'}">${escapeHtml(passTypeLabel(pass.type))}</span></td>
+        <td>
+          <div><strong>${escapeHtml(pass.className)}</strong></div>
+          <small class="payment-meta">${formatDayKeyReadable(pass.date)} · ${escapeHtml(pass.time)}</small>
+        </td>
+        <td>${escapeHtml(pass.teacher)}</td>
+        <td><strong>Q ${escapeHtml(pass.amount)}</strong></td>
+        <td>
+          <span class="${passPaymentPillClass(pass.paymentStatus)}">${passPaymentStatusLabel(pass.paymentStatus)}</span>
+          ${pass.paymentMethod ? `<br/><small class="payment-meta">${escapeHtml(pass.paymentMethod)}</small>` : ''}
+        </td>
+        <td>
+          <span class="${passStatusPillClass(status)}">${passStatusLabel(status)}</span>
+          ${status === 'used' && pass.attendedAt ? `<br/><small class="payment-meta">${formatDateTime(pass.attendedAt)}</small>` : ''}
+          ${status === 'cancelled' && pass.cancelReason ? `<br/><small class="payment-meta" title="${escapeHtml(pass.cancelReason)}">Cancelado</small>` : ''}
+        </td>
+        <td>
+          <div class="pass-actions-cell">
+            <button class="button button--small button--light" type="button" data-view-pass="${escapeHtml(pass.id)}" aria-label="Ver pase ${escapeHtml(pass.code)}">Ver</button>
+            ${pass.paymentStatus === 'pending' && pass.status !== 'cancelled' ? `<button class="button button--small button--red" type="button" data-collect-pass="${escapeHtml(pass.id)}" aria-label="Cobrar pase ${escapeHtml(pass.code)}">Cobrar</button>` : ''}
+            ${status === 'available' && isToday ? `<button class="button button--small button--red" type="button" data-open-validate-pass="${escapeHtml(pass.code)}" aria-label="Validar asistencia de ${escapeHtml(pass.code)}">Validar</button>` : ''}
+            ${status === 'available' ? `<button class="button button--small button--light" type="button" data-cancel-pass="${escapeHtml(pass.id)}" aria-label="Cancelar pase ${escapeHtml(pass.code)}">Anular</button>` : ''}
+          </div>
+        </td>
+      </tr>
+    `;
+  }).join('');
+}
+
+function adminPassCardsMobile(passes = filteredPassesList()) {
+  if (!passes.length) {
+    return `<div class="empty-state"><strong>Sin pases que coincidan</strong>Probá cambiando los filtros o emití un nuevo pase.</div>`;
+  }
+  return passes.map((pass) => {
+    const status = passStatus(pass);
+    const isToday = pass.date === dayKey(TODAY);
+    return `
+      <article class="surface-card pass-mobile-card" data-pass-card="${escapeHtml(pass.id)}">
+        <div class="pass-mobile-card-top">
+          <div class="pass-mobile-card-id">
+            <strong class="code-mono">${escapeHtml(pass.code)}</strong>
+            <span class="status-pill ${pass.type === 'trial' ? 'is-trial' : 'is-private'}">${escapeHtml(passTypeLabel(pass.type))}</span>
+          </div>
+          <div class="pass-mobile-card-status">
+            <span class="${passStatusPillClass(status)}">${passStatusLabel(status)}</span>
+            <span class="${passPaymentPillClass(pass.paymentStatus)}">${passPaymentStatusLabel(pass.paymentStatus)}</span>
+          </div>
+        </div>
+
+        <div class="pass-mobile-card-person">
+          <strong>${escapeHtml(pass.studentName)}</strong>
+          <small class="payment-meta">${pass.isVisitor ? `Visitante · ${escapeHtml(pass.contact || 'Sin tel')}` : `Alumno (${escapeHtml(pass.studentId)})`}</small>
+        </div>
+
+        <div class="pass-mobile-card-details">
+          <div><span class="detail-label">Clase:</span> <strong>${escapeHtml(pass.className)}</strong></div>
+          <div><span class="detail-label">Horario:</span> ${formatDayKeyReadable(pass.date)} · ${escapeHtml(pass.time)}</div>
+          <div><span class="detail-label">Profesor:</span> ${escapeHtml(pass.teacher)}</div>
+          <div><span class="detail-label">Importe:</span> <strong>Q ${escapeHtml(pass.amount)}</strong> ${pass.paymentMethod ? `(${escapeHtml(pass.paymentMethod)})` : ''}</div>
+        </div>
+
+        ${status === 'used' && pass.attendedAt ? `
+        <div class="pass-mobile-card-usage">
+          <small>Asistencia: ${formatDateTime(pass.attendedAt)} por ${escapeHtml(pass.attendedBy || 'Personal')}</small>
+          ${pass.attendedPendingAuth ? `<br/><small style="color:var(--brand-red)">* Excepción: cobro pendiente (${escapeHtml(pass.pendingAuthNote || '')})</small>` : ''}
+        </div>` : ''}
+
+        ${status === 'cancelled' && pass.cancelReason ? `
+        <div class="pass-mobile-card-usage" style="color:var(--brand-red)">
+          <small>Cancelado: ${escapeHtml(pass.cancelReason)}</small>
+        </div>` : ''}
+
+        <div class="pass-mobile-card-actions">
+          <button class="button button--small button--light" type="button" data-view-pass="${escapeHtml(pass.id)}">Ver pase</button>
+          ${pass.paymentStatus === 'pending' && pass.status !== 'cancelled' ? `<button class="button button--small button--red" type="button" data-collect-pass="${escapeHtml(pass.id)}">Cobrar</button>` : ''}
+          ${status === 'available' && isToday ? `<button class="button button--small button--red" type="button" data-open-validate-pass="${escapeHtml(pass.code)}">Validar</button>` : ''}
+          ${status === 'available' ? `<button class="button button--small button--light" type="button" data-cancel-pass="${escapeHtml(pass.id)}">Anular</button>` : ''}
+        </div>
+      </article>
+    `;
+  }).join('');
+}
+
+function renderAdminPasses() {
+  const allPasses = state.singlePasses || [];
+  const todayPasses = allPasses.filter((p) => p.date === dayKey(TODAY));
+  const pendingAmount = allPasses.filter((p) => p.paymentStatus === 'pending' && passStatus(p) !== 'cancelled').reduce((sum, p) => sum + p.amount, 0);
+  const attendedCount = allPasses.filter((p) => p.status === 'used').length;
+  const filtered = filteredPassesList();
+
+  return `
+    <header class="page-heading">
+      <div>
+        <p class="eyebrow">Control de pases · Pruebas y particulares</p>
+        <h1>Pases individuales.<br/>Acceso ágil.</h1>
+        <p>Emisión, cobro y validación de asistencia para clases de prueba (Q60) y sesiones particulares.</p>
+      </div>
+      <div class="heading-actions">
+        <button class="button button--red" type="button" data-open-create-pass>+ Crear pase</button>
+        <button class="button button--light" type="button" data-open-validate-pass>Validar pase</button>
+      </div>
+    </header>
+
+    <section class="split-grid" style="margin-bottom:24px">
+      <article class="surface-card">
+        <p class="eyebrow">Pases programados para hoy</p>
+        <p class="payment-amount">${todayPasses.length}</p>
+        <p class="payment-meta">${todayPasses.filter((p) => passStatus(p) === 'used').length} asistencias ya marcadas hoy.</p>
+      </article>
+      <article class="surface-card">
+        <p class="eyebrow">Cobro pendiente en pases</p>
+        <p class="payment-amount">Q ${escapeHtml(pendingAmount.toLocaleString('es-GT'))}</p>
+        <p class="payment-meta">${allPasses.filter((p) => p.paymentStatus === 'pending' && passStatus(p) !== 'cancelled').length} pases pendientes de cobro.</p>
+      </article>
+      <article class="surface-card">
+        <p class="eyebrow">Total asistencias con pase</p>
+        <p class="payment-amount">${attendedCount}</p>
+        <p class="payment-meta">Pases utilizados acumulados en la demo.</p>
+      </article>
+    </section>
+
+    <section class="pass-filters-section surface-card" style="margin-bottom:24px">
+      <div class="pass-filter-controls">
+        <div class="pass-date-row">
+          <label class="field-inline">
+            <span>Fecha:</span>
+            <input type="date" id="passDateInput" value="${passFilterDate === 'today' ? dayKey(TODAY) : (passFilterDate === 'all' ? '' : passFilterDate)}" />
+          </label>
+          <button type="button" class="filter-chip ${passFilterDate === 'today' ? 'is-active' : ''}" data-pass-date="today">Hoy</button>
+          <button type="button" class="filter-chip ${passFilterDate === 'all' ? 'is-active' : ''}" data-pass-date="all">Todas las fechas</button>
+        </div>
+
+        <label class="search-box pass-search-box">
+          <span aria-hidden="true">⌕</span>
+          <span class="sr-only">Buscar pase</span>
+          <input id="passSearchInput" type="search" placeholder="Buscar por nombre, alumno o código..." value="${escapeHtml(passSearchQuery)}" autocomplete="off" />
+        </label>
+      </div>
+
+      <div class="filter-group-stack">
+        <div class="filter-row" role="group" aria-label="Filtrar por tipo de pase">
+          <span class="filter-group-label">Tipo:</span>
+          <button class="filter-chip ${passFilterType === 'all' ? 'is-active' : ''}" type="button" data-pass-type="all">Todos</button>
+          <button class="filter-chip ${passFilterType === 'trial' ? 'is-active' : ''}" type="button" data-pass-type="trial">Pruebas (Q60)</button>
+          <button class="filter-chip ${passFilterType === 'private' ? 'is-active' : ''}" type="button" data-pass-type="private">Particulares</button>
+        </div>
+
+        <div class="filter-row" role="group" aria-label="Filtrar por pago">
+          <span class="filter-group-label">Pago:</span>
+          <button class="filter-chip ${passFilterPayment === 'all' ? 'is-active' : ''}" type="button" data-pass-pay="all">Todos</button>
+          <button class="filter-chip ${passFilterPayment === 'paid' ? 'is-active' : ''}" type="button" data-pass-pay="paid">Pagados</button>
+          <button class="filter-chip ${passFilterPayment === 'pending' ? 'is-active' : ''}" type="button" data-pass-pay="pending">Pendientes</button>
+        </div>
+
+        <div class="filter-row" role="group" aria-label="Filtrar por estado del pase">
+          <span class="filter-group-label">Estado:</span>
+          <button class="filter-chip ${passFilterStatus === 'all' ? 'is-active' : ''}" type="button" data-pass-status="all">Todos</button>
+          <button class="filter-chip ${passFilterStatus === 'available' ? 'is-active' : ''}" type="button" data-pass-status="available">Disponibles</button>
+          <button class="filter-chip ${passFilterStatus === 'used' ? 'is-active' : ''}" type="button" data-pass-status="used">Utilizados</button>
+          <button class="filter-chip ${passFilterStatus === 'cancelled' ? 'is-active' : ''}" type="button" data-pass-status="cancelled">Cancelados</button>
+          <button class="filter-chip ${passFilterStatus === 'expired' ? 'is-active' : ''}" type="button" data-pass-status="expired">Vencidos</button>
+        </div>
+      </div>
+    </section>
+
+    <div class="section-head" style="margin-top:20px">
+      <div>
+        <h2>Listado de pases</h2>
+        <p id="passListCount">${filtered.length} pase${filtered.length === 1 ? '' : 's'} encontrado${filtered.length === 1 ? '' : 's'}.</p>
+      </div>
+    </div>
+
+    <div class="table-wrap pass-table-wrap">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th scope="col">Código</th>
+            <th scope="col">Persona</th>
+            <th scope="col">Tipo</th>
+            <th scope="col">Clase y horario</th>
+            <th scope="col">Profesor</th>
+            <th scope="col">Importe</th>
+            <th scope="col">Pago</th>
+            <th scope="col">Estado</th>
+            <th scope="col">Acción</th>
+          </tr>
+        </thead>
+        <tbody id="passTableBody">
+          ${adminPassRows(filtered)}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="pass-cards-mobile" id="passCardsMobile">
+      ${adminPassCardsMobile(filtered)}
+    </div>
+
+    <p class="modal-note" style="margin-top:24px">Demostración local: los pases y sus asistencias se almacenan en este navegador y no consumen créditos de planes regulares.</p>
   `;
 }
 
@@ -3051,6 +3698,944 @@ function guardianCarnetMarkup() {
   `;
 }
 
+function updatePassViews() {
+  const filtered = filteredPassesList();
+  const tableBody = elements.content.querySelector('#passTableBody');
+  if (tableBody) tableBody.innerHTML = adminPassRows(filtered);
+  const cardsContainer = elements.content.querySelector('#passCardsMobile');
+  if (cardsContainer) cardsContainer.innerHTML = adminPassCardsMobile(filtered);
+  const countEl = elements.content.querySelector('#passListCount');
+  if (countEl) countEl.textContent = `${filtered.length} pase${filtered.length === 1 ? '' : 's'} encontrado${filtered.length === 1 ? '' : 's'}.`;
+
+  // Update active chips
+  elements.content.querySelectorAll('[data-pass-date]').forEach((btn) => {
+    const active = btn.dataset.passDate === passFilterDate;
+    btn.classList.toggle('is-active', active);
+    btn.setAttribute('aria-pressed', String(active));
+  });
+  elements.content.querySelectorAll('[data-pass-type]').forEach((btn) => {
+    const active = btn.dataset.passType === passFilterType;
+    btn.classList.toggle('is-active', active);
+    btn.setAttribute('aria-pressed', String(active));
+  });
+  elements.content.querySelectorAll('[data-pass-pay]').forEach((btn) => {
+    const active = btn.dataset.passPay === passFilterPayment;
+    btn.classList.toggle('is-active', active);
+    btn.setAttribute('aria-pressed', String(active));
+  });
+  elements.content.querySelectorAll('[data-pass-status]').forEach((btn) => {
+    const active = btn.dataset.passStatus === passFilterStatus;
+    btn.classList.toggle('is-active', active);
+    btn.setAttribute('aria-pressed', String(active));
+  });
+}
+
+function openCreatePassModal() {
+  openModal({
+    title: 'Crear nuevo pase',
+    eyebrow: 'Pruebas y particulares · Emisión',
+    body: `
+      <form id="createPassForm" class="form-stack">
+        <fieldset class="form-group">
+          <legend class="field-legend">¿Para quién es el pase?</legend>
+          <div class="radio-row">
+            <label class="radio-label">
+              <input type="radio" name="personType" value="visitor" checked id="createPassPersonVisitor" />
+              <span>Visitante nuevo</span>
+            </label>
+            <label class="radio-label">
+              <input type="radio" name="personType" value="student" id="createPassPersonStudent" />
+              <span>Alumno registrado</span>
+            </label>
+          </div>
+
+          <div id="visitorFields" class="form-subfields" style="margin-top:12px">
+            <label class="field">
+              <span>Nombre completo *</span>
+              <input type="text" name="visitorName" id="createPassVisitorName" placeholder="Ej. Mariana Morales" required />
+            </label>
+            <label class="field">
+              <span>Teléfono / Contacto *</span>
+              <input type="tel" name="visitorContact" id="createPassVisitorContact" placeholder="Ej. 5555-4421" required />
+            </label>
+            <p class="modal-note">No se requiere contratar un plan ni inscribir al visitante en el padrón regular.</p>
+          </div>
+
+          <div id="studentFields" class="form-subfields is-hidden" style="margin-top:12px">
+            <label class="field">
+              <span>Seleccionar alumno *</span>
+              <select name="studentId" id="createPassStudentSelect">
+                ${state.students.map((s) => `<option value="${escapeHtml(s.id)}">${escapeHtml(s.name)} (${escapeHtml(s.id)}) · ${escapeHtml(s.plan)}</option>`).join('')}
+              </select>
+            </label>
+            <p class="modal-note">Este pase no consume clases del plan regular ni modifica su saldo.</p>
+          </div>
+        </fieldset>
+
+        <fieldset class="form-group">
+          <legend class="field-legend">Tipo de clase</legend>
+          <div class="radio-row">
+            <label class="radio-label">
+              <input type="radio" name="passType" value="trial" checked id="createPassTypeTrial" />
+              <span>Clase de prueba (Q60)</span>
+            </label>
+            <label class="radio-label">
+              <input type="radio" name="passType" value="private" id="createPassTypePrivate" />
+              <span>Clase particular</span>
+            </label>
+          </div>
+        </fieldset>
+
+        <label class="field">
+          <span>Importe acordado (Q) *</span>
+          <input type="number" name="amount" id="createPassAmount" value="60" min="1" step="1" readonly required />
+          <span class="field-hint" id="createPassAmountHint">Precio fijado para clase de prueba: Q60.</span>
+        </label>
+
+        <fieldset class="form-group">
+          <legend class="field-legend">Clase y programación</legend>
+          <label class="field">
+            <span>Clase o sesión *</span>
+            <select name="classOption" id="createPassClassSelect">
+              ${classData.map((c) => `<option value="${escapeHtml(c.id)}" data-teacher="${escapeHtml(c.teacher)}" data-time="${escapeHtml(c.time)}">${escapeHtml(c.name)} · ${escapeHtml(c.teacher)} (${WEEKDAY_SHORT[c.weekday]} ${escapeHtml(c.time)})</option>`).join('')}
+              <option value="custom">Sesión particular personalizada...</option>
+            </select>
+          </label>
+
+          <div id="customSessionFields" class="form-subfields is-hidden" style="margin-top:12px">
+            <label class="field">
+              <span>Nombre de la sesión / Disciplina *</span>
+              <input type="text" name="customClassName" id="createPassCustomClassName" placeholder="Ej. Técnica de Giros Salsa" />
+            </label>
+          </div>
+
+          <div class="split-grid-2" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px">
+            <label class="field">
+              <span>Fecha de la clase *</span>
+              <input type="date" name="passDate" id="createPassDate" value="${dayKey(TODAY)}" required />
+            </label>
+            <label class="field">
+              <span>Horario *</span>
+              <input type="text" name="passTime" id="createPassTime" value="6:00 PM" placeholder="Ej. 6:00 PM" required />
+            </label>
+          </div>
+
+          <label class="field" style="margin-top:12px">
+            <span>Profesor asignado *</span>
+            <select name="passTeacher" id="createPassTeacher">
+              <option value="Alex Aquino">Alex Aquino</option>
+              <option value="Luis Ramírez">Luis Ramírez</option>
+              <option value="Majo Borrayo">Majo Borrayo</option>
+              <option value="Sofía Castillo">Sofía Castillo</option>
+              <option value="Leo Méndez">Leo Méndez</option>
+            </select>
+          </label>
+
+          <p class="modal-note" id="createPassVigenciaNote" style="margin-top:8px">Vigencia: Válido hasta el final del día de la clase seleccionada (23:59 hrs).</p>
+        </fieldset>
+
+        <fieldset class="form-group">
+          <legend class="field-legend">Estado del pago</legend>
+          <div class="radio-row">
+            <label class="radio-label">
+              <input type="radio" name="paymentStatus" value="pending" checked id="createPassPayPending" />
+              <span>Pendiente de pago</span>
+            </label>
+            <label class="radio-label">
+              <input type="radio" name="paymentStatus" value="paid" id="createPassPayPaid" />
+              <span>Pagado ahora</span>
+            </label>
+          </div>
+
+          <div id="paymentMethodFields" class="form-subfields is-hidden" style="margin-top:12px">
+            <label class="field">
+              <span>Método de pago *</span>
+              <select name="paymentMethod" id="createPassPaymentMethod">
+                <option value="Efectivo">Efectivo</option>
+                <option value="Transferencia">Transferencia</option>
+                <option value="Tarjeta">Tarjeta</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>Referencia / Comprobante</span>
+              <input type="text" name="paymentReference" id="createPassPaymentRef" placeholder="Ej. REC-1234 o Boleta 567" />
+            </label>
+          </div>
+        </fieldset>
+
+        <div class="form-actions">
+          <button class="button button--light" type="button" data-close-modal>Cancelar</button>
+          <button class="button button--red" type="submit" id="createPassSubmitBtn">Emitir pase</button>
+        </div>
+      </form>
+    `
+  });
+}
+
+function updateCreatePassForm() {
+  const form = document.querySelector('#createPassForm');
+  if (!form) return;
+
+  const isVisitor = form.elements.personType?.value === 'visitor';
+  const visitorFields = form.querySelector('#visitorFields');
+  const studentFields = form.querySelector('#studentFields');
+  const visitorName = form.querySelector('#createPassVisitorName');
+  const visitorContact = form.querySelector('#createPassVisitorContact');
+
+  if (visitorFields) visitorFields.classList.toggle('is-hidden', !isVisitor);
+  if (studentFields) studentFields.classList.toggle('is-hidden', isVisitor);
+  if (visitorName) visitorName.required = isVisitor;
+  if (visitorContact) visitorContact.required = isVisitor;
+
+  const isTrial = form.elements.passType?.value === 'trial';
+  const amountInput = form.querySelector('#createPassAmount');
+  const amountHint = form.querySelector('#createPassAmountHint');
+
+  if (amountInput) {
+    if (isTrial) {
+      amountInput.value = '60';
+      amountInput.readOnly = true;
+      if (amountHint) amountHint.textContent = 'Precio fijado para clase de prueba: Q60.';
+    } else {
+      amountInput.readOnly = false;
+      if (amountInput.value === '60') amountInput.value = '150';
+      if (amountHint) amountHint.textContent = 'Ingresá el importe acordado para la clase particular (mayor a Q0).';
+    }
+  }
+
+  const isCustomClass = form.elements.classOption?.value === 'custom';
+  const customFields = form.querySelector('#customSessionFields');
+  const customInput = form.querySelector('#createPassCustomClassName');
+  if (customFields) customFields.classList.toggle('is-hidden', !isCustomClass);
+  if (customInput) customInput.required = isCustomClass;
+
+  if (!isCustomClass) {
+    const selectedOption = form.elements.classOption?.selectedOptions?.[0];
+    if (selectedOption) {
+      if (selectedOption.dataset.teacher && form.elements.passTeacher) {
+        form.elements.passTeacher.value = selectedOption.dataset.teacher;
+      }
+      if (selectedOption.dataset.time && form.elements.passTime) {
+        form.elements.passTime.value = selectedOption.dataset.time;
+      }
+    }
+  }
+
+  const isPaid = form.elements.paymentStatus?.value === 'paid';
+  const paymentFields = form.querySelector('#paymentMethodFields');
+  if (paymentFields) paymentFields.classList.toggle('is-hidden', !isPaid);
+
+  const dateVal = form.elements.passDate?.value;
+  const vigenciaNote = form.querySelector('#createPassVigenciaNote');
+  if (vigenciaNote && dateVal) {
+    vigenciaNote.textContent = `Vigencia: Válido hasta las 23:59 del ${formatDayKeyReadable(dateVal)}.`;
+  }
+}
+
+function handleCreatePassSubmit(event) {
+  event.preventDefault();
+  const form = event.target;
+  const submitBtn = form.querySelector('#createPassSubmitBtn');
+  if (submitBtn?.disabled) return;
+  submitBtn.disabled = true;
+
+  const isVisitor = form.elements.personType.value === 'visitor';
+  let studentId = null;
+  let studentName = '';
+  let contact = '';
+
+  if (isVisitor) {
+    studentName = cleanText(form.elements.visitorName.value, 80);
+    contact = cleanText(form.elements.visitorContact.value, 80);
+    if (!studentName) {
+      submitBtn.disabled = false;
+      showToast('Datos incompletos', 'Ingresá el nombre completo del visitante.');
+      return;
+    }
+    if (!contact) {
+      submitBtn.disabled = false;
+      showToast('Datos incompletos', 'Ingresá el teléfono o contacto del visitante.');
+      return;
+    }
+  } else {
+    studentId = form.elements.studentId.value;
+    const student = studentById(studentId);
+    if (!student) {
+      submitBtn.disabled = false;
+      showToast('Alumno inválido', 'Seleccioná un alumno válido.');
+      return;
+    }
+    studentName = student.name;
+    contact = student.phone || '';
+  }
+
+  const passType = form.elements.passType.value === 'private' ? 'private' : 'trial';
+  const amount = passType === 'trial' ? 60 : Number(form.elements.amount.value);
+  if (!Number.isFinite(amount) || amount <= 0) {
+    submitBtn.disabled = false;
+    showToast('Importe inválido', 'El importe de una clase particular debe ser mayor a cero.');
+    return;
+  }
+
+  const classOption = form.elements.classOption.value;
+  let classId = classOption;
+  let className = '';
+  let teacher = form.elements.passTeacher.value;
+  const date = form.elements.passDate.value || dayKey(TODAY);
+  const time = cleanText(form.elements.passTime.value, 30) || '6:00 PM';
+
+  if (classOption === 'custom') {
+    classId = `particular-${Date.now()}`;
+    className = cleanText(form.elements.customClassName.value, 80) || 'Clase particular';
+  } else {
+    const regularClass = classData.find((c) => c.id === classOption);
+    className = regularClass?.name || 'Clase regular';
+  }
+
+  const validUntil = `${date}T23:59:59`;
+  const paymentStatus = form.elements.paymentStatus.value === 'paid' ? 'paid' : 'pending';
+  const paymentMethod = paymentStatus === 'paid' ? (form.elements.paymentMethod?.value || 'Efectivo') : null;
+  const paymentReference = paymentStatus === 'paid' ? cleanText(form.elements.paymentReference?.value, 80) : '';
+
+  const code = generatePassCode();
+  const id = `PASS-${code}`;
+
+  const newPass = {
+    id,
+    code,
+    type: passType,
+    isVisitor,
+    studentId,
+    studentName,
+    contact,
+    classId,
+    className,
+    teacher,
+    date,
+    time,
+    validUntil,
+    amount,
+    paymentStatus,
+    paymentMethod,
+    paidAt: paymentStatus === 'paid' ? dayKey(TODAY) : null,
+    paymentReference,
+    status: 'available',
+    cancelReason: null,
+    cancelledAt: null,
+    cancelledBy: null,
+    attendedAt: null,
+    attendedBy: null,
+    attendedPendingAuth: false,
+    pendingAuthNote: null,
+    createdAt: dayKey(TODAY)
+  };
+
+  const nextState = structuredClone(state);
+  if (!Array.isArray(nextState.singlePasses)) nextState.singlePasses = [];
+  nextState.singlePasses.unshift(newPass);
+
+  try {
+    persistState(nextState);
+    showToast('Pase emitido', `Pase ${code} creado para ${studentName}.`);
+    openPassModal(newPass.id);
+    if (activeRoute === 'pases') {
+      updatePassViews();
+    }
+  } catch (error) {
+    submitBtn.disabled = false;
+    showToast('Error al guardar', error.message);
+  }
+}
+
+function openPassModal(passId) {
+  const pass = passById(passId);
+  if (!pass) return;
+  const status = passStatus(pass);
+
+  openModal({
+    title: `Pase de clase · ${pass.code}`,
+    eyebrow: `${passTypeLabel(pass.type)} · Identificación digital`,
+    body: `
+      <div class="pass-ticket-print" id="passTicketPrint">
+        <div class="pass-ticket-header">
+          <div class="pass-ticket-brand">
+            <img src="./assets/inmotion-logo.svg" alt="In Motion" style="height:24px" />
+            <span class="status-pill ${pass.type === 'trial' ? 'is-trial' : 'is-private'}">${escapeHtml(passTypeLabel(pass.type))}</span>
+          </div>
+          <span class="${passStatusPillClass(status)}">${passStatusLabel(status)}</span>
+        </div>
+
+        <div class="pass-ticket-body">
+          <div class="pass-qr-container">
+            ${passQrMarkup(pass)}
+            <div class="pass-code-display">
+              <small>CÓDIGO CORTO</small>
+              <strong class="code-mono">${escapeHtml(pass.code)}</strong>
+            </div>
+          </div>
+
+          <div class="pass-details-list">
+            <div class="pass-detail-item">
+              <span class="detail-label">Persona:</span>
+              <span class="detail-val"><strong>${escapeHtml(pass.studentName)}</strong></span>
+              <small class="payment-meta">${pass.isVisitor ? `Visitante · Tel: ${escapeHtml(pass.contact)}` : `Alumno (${escapeHtml(pass.studentId)})`}</small>
+            </div>
+
+            <div class="pass-detail-item">
+              <span class="detail-label">Clase / Sesión:</span>
+              <span class="detail-val">${escapeHtml(pass.className)}</span>
+            </div>
+
+            <div class="pass-detail-grid">
+              <div class="pass-detail-item">
+                <span class="detail-label">Fecha:</span>
+                <span class="detail-val">${formatDayKeyReadable(pass.date)}</span>
+              </div>
+              <div class="pass-detail-item">
+                <span class="detail-label">Horario:</span>
+                <span class="detail-val">${escapeHtml(pass.time)}</span>
+              </div>
+            </div>
+
+            <div class="pass-detail-grid">
+              <div class="pass-detail-item">
+                <span class="detail-label">Profesor:</span>
+                <span class="detail-val">${escapeHtml(pass.teacher)}</span>
+              </div>
+              <div class="pass-detail-item">
+                <span class="detail-label">Importe:</span>
+                <span class="detail-val"><strong>Q ${escapeHtml(pass.amount)}</strong></span>
+              </div>
+            </div>
+
+            <div class="pass-detail-item">
+              <span class="detail-label">Estado del pago:</span>
+              <span class="${passPaymentPillClass(pass.paymentStatus)}">${passPaymentStatusLabel(pass.paymentStatus)} ${pass.paymentMethod ? `(${escapeHtml(pass.paymentMethod)})` : ''}</span>
+            </div>
+
+            <div class="pass-detail-item">
+              <span class="detail-label">Vigencia:</span>
+              <small class="payment-meta">Hasta las 23:59 del ${formatDayKeyReadable(pass.date)}</small>
+            </div>
+
+            ${status === 'used' && pass.attendedAt ? `
+            <div class="pass-detail-item pass-usage-box">
+              <span class="detail-label">Asistencia registrada:</span>
+              <small>${formatDateTime(pass.attendedAt)} por ${escapeHtml(pass.attendedBy || 'Personal')}</small>
+              ${pass.attendedPendingAuth ? `<br/><small style="color:var(--brand-red)">* Excepción: Autorizado con cobro pendiente (${escapeHtml(pass.pendingAuthNote || '')})</small>` : ''}
+            </div>` : ''}
+
+            ${status === 'cancelled' && pass.cancelReason ? `
+            <div class="pass-detail-item pass-cancel-box">
+              <span class="detail-label" style="color:var(--brand-red)">Pase cancelado:</span>
+              <small>${escapeHtml(pass.cancelReason)} (${formatDateTime(pass.cancelledAt)})</small>
+            </div>` : ''}
+          </div>
+        </div>
+
+        <p class="modal-note pass-demo-notice">Demostración local: los datos residen en este navegador. Para operar entre dispositivos se requiere backend centralizado.</p>
+
+        <div class="modal-actions-bar">
+          <button class="button button--light" type="button" data-print-pass>Imprimir / Guardar pase ⤓</button>
+          ${status === 'available' && pass.date === dayKey(TODAY) ? `<button class="button button--red" type="button" data-modal-validate="${escapeHtml(pass.code)}">Validar asistencia</button>` : ''}
+          ${pass.paymentStatus === 'pending' && status !== 'cancelled' && activeRole === 'admin' ? `<button class="button button--light" type="button" data-modal-open-collect="${escapeHtml(pass.id)}">Registrar cobro</button>` : ''}
+          <button class="button button--light" type="button" data-close-modal>Cerrar</button>
+        </div>
+      </div>
+    `
+  });
+}
+
+function openValidatePassModal(initialCode = null) {
+  const query = initialCode ? String(initialCode).trim() : '';
+  const foundPass = query ? passByCode(query) : null;
+
+  if (query && !foundPass) {
+    openModal({
+      title: 'Validar pase individual',
+      eyebrow: 'Control de acceso · Búsqueda',
+      body: `
+        <div class="banner banner--danger" style="margin-bottom:20px">
+          <strong>Código no encontrado o mal formado</strong>
+          <p>No se encontró ningún pase con el código “${escapeHtml(query)}”. Verificá que el código corto de 6 caracteres o identificador esté bien escrito.</p>
+        </div>
+        <form id="validatePassSearchForm" class="form-stack">
+          <label class="field">
+            <span>Código del pase (6 caracteres o ID completo)</span>
+            <input type="text" name="passCode" id="validatePassInput" placeholder="Ej. 8F2K9M o INM-PASS-8F2K9M" value="${escapeHtml(query)}" autofocus required />
+          </label>
+          <div class="form-actions">
+            <button class="button button--light" type="button" data-close-modal>Cerrar</button>
+            <button class="button button--red" type="submit">Buscar pase</button>
+          </div>
+        </form>
+      `
+    });
+    return;
+  }
+
+  if (foundPass) {
+    openModal({
+      title: `Validar pase · ${foundPass.code}`,
+      eyebrow: 'Control de acceso · Confirmación',
+      body: renderValidationPassCard(foundPass)
+    });
+    return;
+  }
+
+  const todayPasses = (state.singlePasses || []).filter((p) => p.date === dayKey(TODAY));
+  openModal({
+    title: 'Validar pase individual',
+    eyebrow: 'Control de acceso · Recepción y maestros',
+    body: `
+      <div class="camera-status-banner surface-card" style="margin-bottom:20px">
+        <p class="eyebrow" style="color:var(--brand-red)">Lector de cámara</p>
+        <p class="payment-meta" style="margin:4px 0 0 0">
+          <strong>Escaneo por cámara pendiente:</strong> En este prototipo (sin dependencias añadidas) no hay lector de cámara en vivo. Validá ingresando el código del pase o seleccionando un pase programado para hoy.
+        </p>
+      </div>
+
+      <form id="validatePassSearchForm" class="form-stack" style="margin-bottom:24px">
+        <label class="field">
+          <span>Código corto o identificador de pase</span>
+          <input type="text" name="passCode" id="validatePassInput" placeholder="Ej. 8F2K9M o INM-PASS-8F2K9M" autocomplete="off" autofocus required />
+        </label>
+        <div class="form-actions">
+          <button class="button button--light" type="button" data-close-modal>Cancelar</button>
+          <button class="button button--red" type="submit">Buscar y validar</button>
+        </div>
+      </form>
+
+      ${todayPasses.length ? `
+      <div class="section-head" style="margin-top:16px">
+        <div>
+          <h3>Pases programados para hoy</h3>
+          <p>Tocá un pase para abrir su validación directa.</p>
+        </div>
+        <span class="tag">${todayPasses.length}</span>
+      </div>
+      <div class="quick-pass-list">
+        ${todayPasses.map((p) => {
+          const s = passStatus(p);
+          return `
+            <button type="button" class="quick-pass-card" data-open-validate-pass="${escapeHtml(p.code)}">
+              <div class="quick-pass-card-left">
+                <strong class="code-mono">${escapeHtml(p.code)}</strong>
+                <span><strong>${escapeHtml(p.studentName)}</strong> · ${escapeHtml(p.className)}</span>
+                <small class="payment-meta">${escapeHtml(p.time)} · Prof. ${escapeHtml(p.teacher)}</small>
+              </div>
+              <div class="quick-pass-card-right">
+                <span class="${passStatusPillClass(s)}">${passStatusLabel(s)}</span>
+                <span class="${passPaymentPillClass(p.paymentStatus)}">${passPaymentStatusLabel(p.paymentStatus)} (Q${p.amount})</span>
+              </div>
+            </button>
+          `;
+        }).join('')}
+      </div>
+      ` : '<p class="modal-note">No hay pases programados para hoy en la demo. Ingresá el código para buscar en otras fechas.</p>'}
+    `
+  });
+}
+
+function renderValidationPassCard(pass) {
+  const status = passStatus(pass);
+  const isToday = pass.date === dayKey(TODAY);
+  const isFuture = pass.date > dayKey(TODAY);
+
+  return `
+    <div class="validation-card-wrap">
+      <div class="surface-card validation-summary-card">
+        <div class="validation-header-row">
+          <div>
+            <span class="status-pill ${pass.type === 'trial' ? 'is-trial' : 'is-private'}">${escapeHtml(passTypeLabel(pass.type))}</span>
+            <h3 style="margin-top:8px">${escapeHtml(pass.studentName)}</h3>
+            <p class="payment-meta">${pass.isVisitor ? `Visitante · Tel: ${escapeHtml(pass.contact)}` : `Alumno regular (${escapeHtml(pass.studentId)})`}</p>
+          </div>
+          <div style="text-align:right">
+            <span class="code-mono" style="font-size:1.1rem">${escapeHtml(pass.code)}</span>
+            <div style="margin-top:8px">
+              <span class="${passStatusPillClass(status)}">${passStatusLabel(status)}</span>
+            </div>
+            <div style="margin-top:4px">
+              <span class="${passPaymentPillClass(pass.paymentStatus)}">${passPaymentStatusLabel(pass.paymentStatus)}</span>
+            </div>
+          </div>
+        </div>
+
+        <hr style="margin:16px 0;border:none;border-top:1px solid rgba(255,255,255,0.08)" />
+
+        <div class="validation-info-grid">
+          <div><span class="detail-label">Clase:</span> <strong>${escapeHtml(pass.className)}</strong></div>
+          <div><span class="detail-label">Fecha:</span> ${formatDayKeyReadable(pass.date)}</div>
+          <div><span class="detail-label">Horario:</span> ${escapeHtml(pass.time)}</div>
+          <div><span class="detail-label">Profesor:</span> ${escapeHtml(pass.teacher)}</div>
+          <div><span class="detail-label">Importe:</span> <strong>Q ${escapeHtml(pass.amount)}</strong></div>
+          <div><span class="detail-label">Vigencia:</span> Hasta 23:59 del día de clase</div>
+        </div>
+      </div>
+
+      ${status === 'cancelled' ? `
+      <div class="banner banner--danger" style="margin-top:20px">
+        <strong>🚫 Pase cancelado</strong>
+        <p>Este pase fue cancelado el ${formatDateTime(pass.cancelledAt)} por ${escapeHtml(pass.cancelledBy || 'Administración')}.<br/>Motivo: “${escapeHtml(pass.cancelReason || 'Sin motivo')}”. No permite registrar asistencia.</p>
+      </div>
+      <div class="form-actions" style="margin-top:16px">
+        <button class="button button--light" type="button" data-retry-validate>Buscar otro pase</button>
+      </div>
+      ` : ''}
+
+      ${status === 'used' ? `
+      <div class="banner banner--info" style="margin-top:20px">
+        <strong>✓ Asistencia ya registrada</strong>
+        <p>Este pase ya fue utilizado el ${formatDateTime(pass.attendedAt)} por ${escapeHtml(pass.attendedBy || 'Personal')}.
+        ${pass.attendedPendingAuth ? `<br/><em>* Ingreso autorizado con cobro pendiente: ${escapeHtml(pass.pendingAuthNote || '')}</em>` : ''}
+        <br/>No se duplican registros de asistencia.</p>
+      </div>
+      <div class="form-actions" style="margin-top:16px">
+        <button class="button button--light" type="button" data-retry-validate>Buscar otro pase</button>
+      </div>
+      ` : ''}
+
+      ${status === 'expired' ? `
+      <div class="banner banner--danger" style="margin-top:20px">
+        <strong>⏱ Pase vencido</strong>
+        <p>La vigencia de este pase finalizó (${formatDayKeyReadable(pass.date)} a las 23:59). No permite registrar asistencia.</p>
+      </div>
+      <div class="form-actions" style="margin-top:16px">
+        <button class="button button--light" type="button" data-retry-validate>Buscar otro pase</button>
+      </div>
+      ` : ''}
+
+      ${status === 'available' && isFuture ? `
+      <div class="banner banner--warning" style="margin-top:20px">
+        <strong>📅 Fecha anterior a la clase</strong>
+        <p>Este pase corresponde a la clase programada para el <strong>${formatDayKeyReadable(pass.date)}</strong>. Todavía no corresponde utilizarlo.</p>
+      </div>
+      <div class="form-actions" style="margin-top:16px">
+        <button class="button button--light" type="button" data-retry-validate>Buscar otro pase</button>
+      </div>
+      ` : ''}
+
+      ${status === 'available' && !isFuture && pass.paymentStatus === 'paid' ? `
+      <div class="banner banner--success" style="margin-top:20px">
+        <strong>✓ Pase disponible y pagado (Q ${pass.amount})</strong>
+        <p>El pase está al día y listo para registrar la llegada del alumno.</p>
+      </div>
+      <form id="confirmPassAttendanceForm" style="margin-top:16px">
+        <input type="hidden" name="passId" value="${escapeHtml(pass.id)}" />
+        <div class="form-actions">
+          <button class="button button--light" type="button" data-retry-validate>Buscar otro</button>
+          <button class="button button--red" type="submit" id="confirmAttendanceBtn">Confirmar asistencia</button>
+        </div>
+      </form>
+      ` : ''}
+
+      ${status === 'available' && !isFuture && pass.paymentStatus === 'pending' ? `
+      <div class="banner banner--warning" style="margin-top:20px">
+        <strong>⚠️ Cobro pendiente: Q ${pass.amount}</strong>
+        <p>Este pase no ha sido liquidado en el sistema.</p>
+      </div>
+
+      ${activeRole === 'teacher' ? `
+      <p class="modal-note" style="color:var(--brand-red);margin-top:12px">
+        Como maestro podés ver el cobro pendiente, pero no podés registrar cobros ni autorizar excepciones. Por favor indicá al alumno pasar por recepción o administración.
+      </p>
+      <div class="form-actions" style="margin-top:16px">
+        <button class="button button--light" type="button" data-retry-validate>Buscar otro pase</button>
+      </div>
+      ` : `
+      <div class="pending-admin-actions" style="margin-top:16px">
+        <div class="filter-row" style="margin-bottom:16px">
+          <button class="button button--red" type="button" data-modal-open-collect="${escapeHtml(pass.id)}">Registrar cobro de Q ${pass.amount} primero</button>
+          <button class="button button--light" type="button" data-retry-validate>Volver</button>
+        </div>
+
+        <details class="exception-details surface-card" style="margin-top:16px;padding:16px">
+          <summary class="exception-summary" style="cursor:pointer;font-weight:600">Autorizar entrada con pago pendiente (Excepción)</summary>
+          <form id="authPendingAttendanceForm" style="margin-top:16px">
+            <input type="hidden" name="passId" value="${escapeHtml(pass.id)}" />
+            <p class="payment-meta">Podés permitir el acceso excepcional. El pase se marcará como utilizado pero el cobro permanecerá pendiente.</p>
+            <label class="field" style="margin-top:12px">
+              <span>Nota de autorización / Motivo *</span>
+              <input type="text" name="pendingNote" placeholder="Ej. Autorizado por administración: pagará al salir" required />
+            </label>
+            <label class="student-check" style="margin:12px 0;display:flex;align-items:center;gap:8px">
+              <input type="checkbox" name="confirmPendingAuth" required />
+              <span>Confirmo autorizar la asistencia manteniendo el cobro como pendiente</span>
+            </label>
+            <div class="form-actions">
+              <button class="button button--red" type="submit" id="authPendingSubmitBtn">Autorizar asistencia excepcional</button>
+            </div>
+          </form>
+        </details>
+      </div>
+      `}
+      ` : ''}
+    </div>
+  `;
+}
+
+function handleValidatePassSearchSubmit(event) {
+  event.preventDefault();
+  const form = event.target;
+  const input = form.querySelector('#validatePassInput');
+  const code = input ? input.value.trim() : '';
+  if (!code) return;
+  openValidatePassModal(code);
+}
+
+function handleConfirmPassAttendanceSubmit(event) {
+  event.preventDefault();
+  const form = event.target;
+  const submitBtn = form.querySelector('#confirmAttendanceBtn');
+  if (submitBtn?.disabled) return;
+  submitBtn.disabled = true;
+
+  const passId = form.elements.passId.value;
+  const pass = passById(passId);
+  if (!pass) {
+    showToast('Pase no encontrado', 'El pase no existe o fue eliminado.');
+    return;
+  }
+
+  const status = passStatus(pass);
+  if (status === 'cancelled') {
+    showToast('Pase cancelado', 'Este pase fue cancelado y no puede utilizarse.');
+    return;
+  }
+  if (status === 'used') {
+    showToast('Asistencia ya registrada', 'Este pase ya fue utilizado anteriormente.');
+    return;
+  }
+  if (status === 'expired') {
+    showToast('Pase vencido', 'La vigencia del pase ha finalizado.');
+    return;
+  }
+  if (pass.date > dayKey(TODAY)) {
+    showToast('Fecha no corresponde', `La clase es el ${formatDayKeyReadable(pass.date)}. No se puede registrar antes.`);
+    return;
+  }
+
+  const nextState = structuredClone(state);
+  const targetPass = nextState.singlePasses.find((p) => p.id === passId);
+  if (!targetPass) return;
+
+  targetPass.status = 'used';
+  targetPass.attendedAt = new Date().toISOString();
+  targetPass.attendedBy = roleConfig[activeRole]?.label || activeRole;
+
+  try {
+    persistState(nextState);
+    showToast('Asistencia registrada', `Asistencia confirmada para ${pass.studentName} (${pass.className}).`);
+    openValidatePassModal(pass.code);
+    if (activeRoute === 'pases') updatePassViews();
+    if (activeRoute === 'asistencia') renderApp();
+  } catch (err) {
+    submitBtn.disabled = false;
+    showToast('Error al guardar', err.message);
+  }
+}
+
+function handleAuthPendingAttendanceSubmit(event) {
+  event.preventDefault();
+  const form = event.target;
+  const submitBtn = form.querySelector('#authPendingSubmitBtn');
+  if (submitBtn?.disabled) return;
+  submitBtn.disabled = true;
+
+  const passId = form.elements.passId.value;
+  const note = cleanText(form.elements.pendingNote.value, 200);
+  const confirmed = form.elements.confirmPendingAuth.checked;
+
+  if (!note || !confirmed) {
+    submitBtn.disabled = false;
+    showToast('Confirmación requerida', 'Debes ingresar una nota de autorización y marcar la casilla de confirmación.');
+    return;
+  }
+
+  const pass = passById(passId);
+  if (!pass) return;
+
+  const nextState = structuredClone(state);
+  const targetPass = nextState.singlePasses.find((p) => p.id === passId);
+  if (!targetPass) return;
+
+  targetPass.status = 'used';
+  targetPass.attendedAt = new Date().toISOString();
+  targetPass.attendedBy = 'Administración (MB)';
+  targetPass.attendedPendingAuth = true;
+  targetPass.pendingAuthNote = note;
+
+  try {
+    persistState(nextState);
+    showToast('Entrada autorizada', `Asistencia excepcional autorizada con cobro pendiente (Q ${pass.amount}).`);
+    openValidatePassModal(pass.code);
+    if (activeRoute === 'pases') updatePassViews();
+    if (activeRoute === 'asistencia') renderApp();
+  } catch (err) {
+    submitBtn.disabled = false;
+    showToast('Error al guardar', err.message);
+  }
+}
+
+function openCollectPassPaymentModal(passId) {
+  const pass = passById(passId);
+  if (!pass) return;
+
+  openModal({
+    title: 'Registrar cobro de pase',
+    eyebrow: 'Administración · Registro de cobro',
+    body: `
+      <form id="collectPassPaymentForm" class="form-stack">
+        <input type="hidden" name="passId" value="${escapeHtml(pass.id)}" />
+        <div class="surface-card" style="margin-bottom:16px">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <div>
+              <strong>${escapeHtml(pass.studentName)}</strong>
+              <p class="payment-meta">${escapeHtml(pass.className)} (${formatDayKeyReadable(pass.date)})</p>
+            </div>
+            <strong class="code-mono">${escapeHtml(pass.code)}</strong>
+          </div>
+          <p class="payment-amount" style="margin-top:12px">Q ${escapeHtml(pass.amount)}</p>
+        </div>
+
+        <label class="field">
+          <span>Método de pago *</span>
+          <select name="method" required>
+            ${PAYMENT_METHODS.map((m) => `<option value="${escapeHtml(m)}">${escapeHtml(m)}</option>`).join('')}
+          </select>
+        </label>
+
+        <label class="field">
+          <span>Referencia o número de comprobante</span>
+          <input type="text" name="reference" placeholder="Ej. Boleta 4892, Voucher POS o Efectivo en mano" />
+        </label>
+
+        <p class="modal-note">El registro actualiza el estado de pago del pase. No modifica saldos de planes ni emite factura FEL.</p>
+
+        <div class="form-actions">
+          <button class="button button--light" type="button" data-close-modal>Cancelar</button>
+          <button class="button button--red" type="submit" id="collectPassSubmitBtn">Confirmar cobro</button>
+        </div>
+      </form>
+    `
+  });
+}
+
+function handleCollectPassPaymentSubmit(event) {
+  event.preventDefault();
+  const form = event.target;
+  const submitBtn = form.querySelector('#collectPassSubmitBtn');
+  if (submitBtn?.disabled) return;
+  submitBtn.disabled = true;
+
+  const passId = form.elements.passId.value;
+  const method = form.elements.method.value;
+  const reference = cleanText(form.elements.reference.value, 80);
+
+  const pass = passById(passId);
+  if (!pass) {
+    showToast('Pase no encontrado', 'El pase no existe.');
+    return;
+  }
+
+  const nextState = structuredClone(state);
+  const targetPass = nextState.singlePasses.find((p) => p.id === passId);
+  if (!targetPass) return;
+
+  targetPass.paymentStatus = 'paid';
+  targetPass.paymentMethod = method;
+  targetPass.paidAt = dayKey(TODAY);
+  targetPass.paymentReference = reference;
+
+  try {
+    persistState(nextState);
+    showToast('Cobro registrado', `Se registró el pago de Q ${pass.amount} (${method}) para ${pass.studentName}.`);
+    openValidatePassModal(pass.code);
+    if (activeRoute === 'pases') updatePassViews();
+  } catch (err) {
+    submitBtn.disabled = false;
+    showToast('Error al registrar cobro', err.message);
+  }
+}
+
+function openCancelPassModal(passId) {
+  const pass = passById(passId);
+  if (!pass) return;
+
+  openModal({
+    title: 'Cancelar pase individual',
+    eyebrow: 'Administración · Anulación',
+    body: `
+      <form id="cancelPassForm" class="form-stack">
+        <input type="hidden" name="passId" value="${escapeHtml(pass.id)}" />
+        <div class="surface-card" style="margin-bottom:16px">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <div>
+              <strong>${escapeHtml(pass.studentName)}</strong>
+              <p class="payment-meta">${escapeHtml(pass.className)} · ${formatDayKeyReadable(pass.date)}</p>
+            </div>
+            <strong class="code-mono">${escapeHtml(pass.code)}</strong>
+          </div>
+        </div>
+
+        <div class="banner banner--warning" style="margin-bottom:16px">
+          <strong>Advertencia de anulación</strong>
+          <p>Esta acción cancelará el pase y no permitirá registrar asistencia con él. El registro permanecerá en el historial administrativo sin borrar datos ni generar devoluciones automáticas.</p>
+        </div>
+
+        <label class="field">
+          <span>Motivo de cancelación *</span>
+          <textarea name="cancelReason" rows="3" placeholder="Ej. El alumno canceló con anticipación por viaje..." required></textarea>
+        </label>
+
+        <div class="form-actions">
+          <button class="button button--light" type="button" data-close-modal>Volver</button>
+          <button class="button button--red" type="submit" id="cancelPassSubmitBtn">Confirmar cancelación</button>
+        </div>
+      </form>
+    `
+  });
+}
+
+function handleCancelPassSubmit(event) {
+  event.preventDefault();
+  const form = event.target;
+  const submitBtn = form.querySelector('#cancelPassSubmitBtn');
+  if (submitBtn?.disabled) return;
+  submitBtn.disabled = true;
+
+  const passId = form.elements.passId.value;
+  const reason = cleanText(form.elements.cancelReason.value, 200);
+  if (!reason) {
+    submitBtn.disabled = false;
+    showToast('Motivo requerido', 'Ingresá el motivo de la cancelación.');
+    return;
+  }
+
+  const pass = passById(passId);
+  if (!pass) return;
+
+  const nextState = structuredClone(state);
+  const targetPass = nextState.singlePasses.find((p) => p.id === passId);
+  if (!targetPass) return;
+
+  targetPass.status = 'cancelled';
+  targetPass.cancelReason = reason;
+  targetPass.cancelledAt = new Date().toISOString();
+  targetPass.cancelledBy = 'Administración';
+
+  try {
+    persistState(nextState);
+    showToast('Pase cancelado', `Pase ${pass.code} ha sido anulado con motivo: ${reason}.`);
+    closeModal();
+    if (activeRoute === 'pases') updatePassViews();
+  } catch (err) {
+    submitBtn.disabled = false;
+    showToast('Error al cancelar', err.message);
+  }
+}
+
 function renderGuardianCard() {
   const guardian = currentGuardian();
   if (isSupabaseConnected && !guardian) {
@@ -3085,6 +4670,7 @@ const renderers = {
   'admin:alumnos': renderAdminStudents,
   'admin:pagos': renderAdminPayments,
   'admin:asistencia': renderAdminAttendance,
+  'admin:pases': renderAdminPasses,
   'guardian:inicio': renderGuardianHome,
   'guardian:carnet': renderGuardianCard
 };
@@ -3723,6 +5309,19 @@ function handleModalClick(event) {
   }
   const studentClasses = event.target.closest('[data-student-classes]');
   if (studentClasses) return openStudentClassesModal(studentClasses.dataset.studentClasses);
+  if (event.target.closest('[data-print-pass]')) {
+    window.print();
+    return;
+  }
+  const modalVal = event.target.closest('[data-modal-validate]');
+  if (modalVal) return openValidatePassModal(modalVal.dataset.modalValidate || null);
+  const modalColl = event.target.closest('[data-modal-open-collect]');
+  if (modalColl) return openCollectPassPaymentModal(modalColl.dataset.modalOpenCollect);
+  const modalCancel = event.target.closest('[data-cancel-pass]');
+  if (modalCancel) return openCancelPassModal(modalCancel.dataset.cancelPass);
+  const quickPass = event.target.closest('[data-open-validate-pass]');
+  if (quickPass) return openValidatePassModal(quickPass.dataset.openValidatePass || null);
+  if (event.target.closest('[data-retry-validate]')) return openValidatePassModal(null);
   if (event.target.closest('[data-close-modal]')) return closeModal();
   if (event.target.closest('#simulateScan')) return simulateScan();
   if (event.target.closest('#confirmReset')) return resetDemo();
@@ -3733,6 +5332,12 @@ function handleModalSubmit(event) {
   if (event.target.id === 'studentForm') handleStudentSubmit(event);
   if (event.target.id === 'enrollmentForm') handleEnrollmentSubmit(event);
   if (event.target.id === 'musicSuggestionForm') handleMusicSuggestionSubmit(event);
+  if (event.target.id === 'createPassForm') handleCreatePassSubmit(event);
+  if (event.target.id === 'validatePassSearchForm') handleValidatePassSearchSubmit(event);
+  if (event.target.id === 'confirmPassAttendanceForm') handleConfirmPassAttendanceSubmit(event);
+  if (event.target.id === 'authPendingAttendanceForm') handleAuthPendingAttendanceSubmit(event);
+  if (event.target.id === 'collectPassPaymentForm') handleCollectPassPaymentSubmit(event);
+  if (event.target.id === 'cancelPassForm') handleCancelPassSubmit(event);
 }
 
 // ---------------------------------------------------------------------------
@@ -4503,9 +6108,57 @@ function handleContentClick(event) {
   if (classFilter) return applyClassFilter(classFilter);
   const paymentFilter = find('[data-payment-filter]');
   if (paymentFilter) return applyPaymentFilter(paymentFilter);
+
+  if (find('[data-open-create-pass]')) return openCreatePassModal();
+  const openVal = find('[data-open-validate-pass]');
+  if (openVal) return openValidatePassModal(openVal.dataset.openValidatePass || null);
+  const viewPass = find('[data-view-pass]');
+  if (viewPass) return openPassModal(viewPass.dataset.viewPass);
+  const collectPass = find('[data-collect-pass]');
+  if (collectPass) return openCollectPassPaymentModal(collectPass.dataset.collectPass);
+  const cancelPass = find('[data-cancel-pass]');
+  if (cancelPass) return openCancelPassModal(cancelPass.dataset.cancelPass);
+
+  const passDateBtn = find('[data-pass-date]');
+  if (passDateBtn) {
+    passFilterDate = passDateBtn.dataset.passDate;
+    const customInput = elements.content.querySelector('#passDateInput');
+    if (passFilterDate === 'today' && customInput) customInput.value = dayKey(TODAY);
+    if (passFilterDate === 'all' && customInput) customInput.value = '';
+    updatePassViews();
+    return;
+  }
+  const passTypeBtn = find('[data-pass-type]');
+  if (passTypeBtn) {
+    passFilterType = passTypeBtn.dataset.passType;
+    updatePassViews();
+    return;
+  }
+  const passPayBtn = find('[data-pass-pay]');
+  if (passPayBtn) {
+    passFilterPayment = passPayBtn.dataset.passPay;
+    updatePassViews();
+    return;
+  }
+  const passStatusBtn = find('[data-pass-status]');
+  if (passStatusBtn) {
+    passFilterStatus = passStatusBtn.dataset.passStatus;
+    updatePassViews();
+    return;
+  }
 }
 
 function handleContentInput(event) {
+  if (event.target.id === 'passSearchInput') {
+    passSearchQuery = event.target.value;
+    updatePassViews();
+    return;
+  }
+  if (event.target.id === 'passDateInput') {
+    passFilterDate = event.target.value || 'all';
+    updatePassViews();
+    return;
+  }
   if (!event.target.closest('#studentSearch')) return;
   const query = event.target.value.trim().toLowerCase();
   const filtered = state.students.filter((item) => `${item.name} ${item.id}`.toLowerCase().includes(query));
@@ -4542,6 +6195,11 @@ elements.content.addEventListener('keydown', (event) => {
 elements.content.addEventListener('input', handleContentInput);
 elements.content.addEventListener('submit', handleContentSubmit);
 elements.content.addEventListener('change', (event) => {
+  if (event.target.id === 'passDateInput') {
+    passFilterDate = event.target.value || 'all';
+    updatePassViews();
+    return;
+  }
   if (event.target.matches('input[name="attendance"]')) {
     const label = event.target.closest('.student-check')?.querySelector('span:last-child');
     if (label) label.textContent = event.target.checked ? 'Presente' : 'Sin registro';
@@ -4551,6 +6209,7 @@ elements.modalLayer.addEventListener('click', handleModalClick);
 elements.modalLayer.addEventListener('submit', handleModalSubmit);
 elements.modalLayer.addEventListener('change', (event) => {
   if (event.target.closest('#paymentForm') && ['studentId', 'period'].includes(event.target.name)) updatePaymentForm();
+  if (event.target.closest('#createPassForm')) updateCreatePassForm();
 });
 document.querySelector('#profileButton').addEventListener('click', openProfile);
 
