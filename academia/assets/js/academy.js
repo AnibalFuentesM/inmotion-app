@@ -783,8 +783,8 @@ function exportTableToCsv(type) {
 function recordAttendance(classId, studentIds, sessionDate, { replaceDay = false, scope = null } = {}) {
   TODAY = new Date();
   const item = classData.find((entry) => entry.id === classId);
-  if (!item || sessionDate !== dayKey(TODAY) || item.weekday !== TODAY.getDay()) {
-    throw new Error('Solo podés registrar una clase programada para hoy. Volvé a abrir la sesión.');
+  if (!item || !sessionDate) {
+    throw new Error('Solo podés registrar una clase programada válida. Volvé a abrir la sesión.');
   }
   if (studentIds.some((studentId) => !studentById(studentId))) throw new Error('Alumno no encontrado.');
   // La sesión valida la inscripción: evita marcaciones cruzadas entre clases.
@@ -836,7 +836,7 @@ const guardians = [
 function createBasePayments() {
   const rows = [
     { id: 'P-1044', studentId: 'IM-0241', method: 'Pendiente', paid: false, offset: 2 },
-    { id: 'P-1043', studentId: 'IM-0218', method: 'POS', paid: true, offset: -1 },
+    { id: 'P-1043', studentId: 'IM-0218', method: 'Tarjeta', paid: true, offset: -1 },
     { id: 'P-1042', studentId: 'IM-0194', method: 'Transferencia', paid: true, offset: -3 },
     { id: 'P-1041', studentId: 'IM-0250', method: 'Pendiente', paid: false, offset: -6 },
     { id: 'P-1040', studentId: 'IM-0207', method: 'Efectivo', paid: true, offset: -8 },
@@ -1001,7 +1001,7 @@ function migratePayment(payment) {
 
 const DAY_KEY_PATTERN = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
 const PERIOD_PATTERN = /^\d{4}-(0[1-9]|1[0-2])$/;
-const PAYMENT_METHODS = ['POS', 'Transferencia', 'Efectivo', 'Depósito'];
+const PAYMENT_METHODS = ['Transferencia', 'Efectivo', 'Tarjeta'];
 let recoveryReport = null;
 
 function isPlainObject(value) {
@@ -1072,7 +1072,9 @@ function sanitizePayment(raw, studentIds) {
     month: cleanText(payment.month, 40) || monthLabel(parseDayKey(`${payment.period}-01`)),
     period: payment.period,
     amount,
-    method: PAYMENT_METHODS.includes(payment.method) ? payment.method : (isPaid ? 'Efectivo' : 'Pendiente'),
+    method: PAYMENT_METHODS.includes(payment.method)
+      ? payment.method
+      : (payment.method === 'POS' ? 'Tarjeta' : (payment.method === 'Depósito' ? 'Transferencia' : (isPaid ? 'Efectivo' : 'Pendiente'))),
     date: cleanText(payment.date, 60),
     paidAt: isPaid ? paidAt : null,
     dueDate: isPaid ? null : (isValidDayKey(payment.dueDate) ? payment.dueDate : null),
@@ -1101,7 +1103,7 @@ function sanitizeMusicSuggestion(raw) {
   const song = cleanText(raw.song, 80);
   const artist = cleanText(raw.artist, 80);
   const classId = cleanText(raw.classId, 40);
-  if (!id || !song || !artist || !classId) return null;
+  if (!id || (!song && !artist) || !classId) return null;
 
   const mood = findMusicMood(raw.moodId);
   return {
@@ -1556,8 +1558,8 @@ function studentMusicSection() {
                   </span>
                 </div>
                 <div class="music-card-body">
-                  <h3 class="music-song-title">${escapeHtml(item.song)}</h3>
-                  <p class="music-song-artist">${escapeHtml(item.artist)}</p>
+                  <h3 class="music-song-title">${escapeHtml(item.song || 'Cualquier rola')}</h3>
+                  <p class="music-song-artist">${escapeHtml(item.artist || 'Artista sin especificar')}</p>
                   <div class="music-class-meta">
                     <span>${escapeHtml(item.className)}</span> · <small>Profe ${escapeHtml(item.teacherName)}</small>
                   </div>
@@ -1594,9 +1596,7 @@ function teacherMusicSection() {
     <section class="section music-section">
       <div class="section-head">
         <div>
-          <span class="eyebrow">La Rockola de la Clase</span>
-          <h2>Rolas sugeridas por alumnos</h2>
-          <p>Canciones que tus alumnos quieren bailar en clase con sus etiquetas.</p>
+          <h2>Sugerido por los alumnos</h2>
         </div>
         <div class="filter-group" role="group" aria-label="Filtrar rolas de alumnos">
           <button type="button" class="filter-chip ${musicTeacherFilter === 'all' ? 'is-active' : ''}" data-teacher-music-filter="all">
@@ -1635,8 +1635,8 @@ function teacherMusicSection() {
               </div>
 
               <div class="music-card-body">
-                <h3 class="music-song-title">${escapeHtml(item.song)}</h3>
-                <p class="music-song-artist">${escapeHtml(item.artist)}</p>
+                <h3 class="music-song-title">${escapeHtml(item.song || 'Cualquier rola')}</h3>
+                <p class="music-song-artist">${escapeHtml(item.artist || 'Artista sin especificar')}</p>
               </div>
 
               <div class="music-card-footer music-card-footer--teacher">
@@ -1677,7 +1677,8 @@ function openMusicSuggestionModal(preselectedClassId = null) {
   const options = studentClasses.length ? studentClasses : classData;
   const defaultClassId = preselectedClassId || options[0]?.id || 'bachata-inter';
   const targetClass = findClass(defaultClassId) || options[0];
-  currentSelectedMoodId = 'sed';
+  const randomMood = MUSIC_MOODS[Math.floor(Math.random() * MUSIC_MOODS.length)] || MUSIC_MOODS[0];
+  currentSelectedMoodId = randomMood.id;
 
   openModal({
     title: 'Sugerir rola',
@@ -1698,16 +1699,19 @@ function openMusicSuggestionModal(preselectedClassId = null) {
         <div class="split-fields">
           <label class="field">
             <span>Canción</span>
-            <input type="text" name="song" id="musicSongInput" placeholder="Nombre o tarareo" required />
+            <input type="text" name="song" id="musicSongInput" placeholder="Nombre o tarareo" />
           </label>
           <label class="field">
             <span>Artista</span>
-            <input type="text" name="artist" id="musicArtistInput" placeholder="Artista o grupo" required />
+            <input type="text" name="artist" id="musicArtistInput" placeholder="Artista o grupo" />
           </label>
         </div>
 
         <div class="field">
-          <span>Elegí la etiqueta</span>
+          <div class="mood-header-row">
+            <span>Elegí la etiqueta</span>
+            <button type="button" class="mood-random-btn" data-randomize-mood title="Cambiar etiqueta al azar">🎲 Otra al azar</button>
+          </div>
           <div class="music-mood-grid" role="radiogroup" aria-label="Elegir etiqueta">
             ${MUSIC_MOODS.map((m) => `
               <button 
@@ -1741,10 +1745,10 @@ function handleMusicSuggestionSubmit(event) {
   const classId = formData.get('classId');
   const song = (formData.get('song') || '').trim();
   const artist = (formData.get('artist') || '').trim();
-  const moodId = formData.get('moodId') || 'sed';
+  const moodId = formData.get('moodId') || currentSelectedMoodId || 'sed';
 
-  if (!song || !artist) {
-    showToast('Faltan datos', 'Por favor ingresá la canción y el artista.');
+  if (!song && !artist) {
+    showToast('Faltan datos', 'Ingresá al menos la canción o el artista.');
     return;
   }
 
@@ -1778,7 +1782,8 @@ function handleMusicSuggestionSubmit(event) {
 
   closeModal();
   renderAndFocus();
-  showToast('¡Rola enviada! 🎶', `Le sugeriste "${song}" al profe ${targetClass.teacher} con la etiqueta "${mood.emoji} ${mood.label}".`);
+  const displayTitle = song || (artist ? `rola de ${artist}` : 'tu rola');
+  showToast('¡Rola enviada! 🎶', `Le sugeriste "${displayTitle}" al profe ${targetClass.teacher} con la etiqueta "${mood.emoji} ${mood.label}".`);
 }
 
 function renderStudentHome() {
@@ -2445,10 +2450,51 @@ function renderTeacherAgenda() {
     `;
   }
   const teacherName = teacher?.name || 'Alex Aquino';
+  const own = teacherClasses();
+  const ownIds = new Set(own.map((c) => c.id));
+  const otherClasses = scheduledClasses().filter((c) => !ownIds.has(c.id));
+
   return `
-    <header class="page-heading"><div><p class="eyebrow">Agenda docente</p><h1>Una semana<br/>en movimiento.</h1><p>Clases asignadas a ${escapeHtml(teacherName)}.</p></div></header>
-    ${weekStrip(teacherClasses())}
-    <section class="section">${teacherCards()}</section>
+    <header class="page-heading">
+      <div>
+        <p class="eyebrow">Agenda docente</p>
+        <h1>Una semana<br/>en movimiento.</h1>
+        <p>Clases asignadas a ${escapeHtml(teacherName)} y programación de la academia.</p>
+      </div>
+    </header>
+    ${weekStrip(scheduledClasses())}
+    <section class="section">
+      <div class="section-head">
+        <div>
+          <h2>Tus clases asignadas</h2>
+          <p>Próximas clases a tu cargo.</p>
+        </div>
+      </div>
+      ${teacherCards()}
+    </section>
+    ${otherClasses.length ? `
+      <section class="section">
+        <div class="section-head">
+          <div>
+            <h2>Próximas clases de los otros días</h2>
+            <p>Otras clases programadas en la academia con otros maestros.</p>
+          </div>
+        </div>
+        <div class="teacher-day-grid">
+          ${otherClasses.map((item) => `
+            <article class="teacher-class">
+              <div class="teacher-class-time">${escapeHtml(item.time).replace(' ', '<br/>')}</div>
+              <div>
+                <span class="tag">${escapeHtml(item.day)}</span>
+                <h3>${escapeHtml(item.name)}</h3>
+                <p>${escapeHtml(item.teacher)} · ${escapeHtml(item.room)} · ${escapeHtml(capacityText(item))} cupos</p>
+              </div>
+              <button class="button button--small button--light" type="button" data-take-attendance="${escapeHtml(item.id)}" aria-label="Abrir clase de ${escapeHtml(item.name)}, ${escapeHtml(item.day)} ${escapeHtml(item.time)}">Abrir clase</button>
+            </article>
+          `).join('')}
+        </div>
+      </section>
+    ` : ''}
     ${teacherMusicSection()}
   `;
 }
@@ -2462,7 +2508,7 @@ function rosterMarkup(classId = activeClassId, date = TODAY) {
     return '<div class="empty-state"><strong>Sin alumnos inscritos</strong>Esta clase no tiene inscripciones en los datos demo, así que no hay lista que pasar.</div>';
   }
   const selected = attendanceFor(classId, date);
-  const editable = dayKey(date) === dayKey(TODAY);
+  const editable = true;
   return `<div class="attendance-roster">${students.map((student) => {
     const present = selected.includes(student.id);
     return `
@@ -2482,13 +2528,13 @@ function renderTeacherAttendance() {
   const enrolled = rosterFor(item.id);
   const enrolledIds = enrolled.map((entry) => entry.id);
   const historyOnly = attendanceFor(item.id, item.date).filter((id) => !enrolledIds.includes(id));
-  const canSubmit = live && enrolled.length > 0;
+  const canSubmit = enrolled.length > 0;
   const student = currentStudent();
   return `
     <header class="page-heading"><div><p class="eyebrow">Control de asistencia</p><h1>¿Quién vino<br/>a bailar?</h1><p>Marcá la lista y guardá esta sesión localmente.</p></div></header>
     <section class="split-grid">
       <article class="surface-card">
-        <div class="section-head"><div><h2>${escapeHtml(item.name)}</h2><p>${escapeHtml(item.day)} · ${escapeHtml(item.time)} · ${escapeHtml(item.room)}</p></div><span class="tag ${live ? 'tag--red' : ''}">${live ? 'Programada para hoy' : 'Programada'}</span></div>
+        <div class="section-head"><div><h2>${escapeHtml(item.name)}</h2><p>${escapeHtml(item.day)} · ${escapeHtml(item.time)} · ${escapeHtml(item.room)}</p></div><span class="tag ${live ? 'tag--red' : ''}">${live ? 'Programada para hoy' : `Programada · ${escapeHtml(item.day)}`}</span></div>
         <form id="attendanceForm" data-class-id="${escapeHtml(item.id)}" data-session-date="${escapeHtml(dayKey(item.date))}">
           <div class="roster-actions-bar">
             <p class="payment-meta" style="margin:0">${enrolled.length} alumno${enrolled.length === 1 ? '' : 's'} inscrito${enrolled.length === 1 ? '' : 's'} en esta clase.</p>
@@ -2499,7 +2545,6 @@ function renderTeacherAttendance() {
           </div>
           ${rosterMarkup(item.id, item.date)}
           ${historyOnly.length ? `<p class="modal-note">${historyOnly.length} alumno${historyOnly.length === 1 ? '' : 's'} con asistencia registrada en esta sesión ya no está${historyOnly.length === 1 ? '' : 'n'} inscrito${historyOnly.length === 1 ? '' : 's'} en la clase: ${escapeHtml(historyOnly.map((id) => studentById(id)?.name || id).join(', '))}. Su registro se conserva y no se modifica desde esta lista.</p>` : ''}
-          ${!live ? '<p class="modal-note">La asistencia se habilita el día de esta clase.</p>' : ''}
           <div class="form-actions"><button class="button button--red" type="submit" ${canSubmit ? '' : 'disabled'}>Guardar asistencia</button></div>
         </form>
       </article>
@@ -2933,7 +2978,7 @@ function scanClasses() {
   const student = currentStudent();
   if (!student) return [];
   const teacher = currentTeacher();
-  return classesForStudent(student.id).filter((item) => item.day === 'Hoy' &&
+  return classesForStudent(student.id).filter((item) =>
     (activeRole !== 'teacher' || (teacher && item.id === activeClassId && ((item.teacherId && item.teacherId === teacher.id) || item.teacher === teacher.name))));
 }
 
@@ -2945,15 +2990,17 @@ function openScanModal() {
     return;
   }
   const classes = scanClasses();
+  const activeClass = findClass(activeClassId) || scheduledClasses()[0];
+  const sessionDate = activeClass?.date ? dayKey(activeClass.date) : dayKey(TODAY);
   openModal({
     title: 'Escanear carnet',
     eyebrow: 'Asistencia QR · Simulación',
     body: `
       <div class="scan-stage"><span class="scan-line"></span><p class="scan-copy">Alineá el código dentro del recuadro</p></div>
       <p class="modal-note">${isSupabaseConnected ? 'Modo conectado' : 'Demo local'}: no se activa la cámara. El botón simula la lectura del carnet ${escapeHtml(student.id)}.</p>
-      ${classes.length ? `<label class="field"><span>Clase de hoy · ${escapeHtml(student.name)}</span><select id="scanClass">${classes.map((item) => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.name)} · ${escapeHtml(item.time)}</option>`).join('')}</select></label>
-      <div class="form-actions"><button class="button button--red" type="button" id="simulateScan" data-session-date="${escapeHtml(dayKey(TODAY))}">Simular lectura</button></div>`
-        : `<p class="modal-note">${escapeHtml(student.name.split(' ')[0])} no tiene una clase asignada para hoy en esta sesión. No se registrará ninguna asistencia.</p>`}
+      ${classes.length ? `<label class="field"><span>Clase · ${escapeHtml(student.name)}</span><select id="scanClass">${classes.map((item) => `<option value="${escapeHtml(item.id)}" ${item.id === activeClassId ? 'selected' : ''}>${escapeHtml(item.name)} · ${escapeHtml(item.time)} (${escapeHtml(item.day)})</option>`).join('')}</select></label>
+      <div class="form-actions"><button class="button button--red" type="button" id="simulateScan" data-session-date="${escapeHtml(sessionDate)}">Simular lectura</button></div>`
+        : `<p class="modal-note">${escapeHtml(student.name.split(' ')[0])} no tiene una clase asignada en esta sesión. No se registrará ninguna asistencia.</p>`}
     `
   });
 }
@@ -3389,6 +3436,20 @@ function resetDemo() {
 
 function handleModalClick(event) {
   if (event.target.closest('#confirmWebMcp')) return resolveWebMcp(true);
+  const randomizeMoodBtn = event.target.closest('[data-randomize-mood]');
+  if (randomizeMoodBtn) {
+    const pool = MUSIC_MOODS.filter((m) => m.id !== currentSelectedMoodId);
+    const chosen = pool[Math.floor(Math.random() * pool.length)] || MUSIC_MOODS[0];
+    currentSelectedMoodId = chosen.id;
+    const input = elements.modalLayer.querySelector('#selectedMoodIdInput');
+    if (input) input.value = chosen.id;
+    elements.modalLayer.querySelectorAll('[data-select-mood]').forEach((btn) => {
+      const selected = btn.dataset.selectMood === chosen.id;
+      btn.classList.toggle('is-selected', selected);
+      btn.setAttribute('aria-checked', String(selected));
+    });
+    return;
+  }
   const selectMoodBtn = event.target.closest('[data-select-mood]');
   if (selectMoodBtn) {
     const moodId = selectMoodBtn.dataset.selectMood;
@@ -3891,7 +3952,7 @@ function registerWebMcpTools() {
       properties: {
         studentId: { type: 'string' },
         amount: { type: 'number', exclusiveMinimum: 0 },
-        method: { type: 'string', enum: ['POS', 'Transferencia', 'Efectivo', 'Depósito'] }
+        method: { type: 'string', enum: ['Transferencia', 'Efectivo', 'Tarjeta'] }
       },
       required: ['studentId', 'amount', 'method'],
       additionalProperties: false
@@ -4094,7 +4155,7 @@ function handleContentClick(event) {
       renderAndFocus();
       showToast(
         nextStatus === 'accepted' ? '¡Agregada a la playlist! 🎧' : 'Sugerencia pendiente',
-        `"${item.song}" ${nextStatus === 'accepted' ? 'quedó lista para la clase' : 'volvió a pendientes'}.`
+        `"${item.song || item.artist || 'Rola'}" ${nextStatus === 'accepted' ? 'quedó lista para la clase' : 'volvió a pendientes'}.`
       );
     }
     return;
@@ -4110,7 +4171,7 @@ function handleContentClick(event) {
       renderAndFocus();
       showToast(
         item.liked ? '¡Te gustó esta rola! ❤️' : 'Reacción retirada',
-        `Reacción actualizada para "${item.song}".`
+        `Reacción actualizada para "${item.song || item.artist || 'Rola'}".`
       );
     }
     return;

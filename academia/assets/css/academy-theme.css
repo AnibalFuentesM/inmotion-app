@@ -2251,6 +2251,33 @@
 }
 
 /* Selector de Etiquetas en Modal */
+.mood-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 2px;
+}
+
+.mood-random-btn {
+  background: none;
+  border: none;
+  padding: 2px 8px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--muted);
+  cursor: pointer;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transition: color 0.15s ease, background-color 0.15s ease;
+}
+
+.mood-random-btn:hover {
+  color: var(--red);
+  background: rgba(226, 12, 20, 0.06);
+}
+
 .music-mood-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
