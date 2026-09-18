@@ -19,7 +19,8 @@ const icons = {
   scan: '<path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3"/><rect x="8" y="8" width="8" height="8" rx="1"/>',
   users: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>',
   money: '<rect x="3" y="6" width="18" height="12" rx="2"/><path d="M7 14h.01M17 10h.01"/><circle cx="12" cy="12" r="2.3"/>',
-  list: '<path d="M8 6h13M8 12h13M8 18h13"/><path d="M3 6h.01M3 12h.01M3 18h.01"/>'
+  list: '<path d="M8 6h13M8 12h13M8 18h13"/><path d="M3 6h.01M3 12h.01M3 18h.01"/>',
+  music: '<path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>'
 };
 
 const roleConfig = {
@@ -743,6 +744,75 @@ function createBasePayments() {
   });
 }
 
+const MUSIC_MOODS = [
+  { id: 'sed', emoji: '🍺', label: 'Porque me da sed', detail: 'Para bailar sabroso y con sed de la peligrosa' },
+  { id: 'duela', emoji: '💔', label: "Pa' que me duela", detail: 'Despecho puro para cantarla con el alma' },
+  { id: 'perdio', emoji: '💅', label: 'Que vea lo que se perdió', detail: 'Actitud 10/10 y empoderamiento en la pista' },
+  { id: 'fuego', emoji: '🔥', label: 'Puro fuego / Es genial', detail: 'Para subir la energía y romper la pista' },
+  { id: 'piso', emoji: '💃', label: 'Para pulir el piso', detail: 'Ritmo tan pegajoso que nadie se puede sentar' },
+  { id: 'velocidad', emoji: '⚡', label: 'Para meterle velocidad', detail: 'Reto de vueltas rápidas y paso libre' }
+];
+
+function findMusicMood(moodId) {
+  return MUSIC_MOODS.find((m) => m.id === moodId) || MUSIC_MOODS[0];
+}
+
+function createBaseMusicSuggestions() {
+  return [
+    {
+      id: 'sug-1',
+      studentId: 'IM-0241',
+      studentName: 'Valeria Rosales',
+      classId: 'bachata-inter',
+      className: 'Bachata Intermedio',
+      teacherName: 'Alex Aquino',
+      song: 'Dile al Amor',
+      artist: 'Aventura',
+      moodId: 'duela',
+      moodEmoji: '💔',
+      moodLabel: "Pa' que me duela",
+      note: 'Profe, imagínate esta para el combo final con vuelta sostenida.',
+      status: 'accepted',
+      liked: true,
+      createdAt: dayKey(previousDateFor(3))
+    },
+    {
+      id: 'sug-2',
+      studentId: 'IM-0241',
+      studentName: 'Valeria Rosales',
+      classId: 'bachata-inter',
+      className: 'Bachata Intermedio',
+      teacherName: 'Alex Aquino',
+      song: 'Propuesta Indecente',
+      artist: 'Romeo Santos',
+      moodId: 'sed',
+      moodEmoji: '🍺',
+      moodLabel: 'Porque me da sed',
+      note: 'Para entrar en calor antes del social del viernes.',
+      status: 'pending',
+      liked: false,
+      createdAt: dayKey(TODAY)
+    },
+    {
+      id: 'sug-3',
+      studentId: 'IM-0218',
+      studentName: 'Carlos Gómez',
+      classId: 'bachata-inter',
+      className: 'Bachata Intermedio',
+      teacherName: 'Alex Aquino',
+      song: 'Sobredosis',
+      artist: 'Romeo Santos ft. Ozuna',
+      moodId: 'fuego',
+      moodEmoji: '🔥',
+      moodLabel: 'Puro fuego / Es genial',
+      note: '¡El beat está tremendo para marcar los footworks!',
+      status: 'accepted',
+      liked: true,
+      createdAt: dayKey(previousDateFor(3))
+    }
+  ];
+}
+
 // El estado inicial se arma en cada llamada: construido una sola vez al cargar,
 // una pestaña abierta desde el mes pasado reiniciaba la demo con fechas viejas.
 function createDefaultState() {
@@ -757,7 +827,8 @@ function createDefaultState() {
       { studentId: 'IM-0194', classId: 'bachata-inter', at: dayKey(previousDateFor(3)) },
       { studentId: 'IM-0241', classId: 'kpop-teens', at: dayKey(previousDateFor(4)) },
       { studentId: 'IM-0262', classId: 'latino-kids', at: dayKey(previousDateFor(6)) }
-    ]
+    ],
+    musicSuggestions: createBaseMusicSuggestions()
   };
 }
 
@@ -879,6 +950,34 @@ function sanitizeAttendance(raw, studentIds) {
   return { studentId, classId, at };
 }
 
+function sanitizeMusicSuggestion(raw) {
+  if (!isPlainObject(raw)) return null;
+  const id = cleanText(raw.id, 24);
+  const song = cleanText(raw.song, 80);
+  const artist = cleanText(raw.artist, 80);
+  const classId = cleanText(raw.classId, 40);
+  if (!id || !song || !artist || !classId) return null;
+
+  const mood = findMusicMood(raw.moodId);
+  return {
+    id,
+    studentId: cleanText(raw.studentId, 24) || DEMO_STUDENT_ID,
+    studentName: cleanText(raw.studentName, 60) || 'Alumno',
+    classId,
+    className: cleanText(raw.className, 60) || findClass(classId)?.name || 'Clase',
+    teacherName: cleanText(raw.teacherName, 60) || findClass(classId)?.teacher || TEACHER_NAME,
+    song,
+    artist,
+    moodId: mood.id,
+    moodEmoji: mood.emoji,
+    moodLabel: mood.label,
+    note: cleanText(raw.note, 160),
+    status: raw.status === 'accepted' ? 'accepted' : 'pending',
+    liked: Boolean(raw.liked),
+    createdAt: isValidDayKey(raw.createdAt) ? raw.createdAt : dayKey(TODAY)
+  };
+}
+
 function sanitizeState(saved) {
   const dropped = { students: 0, payments: 0, attendance: 0 };
 
@@ -941,6 +1040,17 @@ function sanitizeState(saved) {
     usedIds.add(payment.id);
   });
 
+  const rawSuggestions = Array.isArray(saved.musicSuggestions) ? saved.musicSuggestions : [];
+  const musicSuggestions = [];
+  const seenSugIds = new Set();
+  rawSuggestions.forEach((raw) => {
+    const sug = sanitizeMusicSuggestion(raw);
+    if (!sug || seenSugIds.has(sug.id)) return;
+    seenSugIds.add(sug.id);
+    musicSuggestions.push(sug);
+  });
+  const usableMusicSuggestions = musicSuggestions.length ? musicSuggestions : createBaseMusicSuggestions();
+
   const total = dropped.students + dropped.payments + dropped.attendance;
   if (total) recoveryReport = { total, ...dropped };
 
@@ -949,7 +1059,8 @@ function sanitizeState(saved) {
     role: Object.keys(roleConfig).includes(saved.role) ? saved.role : null,
     students: usableStudents,
     payments,
-    attendanceLog
+    attendanceLog,
+    musicSuggestions: usableMusicSuggestions
   };
 }
 
@@ -1170,6 +1281,295 @@ function scheduleList(classes = scheduledClasses()) {
   `).join('')}</div>`;
 }
 
+let currentSelectedMoodId = 'sed';
+let musicTeacherFilter = 'all';
+
+function nextMusicSuggestionId() {
+  const nums = (state?.musicSuggestions || [])
+    .map((s) => Number(String(s.id).replace(/\D/g, '')))
+    .filter(Number.isFinite);
+  const nextNum = nums.length ? Math.max(...nums) + 1 : 1;
+  return `sug-${nextNum}`;
+}
+
+function studentMusicSection() {
+  const suggestions = (state.musicSuggestions || []).filter((s) => s.studentId === DEMO_STUDENT_ID);
+
+  return `
+    <section class="section music-section">
+      <div class="section-head">
+        <div>
+          <span class="eyebrow">La Rockola In Motion</span>
+          <h2>Pedí tu rola para la clase</h2>
+          <p>¿Querés bailar algo especial? Tirale una sugerencia a tus maestros con tu motivo favorito.</p>
+        </div>
+        <button class="button button--red button--small" type="button" data-open-music-modal>
+          <span>Pedí tu rola</span> <span aria-hidden="true">🎶</span>
+        </button>
+      </div>
+
+      ${suggestions.length === 0 ? `
+        <div class="empty-state">
+          <strong>Sin rolas sugeridas todavía</strong>
+          <p>Aún no le has pedido ninguna canción a tus maestros. ¡Elegí una para bailar con todo!</p>
+          <button class="button button--light button--small" type="button" data-open-music-modal style="margin-top:12px">
+            Sugerir mi primera rola 🎶
+          </button>
+        </div>
+      ` : `
+        <div class="music-cards-grid">
+          ${suggestions.map((item) => `
+            <article class="music-card ${item.status === 'accepted' ? 'is-accepted' : ''}">
+              <div class="music-card-header">
+                <span class="mood-badge mood-badge--${escapeHtml(item.moodId)}">
+                  <span class="mood-emoji" aria-hidden="true">${escapeHtml(item.moodEmoji)}</span>
+                  <span>${escapeHtml(item.moodLabel)}</span>
+                </span>
+                <span class="music-status-pill ${item.status === 'accepted' ? 'is-accepted' : 'is-pending'}">
+                  ${item.status === 'accepted' ? '🎧 En playlist' : '⏳ Enviada'}
+                </span>
+              </div>
+              <div class="music-card-body">
+                <h3 class="music-song-title">${escapeHtml(item.song)}</h3>
+                <p class="music-song-artist">${escapeHtml(item.artist)}</p>
+                <div class="music-class-meta">
+                  <span>${escapeHtml(item.className)}</span> · <small>Profe ${escapeHtml(item.teacherName)}</small>
+                </div>
+                ${item.note ? `<p class="music-card-note">“${escapeHtml(item.note)}”</p>` : ''}
+              </div>
+              <div class="music-card-footer">
+                ${item.liked ? '<span class="music-badge-liked" title="Al maestro le encantó tu sugerencia">❤️ Al profe le gustó</span>' : '<span></span>'}
+                <a class="music-listen-link" href="https://www.youtube.com/results?search_query=${encodeURIComponent(item.artist + ' ' + item.song)}" target="_blank" rel="noopener noreferrer" aria-label="Escuchar ${escapeHtml(item.song)} en YouTube">
+                  Escuchar <span>↗</span>
+                </a>
+              </div>
+            </article>
+          `).join('')}
+        </div>
+      `}
+    </section>
+  `;
+}
+
+function teacherMusicSection() {
+  const allSuggestions = state.musicSuggestions || [];
+  const teacherClassIds = teacherClasses().map((c) => c.id);
+  const forTeacher = allSuggestions.filter((s) => s.teacherName === TEACHER_NAME || teacherClassIds.includes(s.classId));
+
+  const filtered = musicTeacherFilter === 'pending'
+    ? forTeacher.filter((s) => s.status === 'pending')
+    : musicTeacherFilter === 'accepted'
+      ? forTeacher.filter((s) => s.status === 'accepted')
+      : forTeacher;
+
+  const pendingCount = forTeacher.filter((s) => s.status === 'pending').length;
+
+  return `
+    <section class="section music-section">
+      <div class="section-head">
+        <div>
+          <span class="eyebrow">La Rockola de la Clase</span>
+          <h2>Rolas sugeridas por alumnos</h2>
+          <p>Canciones que tus alumnos quieren bailar en clase con sus dedicatorias y motivos.</p>
+        </div>
+        <div class="filter-group" role="group" aria-label="Filtrar rolas de alumnos">
+          <button type="button" class="filter-chip ${musicTeacherFilter === 'all' ? 'is-active' : ''}" data-teacher-music-filter="all">
+            Todas (${forTeacher.length})
+          </button>
+          <button type="button" class="filter-chip ${musicTeacherFilter === 'pending' ? 'is-active' : ''}" data-teacher-music-filter="pending">
+            Pendientes (${pendingCount})
+          </button>
+          <button type="button" class="filter-chip ${musicTeacherFilter === 'accepted' ? 'is-active' : ''}" data-teacher-music-filter="accepted">
+            En playlist (${forTeacher.length - pendingCount})
+          </button>
+        </div>
+      </div>
+
+      ${filtered.length === 0 ? `
+        <div class="empty-state">
+          <strong>Sin rolas en esta lista</strong>
+          <p>No hay canciones con el filtro seleccionado.</p>
+        </div>
+      ` : `
+        <div class="music-cards-grid music-cards-grid--teacher">
+          ${filtered.map((item) => `
+            <article class="music-card ${item.status === 'accepted' ? 'is-accepted' : ''}">
+              <div class="music-card-header">
+                <div class="music-student-info">
+                  <span class="avatar-mini" aria-hidden="true">${escapeHtml(initials(item.studentName))}</span>
+                  <div>
+                    <strong>${escapeHtml(item.studentName)}</strong>
+                    <small>${escapeHtml(item.className)}</small>
+                  </div>
+                </div>
+                <span class="mood-badge mood-badge--${escapeHtml(item.moodId)}">
+                  <span class="mood-emoji" aria-hidden="true">${escapeHtml(item.moodEmoji)}</span>
+                  <span>${escapeHtml(item.moodLabel)}</span>
+                </span>
+              </div>
+
+              <div class="music-card-body">
+                <h3 class="music-song-title">${escapeHtml(item.song)}</h3>
+                <p class="music-song-artist">${escapeHtml(item.artist)}</p>
+                ${item.note ? `<p class="music-card-note">“${escapeHtml(item.note)}”</p>` : ''}
+              </div>
+
+              <div class="music-card-footer music-card-footer--teacher">
+                <button 
+                  type="button" 
+                  class="button button--small ${item.status === 'accepted' ? 'button--light is-accepted-btn' : 'button--red'}" 
+                  data-toggle-music-status="${escapeHtml(item.id)}"
+                  title="${item.status === 'accepted' ? 'Quitar de la playlist' : 'Aprobar para la clase'}"
+                >
+                  ${item.status === 'accepted' ? '✓ En playlist' : '🎧 Sumar a playlist'}
+                </button>
+
+                <button 
+                  type="button" 
+                  class="icon-action-btn ${item.liked ? 'is-liked' : ''}" 
+                  data-toggle-music-like="${escapeHtml(item.id)}"
+                  aria-label="${item.liked ? 'Quitar like' : 'Dar me gusta'}"
+                  title="${item.liked ? 'Te gustó' : 'Dar me gusta'}"
+                >
+                  <span aria-hidden="true">${item.liked ? '❤️' : '🤍'}</span>
+                </button>
+
+                <a 
+                  class="button button--light button--small" 
+                  href="https://www.youtube.com/results?search_query=${encodeURIComponent(item.artist + ' ' + item.song)}" 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  title="Escuchar en YouTube"
+                >
+                  Escuchar ↗
+                </a>
+              </div>
+            </article>
+          `).join('')}
+        </div>
+      `}
+    </section>
+  `;
+}
+
+function openMusicSuggestionModal(preselectedClassId = null) {
+  const studentClasses = classesForStudent(DEMO_STUDENT_ID);
+  const options = studentClasses.length ? studentClasses : classData;
+  const defaultClassId = preselectedClassId || options[0]?.id || 'bachata-inter';
+  currentSelectedMoodId = 'sed';
+
+  openModal({
+    title: 'Pedí tu rola a la pista',
+    eyebrow: 'La Rockola In Motion 🎶',
+    body: `
+      <form id="musicSuggestionForm" class="music-suggestion-form">
+        <p class="modal-note">¿Qué canción querés bailar en la próxima clase? Elegí la vibra, poné el motivo y mandásela directo a tu maestro.</p>
+        
+        <label class="field">
+          <span>¿Para qué clase?</span>
+          <select name="classId" id="musicClassId" required>
+            ${options.map((item) => `
+              <option value="${escapeHtml(item.id)}" ${item.id === defaultClassId ? 'selected' : ''}>
+                ${escapeHtml(item.name)} · ${escapeHtml(item.teacher)}
+              </option>
+            `).join('')}
+          </select>
+        </label>
+
+        <div class="split-fields">
+          <label class="field">
+            <span>Nombre de la canción</span>
+            <input type="text" name="song" id="musicSongInput" placeholder="Ej. El Amor de Mi Tierra" required />
+          </label>
+          <label class="field">
+            <span>Artista / Grupo</span>
+            <input type="text" name="artist" id="musicArtistInput" placeholder="Ej. Carlos Vives" required />
+          </label>
+        </div>
+
+        <div class="field">
+          <span>¿Cuál es el motivo? (Elegí tu vibra)</span>
+          <div class="music-mood-grid" role="radiogroup" aria-label="Elegir motivo">
+            ${MUSIC_MOODS.map((m) => `
+              <button 
+                type="button" 
+                class="mood-chip ${m.id === currentSelectedMoodId ? 'is-selected' : ''}" 
+                data-select-mood="${escapeHtml(m.id)}"
+                role="radio"
+                aria-checked="${m.id === currentSelectedMoodId ? 'true' : 'false'}"
+              >
+                <span class="mood-chip-emoji">${escapeHtml(m.emoji)}</span>
+                <span class="mood-chip-text">
+                  <strong>${escapeHtml(m.label)}</strong>
+                  <small>${escapeHtml(m.detail)}</small>
+                </span>
+              </button>
+            `).join('')}
+          </div>
+          <input type="hidden" name="moodId" id="selectedMoodIdInput" value="${escapeHtml(currentSelectedMoodId)}" />
+        </div>
+
+        <label class="field">
+          <span>Mensajito al profe (opcional)</span>
+          <input type="text" name="note" id="musicNoteInput" placeholder="Ej. ¡Profe, esta para el social o el combo final!" maxlength="140" />
+        </label>
+
+        <div class="form-actions">
+          <button class="button button--light" type="button" data-close-modal>Cancelar</button>
+          <button class="button button--red" type="submit">
+            <span>Tirar rola a la pista</span> <span aria-hidden="true">🎶</span>
+          </button>
+        </div>
+      </form>
+    `
+  });
+}
+
+function handleMusicSuggestionSubmit(event) {
+  event.preventDefault();
+  const form = event.target;
+  const formData = new FormData(form);
+  const classId = formData.get('classId');
+  const song = (formData.get('song') || '').trim();
+  const artist = (formData.get('artist') || '').trim();
+  const moodId = formData.get('moodId') || 'sed';
+  const note = (formData.get('note') || '').trim();
+
+  if (!song || !artist) {
+    showToast('Faltan datos', 'Por favor ingresá la canción y el artista.');
+    return;
+  }
+
+  const mood = findMusicMood(moodId);
+  const targetClass = findClass(classId) || scheduledClasses()[0];
+  const student = studentById(DEMO_STUDENT_ID);
+
+  const newSuggestion = {
+    id: nextMusicSuggestionId(),
+    studentId: DEMO_STUDENT_ID,
+    studentName: student?.name || 'Valeria Rosales',
+    classId: targetClass.id,
+    className: targetClass.name,
+    teacherName: targetClass.teacher,
+    song,
+    artist,
+    moodId: mood.id,
+    moodEmoji: mood.emoji,
+    moodLabel: mood.label,
+    note,
+    status: 'pending',
+    liked: false,
+    createdAt: dayKey(TODAY)
+  };
+
+  const nextSuggestions = [newSuggestion, ...(state.musicSuggestions || [])];
+  persistOrWarn({ ...state, musicSuggestions: nextSuggestions });
+
+  closeModal();
+  renderAndFocus();
+  showToast('¡Rola enviada a la pista! 🎶', `Le sugeriste "${song}" al profe ${targetClass.teacher} con motivo "${mood.emoji} ${mood.label}".`);
+}
+
 function renderStudentHome() {
   const student = studentById(DEMO_STUDENT_ID);
   const plan = planForStudent(DEMO_STUDENT_ID);
@@ -1250,6 +1650,8 @@ function renderStudentHome() {
         <p class="payment-meta">${escapeHtml(attendanceNote)}</p>
       </article>
     </section>
+
+    ${studentMusicSection()}
   `;
 }
 
@@ -1785,6 +2187,7 @@ function renderTeacherHome() {
       </div>
     </section>
     <section class="section"><div class="section-head"><div><h2>Tu agenda</h2><p>Próximas clases asignadas.</p></div><button class="text-button" type="button" data-go="agenda">Ver semana →</button></div>${teacherCards()}</section>
+    ${teacherMusicSection()}
   `;
 }
 
@@ -1793,6 +2196,7 @@ function renderTeacherAgenda() {
     <header class="page-heading"><div><p class="eyebrow">Agenda docente</p><h1>Una semana<br/>en movimiento.</h1><p>Clases asignadas a Alex Aquino en esta demostración.</p></div></header>
     ${weekStrip(teacherClasses())}
     <section class="section">${teacherCards()}</section>
+    ${teacherMusicSection()}
   `;
 }
 
@@ -2334,6 +2738,7 @@ function openClassDetail(classId) {
       </div>
       <p class="modal-note">Esta pantalla es de consulta. La inscripción a una clase la administra la academia; el prototipo no habilita reservas por sesión.</p>
       <div class="form-actions">
+        ${activeRole === 'student' ? `<button class="button button--red" type="button" data-open-music-modal="${escapeHtml(item.id)}">Pedir rola para esta clase 🎶</button>` : ''}
         <button class="button button--light" type="button" data-close-modal>Cerrar</button>
       </div>
     `
@@ -2570,6 +2975,23 @@ function resetDemo() {
 
 function handleModalClick(event) {
   if (event.target.closest('#confirmWebMcp')) return resolveWebMcp(true);
+  const selectMoodBtn = event.target.closest('[data-select-mood]');
+  if (selectMoodBtn) {
+    const moodId = selectMoodBtn.dataset.selectMood;
+    currentSelectedMoodId = moodId;
+    const input = elements.modalLayer.querySelector('#selectedMoodIdInput');
+    if (input) input.value = moodId;
+    elements.modalLayer.querySelectorAll('[data-select-mood]').forEach((btn) => {
+      const selected = btn === selectMoodBtn;
+      btn.classList.toggle('is-selected', selected);
+      btn.setAttribute('aria-checked', String(selected));
+    });
+    return;
+  }
+  const openMusicFromModal = event.target.closest('[data-open-music-modal]');
+  if (openMusicFromModal) {
+    return openMusicSuggestionModal(openMusicFromModal.dataset.openMusicModal || null);
+  }
   const studentClasses = event.target.closest('[data-student-classes]');
   if (studentClasses) return openStudentClassesModal(studentClasses.dataset.studentClasses);
   if (event.target.closest('[data-close-modal]')) return closeModal();
@@ -2581,6 +3003,7 @@ function handleModalSubmit(event) {
   if (event.target.id === 'paymentForm') handlePaymentSubmit(event);
   if (event.target.id === 'studentForm') handleStudentSubmit(event);
   if (event.target.id === 'enrollmentForm') handleEnrollmentSubmit(event);
+  if (event.target.id === 'musicSuggestionForm') handleMusicSuggestionSubmit(event);
 }
 
 // ---------------------------------------------------------------------------
@@ -2930,6 +3353,51 @@ function handleContentClick(event) {
   if (find('[data-open-payment]')) return openPaymentModal();
   if (find('[data-open-student]')) return openNewStudentModal();
   if (find('[data-student-payment]')) return openStudentPayment();
+
+  const toggleMusicStatusBtn = find('[data-toggle-music-status]');
+  if (toggleMusicStatusBtn) {
+    const id = toggleMusicStatusBtn.dataset.toggleMusicStatus;
+    const item = (state.musicSuggestions || []).find((s) => s.id === id);
+    if (item) {
+      const nextStatus = item.status === 'accepted' ? 'pending' : 'accepted';
+      item.status = nextStatus;
+      persistOrWarn({ ...state });
+      renderAndFocus();
+      showToast(
+        nextStatus === 'accepted' ? '¡Agregada a la playlist! 🎧' : 'Sugerencia pendiente',
+        `"${item.song}" ${nextStatus === 'accepted' ? 'quedó lista para la clase' : 'volvió a pendientes'}.`
+      );
+    }
+    return;
+  }
+
+  const toggleMusicLikeBtn = find('[data-toggle-music-like]');
+  if (toggleMusicLikeBtn) {
+    const id = toggleMusicLikeBtn.dataset.toggleMusicLike;
+    const item = (state.musicSuggestions || []).find((s) => s.id === id);
+    if (item) {
+      item.liked = !item.liked;
+      persistOrWarn({ ...state });
+      renderAndFocus();
+      showToast(
+        item.liked ? '¡Te gustó esta rola! ❤️' : 'Reacción retirada',
+        `Reacción actualizada para "${item.song}".`
+      );
+    }
+    return;
+  }
+
+  const openMusicModalBtn = find('[data-open-music-modal]');
+  if (openMusicModalBtn) {
+    return openMusicSuggestionModal(openMusicModalBtn.dataset.openMusicModal || null);
+  }
+
+  const teacherMusicFilterBtn = find('[data-teacher-music-filter]');
+  if (teacherMusicFilterBtn) {
+    musicTeacherFilter = teacherMusicFilterBtn.dataset.teacherMusicFilter;
+    renderAndFocus();
+    return;
+  }
 
   const attendance = find('[data-take-attendance]');
   if (attendance) return openClassAttendance(attendance.dataset.takeAttendance);
