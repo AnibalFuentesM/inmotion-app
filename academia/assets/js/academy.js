@@ -1676,7 +1676,7 @@ function memberCardMarkup(student) {
           <div class="member-qr-frame">
             ${qrMarkup(student.id)}
           </div>
-          <span class="member-qr-note">Recepción</span>
+          <span class="member-qr-note">QR de demostración</span>
         </div>
       </div>
     </article>`;

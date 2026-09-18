@@ -409,12 +409,13 @@
   display: grid;
   grid-template-columns: minmax(340px, 1.25fr) minmax(280px, 0.75fr);
   gap: 24px;
-  align-items: stretch;
+  align-items: start;
 }
 
 .member-card {
   position: relative;
   min-height: auto;
+  align-self: start;
   padding: 26px 28px;
   overflow: hidden;
   border-radius: 20px;
@@ -589,11 +590,12 @@
   display: block;
   margin-top: 6px;
   font-size: 0.62rem;
-  font-weight: 600;
-  color: rgba(255, 255, 255, 0.6);
-  letter-spacing: 0.05em;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.72);
+  letter-spacing: 0.04em;
   text-transform: uppercase;
   text-align: center;
+  white-space: nowrap;
 }
 
 /* Ficha informativa de uso del carné */
@@ -1727,7 +1729,13 @@
     border-radius: 10px;
   }
   .member-qr-note {
-    font-size: 0.58rem;
+    font-size: 0.55rem;
+    font-weight: 700;
+    color: rgba(255, 255, 255, 0.72);
+    letter-spacing: 0.02em;
+    line-height: 1.2;
+    max-width: 94px;
+    white-space: normal;
   }
   .member-info-card {
     padding: 18px;
