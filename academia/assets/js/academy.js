@@ -1,3 +1,12 @@
+import {
+  fetchRemoteClasses,
+  fetchRemoteStudents,
+  fetchRemoteAttendance,
+  syncRemoteAttendance,
+  syncRemotePayment,
+  seedRemoteStudentsIfEmpty
+} from './supabase.js';
+
 const STORAGE_KEY = 'inmotion-academy-demo-v1';
 const STATE_VERSION = 3;
 let TODAY = new Date();
@@ -54,13 +63,13 @@ const roleConfig = {
   }
 };
 
-const classData = [
+let classData = [
   { id: 'bachata-inter', weekday: 3, time: '6:00 PM', name: 'Bachata Intermedio', level: 'Nivel intermedio', teacher: 'Alex Aquino', room: 'Salón', enrolled: 14, capacity: 18 },
   { id: 'salsa-basico', weekday: 3, time: '7:15 PM', name: 'Salsa Principiantes', level: 'Nivel inicial', teacher: 'Luis Ramírez', room: 'Salón', enrolled: 9, capacity: 20 },
   { id: 'kpop-teens', weekday: 4, time: '5:00 PM', name: 'K-Pop Teens', level: '12 a 17 años', teacher: 'Majo Borrayo', room: 'Salón', enrolled: 18, capacity: 18 },
   { id: 'latino', weekday: 4, time: '7:00 PM', name: 'Baile Latino', level: 'Todos los niveles', teacher: 'Alex Aquino', room: 'Salón', enrolled: 12, capacity: 20 },
   { id: 'latino-kids', weekday: 6, time: '10:00 AM', name: 'Baile Latino Kids', level: '7 a 11 años', teacher: 'Sofía Castillo', room: 'Salón', enrolled: 7, capacity: 12 },
-  { id: 'salsa-on2', weekday: 6, time: '11:30 AM', name: 'Salsa On2', level: 'Nivel avanzado', teacher: 'Leo Méndez', room: 'Salón', enrolled: 10, capacity: 14 }
+  { id: 'salsa-casino', weekday: 6, time: '11:30 AM', name: 'Salsa Casino', level: 'Nivel avanzado', teacher: 'Leo Méndez', room: 'Salón', enrolled: 10, capacity: 14 }
 ];
 
 // ---------------------------------------------------------------------------
@@ -114,7 +123,7 @@ const SCHEDULE_TRACKS = {
   level4: 'Nivel 4 Salsa y Bachata',
   level3: 'Nivel 3 Salsa y Bachata',
   salsaCubana: 'Salsa Cubana',
-  salsaOn2: 'Salsa On2',
+  salsaCasino: 'Salsa Casino',
   teens: 'Teens',
   kpop: 'K-Pop'
 };
@@ -129,7 +138,7 @@ const SCHEDULE_COLORS = {
   teens: '#db2777',
   salsaCubana: '#0891b2',
   kpop: '#059669',
-  salsaOn2: '#7c3aed'
+  salsaCasino: '#7c3aed'
 };
 
 const SCHEDULE_CLASSES = [
@@ -150,7 +159,7 @@ const SCHEDULE_CLASSES = [
   { id: 'teens-latino-sat', day: 'sabado', slot: '11am', time: '11:00 am a 12:00 pm', name: 'Latino Teens', track: 'teens', category: 'teen', color: SCHEDULE_COLORS.teens },
   { id: 'cubana-sat', day: 'sabado', slot: '4pm', time: '4:00 a 5:30 pm', name: 'Salsa Cubana (Rueda de Casino)', track: 'salsaCubana', category: 'weekend', color: SCHEDULE_COLORS.salsaCubana },
   { id: 'kpop-sun', day: 'domingo', slot: '10am', time: '10:00 a 11:00 am', name: 'K-Pop', track: 'kpop', category: 'weekend', color: SCHEDULE_COLORS.kpop },
-  { id: 'on2-sun', day: 'domingo', slot: '4pm', time: '4:00 a 5:30 pm', name: 'Salsa On2', track: 'salsaOn2', category: 'weekend', color: SCHEDULE_COLORS.salsaOn2 }
+  { id: 'casino-sun', day: 'domingo', slot: '4pm', time: '4:00 a 5:30 pm', name: 'Salsa Casino', track: 'salsaCasino', category: 'weekend', color: SCHEDULE_COLORS.salsaCasino }
 ];
 
 
@@ -665,6 +674,12 @@ function recordAttendance(classId, studentIds, sessionDate, { replaceDay = false
   studentIds.forEach((studentId) => {
     if (nextState.attendanceLog.some((entry) => sameSession(entry) && entry.studentId === studentId)) return;
     nextState.attendanceLog.push({ studentId, classId, at: sessionDate });
+    syncRemoteAttendance({
+      studentCardId: studentId,
+      classId,
+      sessionDate,
+      method: replaceDay ? 'manual' : 'qr_scan'
+    }).catch(() => {});
   });
   persistState(nextState);
 }
@@ -679,10 +694,10 @@ const DEMO_STUDENT_ID = 'IM-0241';
 const baseStudentSeed = [
   { id: 'IM-0241', name: 'Valeria Ruiz', initials: 'VR', plan: 'Plan 8 clases', phone: '5555-0142', status: 'Pendiente', level: 'Nivel intermedio', classIds: ['bachata-inter', 'kpop-teens'], guardianId: GUARDIAN_ID },
   { id: 'IM-0262', name: 'Diego Ruiz', initials: 'DR', plan: 'Plan 4 clases', phone: '5555-0177', status: 'Al día', level: '7 a 11 años', classIds: ['latino-kids'], guardianId: GUARDIAN_ID },
-  { id: 'IM-0218', name: 'Luis Méndez', initials: 'LM', plan: 'Plan ilimitado', phone: '5555-0188', status: 'Al día', level: 'Nivel avanzado', classIds: ['salsa-on2', 'bachata-inter'] },
+  { id: 'IM-0218', name: 'Luis Méndez', initials: 'LM', plan: 'Plan ilimitado', phone: '5555-0188', status: 'Al día', level: 'Nivel avanzado', classIds: ['salsa-casino', 'bachata-inter'] },
   { id: 'IM-0194', name: 'Andrea Pérez', initials: 'AP', plan: 'Plan 8 clases', phone: '5555-0120', status: 'Al día', level: 'Nivel intermedio', classIds: ['bachata-inter', 'latino'] },
   { id: 'IM-0250', name: 'Santiago Cruz', initials: 'SC', plan: 'Plan 4 clases', phone: '5555-0176', status: 'Pendiente', level: 'Nivel inicial', classIds: ['salsa-basico'] },
-  { id: 'IM-0207', name: 'Camila Soto', initials: 'CS', plan: 'Plan ilimitado', phone: '5555-0159', status: 'Al día', level: 'Nivel intermedio', classIds: ['bachata-inter', 'latino', 'salsa-on2'] },
+  { id: 'IM-0207', name: 'Camila Soto', initials: 'CS', plan: 'Plan ilimitado', phone: '5555-0159', status: 'Al día', level: 'Nivel intermedio', classIds: ['bachata-inter', 'latino', 'salsa-casino'] },
   { id: 'IM-0229', name: 'María Fernanda León', initials: 'ML', plan: 'Plan 8 clases', phone: '5555-0134', status: 'Al día', level: 'Nivel inicial', classIds: ['salsa-basico', 'latino'] }
 ];
 
@@ -2643,6 +2658,13 @@ function registerPayment({ studentId, period, amount, method, reference = '' }) 
       : [record, ...state.payments]
   };
   persistState(nextState);
+  syncRemotePayment({
+    studentCardId: student.id,
+    amount: record.amount,
+    method: record.method,
+    receiptNumber: record.id,
+    notes: record.reference
+  }).catch(() => {});
   return record;
 }
 
@@ -3037,4 +3059,47 @@ if (recoveryReport) {
   );
 }
 
+async function syncWithSupabase() {
+  try {
+    // 1. Clases remotas
+    const remoteClasses = await fetchRemoteClasses();
+    if (remoteClasses && remoteClasses.length > 0) {
+      classData = remoteClasses;
+    }
+
+    // 2. Semilla de alumnos si la base de datos está vacía
+    await seedRemoteStudentsIfEmpty(state.students);
+
+    // 3. Alumnos remotos
+    const remoteStudents = await fetchRemoteStudents();
+    if (remoteStudents && remoteStudents.length > 0) {
+      state.students = remoteStudents;
+      persistState(state);
+    }
+
+    // 4. Asistencias remotas
+    const remoteAttendance = await fetchRemoteAttendance();
+    if (remoteAttendance && remoteAttendance.length > 0) {
+      const seen = new Set(state.attendanceLog.map((e) => `${e.studentId}|${e.classId}|${e.at}`));
+      for (const entry of remoteAttendance) {
+        const key = `${entry.studentId}|${entry.classId}|${entry.at}`;
+        if (!seen.has(key)) {
+          state.attendanceLog.push(entry);
+          seen.add(key);
+        }
+      }
+      persistState(state);
+    }
+
+    // Actualizar la interfaz si la app ya está visible
+    if (!elements.app.classList.contains('is-hidden')) {
+      renderApp();
+    }
+    console.log('[In Motion] Base de datos Supabase sincronizada con éxito');
+  } catch (err) {
+    console.warn('[In Motion] Sincronización Supabase en segundo plano:', err.message);
+  }
+}
+
 registerWebMcpTools();
+syncWithSupabase();
