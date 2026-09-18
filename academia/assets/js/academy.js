@@ -745,12 +745,17 @@ function createBasePayments() {
 }
 
 const MUSIC_MOODS = [
-  { id: 'sed', emoji: '🍺', label: 'Porque me da sed', detail: 'Para bailar sabroso y con sed de la peligrosa' },
-  { id: 'duela', emoji: '💔', label: "Pa' que me duela", detail: 'Despecho puro para cantarla con el alma' },
-  { id: 'perdio', emoji: '💅', label: 'Que vea lo que se perdió', detail: 'Actitud 10/10 y empoderamiento en la pista' },
-  { id: 'fuego', emoji: '🔥', label: 'Puro fuego / Es genial', detail: 'Para subir la energía y romper la pista' },
-  { id: 'piso', emoji: '💃', label: 'Para pulir el piso', detail: 'Ritmo tan pegajoso que nadie se puede sentar' },
-  { id: 'velocidad', emoji: '⚡', label: 'Para meterle velocidad', detail: 'Reto de vueltas rápidas y paso libre' }
+  { id: 'sed', emoji: '🍺', label: 'Me da sed' },
+  { id: 'duela', emoji: '💔', label: 'Subile, que duela' },
+  { id: 'perdio', emoji: '💅', label: 'Que vea lo que se perdió' },
+  { id: 'fuego', emoji: '🔥', label: 'En todo' },
+  { id: 'piso', emoji: '💃', label: 'Pal piso' },
+  { id: 'velocidad', emoji: '⚡', label: 'Por lucirme' },
+  { id: 'algo-asi', emoji: '🤔', label: 'Algo así dice...' },
+  { id: 'prohibidos', emoji: '🕺', label: "Pa' sacar los prohibidos" },
+  { id: 'chilera', emoji: '😎', label: 'Ta chilera' },
+  { id: 'oila', emoji: '🎧', label: 'Oila' },
+  { id: 'chille', emoji: '😭', label: 'Que chille!' }
 ];
 
 function findMusicMood(moodId) {
@@ -770,8 +775,7 @@ function createBaseMusicSuggestions() {
       artist: 'Aventura',
       moodId: 'duela',
       moodEmoji: '💔',
-      moodLabel: "Pa' que me duela",
-      note: 'Profe, imagínate esta para el combo final con vuelta sostenida.',
+      moodLabel: 'Subile, que duela',
       status: 'accepted',
       liked: true,
       createdAt: dayKey(previousDateFor(3))
@@ -787,8 +791,7 @@ function createBaseMusicSuggestions() {
       artist: 'Romeo Santos',
       moodId: 'sed',
       moodEmoji: '🍺',
-      moodLabel: 'Porque me da sed',
-      note: 'Para entrar en calor antes del social del viernes.',
+      moodLabel: 'Me da sed',
       status: 'pending',
       liked: false,
       createdAt: dayKey(TODAY)
@@ -804,11 +807,26 @@ function createBaseMusicSuggestions() {
       artist: 'Romeo Santos ft. Ozuna',
       moodId: 'fuego',
       moodEmoji: '🔥',
-      moodLabel: 'Puro fuego / Es genial',
-      note: '¡El beat está tremendo para marcar los footworks!',
+      moodLabel: 'En todo',
       status: 'accepted',
       liked: true,
       createdAt: dayKey(previousDateFor(3))
+    },
+    {
+      id: 'sug-4',
+      studentId: 'IM-0241',
+      studentName: 'Valeria Rosales',
+      classId: 'latino',
+      className: 'Baile Latino',
+      teacherName: 'Alex Aquino',
+      song: 'Esa que tiene trompetas',
+      artist: 'No me sé el nombre',
+      moodId: 'algo-asi',
+      moodEmoji: '🤔',
+      moodLabel: 'Algo así dice...',
+      status: 'pending',
+      liked: true,
+      createdAt: dayKey(TODAY)
     }
   ];
 }
@@ -1263,7 +1281,10 @@ function classCards(classes = scheduledClasses().slice(0, 3), empty = null) {
       </div>
       <h3>${escapeHtml(item.name)}</h3>
       <p>${escapeHtml(item.teacher)}</p>
-      <div class="class-card-foot"><span>${escapeHtml(item.level)}</span><span>${escapeHtml(item.room)}</span></div>
+      <div class="class-card-foot">
+        <span>${escapeHtml(item.level)}</span>
+        <button class="button button--small button--light" type="button" data-open-music-modal="${escapeHtml(item.id)}" aria-label="Sugerir rola para ${escapeHtml(item.name)}">Sugerir rola 🎶</button>
+      </div>
     </article>
   `).join('')}</div>`;
 }
@@ -1294,6 +1315,7 @@ function nextMusicSuggestionId() {
 
 function studentMusicSection() {
   const suggestions = (state.musicSuggestions || []).filter((s) => s.studentId === DEMO_STUDENT_ID);
+  const enrolledClasses = classesForStudent(DEMO_STUDENT_ID);
 
   return `
     <section class="section music-section">
@@ -1301,52 +1323,65 @@ function studentMusicSection() {
         <div>
           <span class="eyebrow">La Rockola In Motion</span>
           <h2>Pedí tu rola para la clase</h2>
-          <p>¿Querés bailar algo especial? Tirale una sugerencia a tus maestros con tu motivo favorito.</p>
+          <p>Elegí una de tus clases y sugerile una canción a tu maestro.</p>
         </div>
-        <button class="button button--red button--small" type="button" data-open-music-modal>
-          <span>Pedí tu rola</span> <span aria-hidden="true">🎶</span>
-        </button>
       </div>
 
-      ${suggestions.length === 0 ? `
-        <div class="empty-state">
-          <strong>Sin rolas sugeridas todavía</strong>
-          <p>Aún no le has pedido ninguna canción a tus maestros. ¡Elegí una para bailar con todo!</p>
-          <button class="button button--light button--small" type="button" data-open-music-modal style="margin-top:12px">
-            Sugerir mi primera rola 🎶
-          </button>
-        </div>
-      ` : `
-        <div class="music-cards-grid">
-          ${suggestions.map((item) => `
-            <article class="music-card ${item.status === 'accepted' ? 'is-accepted' : ''}">
-              <div class="music-card-header">
-                <span class="mood-badge mood-badge--${escapeHtml(item.moodId)}">
-                  <span class="mood-emoji" aria-hidden="true">${escapeHtml(item.moodEmoji)}</span>
-                  <span>${escapeHtml(item.moodLabel)}</span>
-                </span>
-                <span class="music-status-pill ${item.status === 'accepted' ? 'is-accepted' : 'is-pending'}">
-                  ${item.status === 'accepted' ? '🎧 En playlist' : '⏳ Enviada'}
-                </span>
-              </div>
-              <div class="music-card-body">
-                <h3 class="music-song-title">${escapeHtml(item.song)}</h3>
-                <p class="music-song-artist">${escapeHtml(item.artist)}</p>
-                <div class="music-class-meta">
-                  <span>${escapeHtml(item.className)}</span> · <small>Profe ${escapeHtml(item.teacherName)}</small>
-                </div>
-                ${item.note ? `<p class="music-card-note">“${escapeHtml(item.note)}”</p>` : ''}
-              </div>
-              <div class="music-card-footer">
-                ${item.liked ? '<span class="music-badge-liked" title="Al maestro le encantó tu sugerencia">❤️ Al profe le gustó</span>' : '<span></span>'}
-                <a class="music-listen-link" href="https://www.youtube.com/results?search_query=${encodeURIComponent(item.artist + ' ' + item.song)}" target="_blank" rel="noopener noreferrer" aria-label="Escuchar ${escapeHtml(item.song)} en YouTube">
-                  Escuchar <span>↗</span>
-                </a>
-              </div>
-            </article>
+      <div class="music-class-picker">
+        <p class="music-picker-label">1. Elegí tu clase para sugerir:</p>
+        <div class="music-picker-grid">
+          ${enrolledClasses.map((c) => `
+            <button type="button" class="music-class-btn" data-open-music-modal="${escapeHtml(c.id)}">
+              <span class="music-class-btn-icon" aria-hidden="true">🎵</span>
+              <span class="music-class-btn-info">
+                <strong>${escapeHtml(c.name)}</strong>
+                <small>${escapeHtml(c.teacher)} · ${escapeHtml(c.time)}</small>
+              </span>
+              <span class="music-class-btn-action" aria-hidden="true">Sugerir rola ↗</span>
+            </button>
           `).join('')}
         </div>
-      `}
+      </div>
+
+      <div class="music-suggestions-list-block">
+        <div class="music-subhead">
+          <h3>Tus rolas sugeridas</h3>
+          <span class="music-count-badge">${suggestions.length} rola${suggestions.length === 1 ? '' : 's'}</span>
+        </div>
+
+        ${suggestions.length === 0 ? `
+          <div class="empty-state">
+            <strong>Sin rolas sugeridas todavía</strong>
+            <p>Elegí una de tus clases arriba para sugerir tu primera canción.</p>
+          </div>
+        ` : `
+          <div class="music-cards-grid">
+            ${suggestions.map((item) => `
+              <article class="music-card ${item.status === 'accepted' ? 'is-accepted' : ''}">
+                <div class="music-card-header">
+                  <span class="mood-badge mood-badge--${escapeHtml(item.moodId)}">
+                    <span class="mood-emoji" aria-hidden="true">${escapeHtml(item.moodEmoji)}</span>
+                    <span>${escapeHtml(item.moodLabel)}</span>
+                  </span>
+                  <span class="music-status-pill ${item.status === 'accepted' ? 'is-accepted' : 'is-pending'}">
+                    ${item.status === 'accepted' ? '🎧 En playlist' : '⏳ Enviada'}
+                  </span>
+                </div>
+                <div class="music-card-body">
+                  <h3 class="music-song-title">${escapeHtml(item.song)}</h3>
+                  <p class="music-song-artist">${escapeHtml(item.artist)}</p>
+                  <div class="music-class-meta">
+                    <span>${escapeHtml(item.className)}</span> · <small>Profe ${escapeHtml(item.teacherName)}</small>
+                  </div>
+                </div>
+                <div class="music-card-footer">
+                  ${item.liked ? '<span class="music-badge-liked" title="Al maestro le encantó tu sugerencia">❤️ Al profe le gustó</span>' : '<span class="music-pending-label">Esperando al profe</span>'}
+                </div>
+              </article>
+            `).join('')}
+          </div>
+        `}
+      </div>
     </section>
   `;
 }
@@ -1370,7 +1405,7 @@ function teacherMusicSection() {
         <div>
           <span class="eyebrow">La Rockola de la Clase</span>
           <h2>Rolas sugeridas por alumnos</h2>
-          <p>Canciones que tus alumnos quieren bailar en clase con sus dedicatorias y motivos.</p>
+          <p>Canciones que tus alumnos quieren bailar en clase con sus etiquetas.</p>
         </div>
         <div class="filter-group" role="group" aria-label="Filtrar rolas de alumnos">
           <button type="button" class="filter-chip ${musicTeacherFilter === 'all' ? 'is-active' : ''}" data-teacher-music-filter="all">
@@ -1411,7 +1446,6 @@ function teacherMusicSection() {
               <div class="music-card-body">
                 <h3 class="music-song-title">${escapeHtml(item.song)}</h3>
                 <p class="music-song-artist">${escapeHtml(item.artist)}</p>
-                ${item.note ? `<p class="music-card-note">“${escapeHtml(item.note)}”</p>` : ''}
               </div>
 
               <div class="music-card-footer music-card-footer--teacher">
@@ -1433,16 +1467,6 @@ function teacherMusicSection() {
                 >
                   <span aria-hidden="true">${item.liked ? '❤️' : '🤍'}</span>
                 </button>
-
-                <a 
-                  class="button button--light button--small" 
-                  href="https://www.youtube.com/results?search_query=${encodeURIComponent(item.artist + ' ' + item.song)}" 
-                  target="_blank" 
-                  rel="noopener noreferrer"
-                  title="Escuchar en YouTube"
-                >
-                  Escuchar ↗
-                </a>
               </div>
             </article>
           `).join('')}
@@ -1456,17 +1480,16 @@ function openMusicSuggestionModal(preselectedClassId = null) {
   const studentClasses = classesForStudent(DEMO_STUDENT_ID);
   const options = studentClasses.length ? studentClasses : classData;
   const defaultClassId = preselectedClassId || options[0]?.id || 'bachata-inter';
+  const targetClass = findClass(defaultClassId) || options[0];
   currentSelectedMoodId = 'sed';
 
   openModal({
-    title: 'Pedí tu rola a la pista',
-    eyebrow: 'La Rockola In Motion 🎶',
+    title: 'Sugerir rola',
+    eyebrow: `${targetClass.name} · ${targetClass.teacher}`,
     body: `
       <form id="musicSuggestionForm" class="music-suggestion-form">
-        <p class="modal-note">¿Qué canción querés bailar en la próxima clase? Elegí la vibra, poné el motivo y mandásela directo a tu maestro.</p>
-        
         <label class="field">
-          <span>¿Para qué clase?</span>
+          <span>Clase</span>
           <select name="classId" id="musicClassId" required>
             ${options.map((item) => `
               <option value="${escapeHtml(item.id)}" ${item.id === defaultClassId ? 'selected' : ''}>
@@ -1478,18 +1501,18 @@ function openMusicSuggestionModal(preselectedClassId = null) {
 
         <div class="split-fields">
           <label class="field">
-            <span>Nombre de la canción</span>
-            <input type="text" name="song" id="musicSongInput" placeholder="Ej. El Amor de Mi Tierra" required />
+            <span>Canción</span>
+            <input type="text" name="song" id="musicSongInput" placeholder="Nombre o tarareo" required />
           </label>
           <label class="field">
-            <span>Artista / Grupo</span>
-            <input type="text" name="artist" id="musicArtistInput" placeholder="Ej. Carlos Vives" required />
+            <span>Artista</span>
+            <input type="text" name="artist" id="musicArtistInput" placeholder="Artista o grupo" required />
           </label>
         </div>
 
         <div class="field">
-          <span>¿Cuál es el motivo? (Elegí tu vibra)</span>
-          <div class="music-mood-grid" role="radiogroup" aria-label="Elegir motivo">
+          <span>Elegí la etiqueta</span>
+          <div class="music-mood-grid" role="radiogroup" aria-label="Elegir etiqueta">
             ${MUSIC_MOODS.map((m) => `
               <button 
                 type="button" 
@@ -1499,26 +1522,16 @@ function openMusicSuggestionModal(preselectedClassId = null) {
                 aria-checked="${m.id === currentSelectedMoodId ? 'true' : 'false'}"
               >
                 <span class="mood-chip-emoji">${escapeHtml(m.emoji)}</span>
-                <span class="mood-chip-text">
-                  <strong>${escapeHtml(m.label)}</strong>
-                  <small>${escapeHtml(m.detail)}</small>
-                </span>
+                <span class="mood-chip-title">${escapeHtml(m.label)}</span>
               </button>
             `).join('')}
           </div>
           <input type="hidden" name="moodId" id="selectedMoodIdInput" value="${escapeHtml(currentSelectedMoodId)}" />
         </div>
 
-        <label class="field">
-          <span>Mensajito al profe (opcional)</span>
-          <input type="text" name="note" id="musicNoteInput" placeholder="Ej. ¡Profe, esta para el social o el combo final!" maxlength="140" />
-        </label>
-
         <div class="form-actions">
           <button class="button button--light" type="button" data-close-modal>Cancelar</button>
-          <button class="button button--red" type="submit">
-            <span>Tirar rola a la pista</span> <span aria-hidden="true">🎶</span>
-          </button>
+          <button class="button button--red" type="submit">Enviar sugerencia 🎶</button>
         </div>
       </form>
     `
@@ -1533,7 +1546,6 @@ function handleMusicSuggestionSubmit(event) {
   const song = (formData.get('song') || '').trim();
   const artist = (formData.get('artist') || '').trim();
   const moodId = formData.get('moodId') || 'sed';
-  const note = (formData.get('note') || '').trim();
 
   if (!song || !artist) {
     showToast('Faltan datos', 'Por favor ingresá la canción y el artista.');
@@ -1556,7 +1568,6 @@ function handleMusicSuggestionSubmit(event) {
     moodId: mood.id,
     moodEmoji: mood.emoji,
     moodLabel: mood.label,
-    note,
     status: 'pending',
     liked: false,
     createdAt: dayKey(TODAY)
@@ -1567,7 +1578,7 @@ function handleMusicSuggestionSubmit(event) {
 
   closeModal();
   renderAndFocus();
-  showToast('¡Rola enviada a la pista! 🎶', `Le sugeriste "${song}" al profe ${targetClass.teacher} con motivo "${mood.emoji} ${mood.label}".`);
+  showToast('¡Rola enviada! 🎶', `Le sugeriste "${song}" al profe ${targetClass.teacher} con la etiqueta "${mood.emoji} ${mood.label}".`);
 }
 
 function renderStudentHome() {
