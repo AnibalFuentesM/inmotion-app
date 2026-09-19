@@ -103,7 +103,7 @@ const roleConfig = {
     ]
   },
   guardian: {
-    label: 'Portal de tutor',
+    label: 'Portal de encargado',
     initials: 'CR',
     routes: [
       ['inicio', 'Inicio', 'home'],
@@ -264,7 +264,7 @@ const membershipPlans = [
     unlimited: true,
     weeklyRhythm: 2,
     subtitle: 'Tu disciplina favorita',
-    description: 'Acceso al track de baile seleccionado entre semana.'
+    description: 'Acceso al estilo de baile seleccionado entre semana.'
   },
   {
     id: 'night',
@@ -711,20 +711,63 @@ function attendedThisMonth(studentId) {
   return state.attendanceLog.filter((entry) => entry.studentId === studentId && entry.at.startsWith(monthKey(TODAY))).length;
 }
 
-// La lista de una sesion son los alumnos inscritos en esa clase, no un padron
-// fijo: asi coincide con lo que se puede marcar y con lo que se guarda.
+function studentLifecycleStatus(student) {
+  if (!student) return 'active';
+  const val = student.lifecycleStatus || student.status;
+  if (val === 'suspended' || val === 'archived') return val;
+  return 'active';
+}
+
+// La lista de una sesion son los alumnos activos inscritos en esa clase.
+// Un alumno suspendido o archivado se excluye de las listas operativas.
 function rosterFor(classId) {
-  return state.students.filter((student) => (student.classIds || []).includes(classId));
+  return state.students.filter((student) => studentLifecycleStatus(student) === 'active' && (student.classIds || []).includes(classId));
+}
+
+function canDeleteStudent(studentId) {
+  const student = studentById(studentId);
+  if (!student) return { canDelete: false, reasons: ['El alumno no existe en el sistema.'] };
+
+  const reasons = [];
+  const hasPayments = state.payments.some((item) => {
+    if (item.studentId !== studentId) return false;
+    if (item.status === 'Pagado' || Boolean(item.paidAt)) return true;
+    if (item.method && item.method !== 'Pendiente') return true;
+    if (item.dueDate) return true;
+    return false;
+  });
+  if (hasPayments) {
+    reasons.push('Tiene mensualidades o pagos registrados en su historial.');
+  }
+  if (state.attendanceLog.some((item) => item.studentId === studentId)) {
+    reasons.push('Tiene registros de asistencia guardados.');
+  }
+  if ((state.singlePasses || []).some((item) => item.studentId === studentId)) {
+    reasons.push('Tiene pases individuales asociados.');
+  }
+  if (Array.isArray(student.classIds) && student.classIds.length > 0) {
+    reasons.push('Está inscrito en una o más clases activas.');
+  }
+  const isGuardianChild = (guardians || []).some((g) => (g.childrenIds || []).includes(studentId)) || Boolean(student.guardianId);
+  const isGuardianOfOthers = state.students.some((s) => s.guardianId === studentId);
+  if (isGuardianChild || isGuardianOfOthers) {
+    reasons.push('Tiene encargados o dependientes vinculados.');
+  }
+
+  return {
+    canDelete: reasons.length === 0,
+    reasons
+  };
 }
 
 function currentGuardian() {
   if (isSupabaseConnected) {
     if (authenticatedProfile?.role !== 'guardian') return null;
-    const name = `${authenticatedProfile.first_name || ''} ${authenticatedProfile.last_name || ''}`.trim() || authenticatedUser?.email || 'Tutor';
+    const name = `${authenticatedProfile.first_name || ''} ${authenticatedProfile.last_name || ''}`.trim() || authenticatedUser?.email || 'Encargado';
     return {
       id: authenticatedProfile.id,
       name,
-      firstName: authenticatedProfile.first_name || 'Tutor',
+      firstName: authenticatedProfile.first_name || 'Encargado',
       phone: authenticatedProfile.phone || '',
       consentSignedAt: authenticatedProfile.consent_signed_at ? dayKey(new Date(authenticatedProfile.consent_signed_at)) : null,
       isDemo: false
@@ -749,6 +792,168 @@ function attendanceFor(classId, date = TODAY) {
   return state.attendanceLog.filter((entry) => entry.classId === classId && entry.at === dayKey(date)).map((entry) => entry.studentId);
 }
 
+// ---------------------------------------------------------------------------
+// Helpers de WhatsApp y Normalización de Teléfonos
+// ---------------------------------------------------------------------------
+
+function normalizePhoneNumber(rawPhone) {
+  if (!rawPhone || typeof rawPhone !== 'string') return null;
+  const trimmed = rawPhone.trim();
+  if (trimmed.toLowerCase().includes('sin registrar')) return null;
+  const digits = trimmed.replace(/\D/g, '');
+  if (digits.length === 8) {
+    return `502${digits}`;
+  }
+  if (digits.length === 11 && digits.startsWith('502')) {
+    return digits;
+  }
+  return null;
+}
+
+function buildWhatsAppUrl(phone, message) {
+  const normalized = normalizePhoneNumber(phone);
+  if (!normalized) return '';
+  return `https://wa.me/${normalized}?text=${encodeURIComponent(message)}`;
+}
+
+function generatePaymentReminderMessage({ firstName, month, amount }) {
+  return `Hola, ${firstName} 👋 Te recordamos que tu mensualidad de ${month} por Q${amount} está pendiente. Si ya realizaste el pago, podés enviarnos el comprobante por este medio. ¡Gracias! — In Motion Dance Academy`;
+}
+
+function generateAbsenceFollowupMessage({ isGuardian, tutorName, studentName, firstName }) {
+  if (isGuardian) {
+    return `Hola, ${tutorName} 👋 Vimos que ${studentName} faltó a sus últimas dos clases. ¿Está todo bien? Si tuvieron algún problema con el horario, escríbanos y con gusto les ayudamos. — In Motion Dance Academy`;
+  }
+  return `Hola, ${firstName} 👋 Vimos que faltaste a tus últimas dos clases. ¿Todo bien? Si tuviste algún problema con el horario, escribinos y con gusto te ayudamos. — In Motion Dance Academy`;
+}
+
+function guardianForStudent(student, guardiansList = guardians) {
+  if (!student) return null;
+  if (student.guardianId) {
+    const found = guardiansList.find(
+      (g) => g.id === student.guardianId || g.name === student.guardianId
+    );
+    if (found) return found;
+  }
+  if (student.rawGuardianUuid) {
+    const found = guardiansList.find((g) => g.id === student.rawGuardianUuid);
+    if (found) return found;
+  }
+  return guardiansList.find((g) => (g.childrenIds || []).includes(student.id)) || null;
+}
+
+/**
+ * Función pura y reutilizable que detecta alumnos ausentes en sus últimas dos
+ * sesiones programadas y ya finalizadas.
+ *
+ * Reglas:
+ * - Considerar únicamente clases en las que el alumno esté inscrito.
+ * - Construir las sesiones pasadas usando el horario existente.
+ * - Excluir sesiones futuras y clases que todavía no hayan terminado.
+ * - Ordenar las sesiones de la más reciente a la más antigua.
+ * - Revisar las últimas dos sesiones correspondientes al alumno.
+ * - Una sesión cuenta como asistencia si existe una entrada coincidente en attendanceLog.
+ * - Mostrar seguimiento únicamente cuando ambas sesiones carezcan de asistencia.
+ * - No interpretar como falta una sesión para la cual todavía no se ha tomado asistencia.
+ * - No duplicar ni alterar attendanceLog.
+ * - Si no existen por lo menos dos sesiones pasadas comprobables, no mostrar alerta.
+ */
+function detectConsecutiveAbsences({
+  students = state.students,
+  attendanceLog = state.attendanceLog,
+  classes = classData,
+  guardiansList = guardians,
+  now = TODAY
+} = {}) {
+  const alerts = [];
+  const referenceTime = new Date(now).getTime();
+
+  for (const student of students) {
+    if (studentLifecycleStatus(student) !== 'active') continue;
+    const enrolledClassIds = student.classIds || [];
+    if (!enrolledClassIds.length) continue;
+
+    const enrolledClasses = classes.filter((c) => enrolledClassIds.includes(c.id));
+    if (!enrolledClasses.length) continue;
+
+    // Construir sesiones pasadas según horario
+    const pastSessions = [];
+    for (const c of enrolledClasses) {
+      for (let dayOffset = 0; dayOffset >= -84; dayOffset--) {
+        const sessionDate = addDays(now, dayOffset);
+        if (sessionDate.getDay() === c.weekday) {
+          const totalMinutes = timeValue(c.time);
+          const hours = Math.floor(totalMinutes / 60);
+          const minutes = totalMinutes % 60;
+          const startsAt = new Date(sessionDate);
+          startsAt.setHours(hours, minutes, 0, 0);
+          const endsAt = new Date(startsAt.getTime() + 60 * 60 * 1000);
+          // Excluir sesiones futuras y clases en curso
+          if (referenceTime >= endsAt.getTime()) {
+            pastSessions.push({
+              id: c.id,
+              name: c.name,
+              weekday: c.weekday,
+              time: c.time,
+              sessionDate,
+              dateKey: dayKey(sessionDate),
+              startsAt,
+              endsAt,
+              fullDateLabel: longDate(sessionDate),
+              shortDateLabel: shortDate(sessionDate)
+            });
+          }
+        }
+      }
+    }
+
+    // Ordenar de más reciente a más antigua
+    pastSessions.sort((a, b) => b.startsAt - a.startsAt);
+
+    // Revisar últimas dos sesiones correspondientes al alumno
+    if (pastSessions.length < 2) continue;
+
+    const session1 = pastSessions[0];
+    const session2 = pastSessions[1];
+
+    // Verificar si ambas sesiones son comprobables (tienen lista tomada)
+    const isTaken1 = attendanceLog.some((e) => e.classId === session1.id && e.at === session1.dateKey);
+    const isTaken2 = attendanceLog.some((e) => e.classId === session2.id && e.at === session2.dateKey);
+
+    // No interpretar como falta si no se ha tomado asistencia; no mostrar alerta sin 2 sesiones comprobables
+    if (!isTaken1 || !isTaken2) continue;
+
+    // Verificar asistencia del alumno en ambas sesiones
+    const hasAttended1 = attendanceLog.some(
+      (e) => e.studentId === student.id && e.classId === session1.id && e.at === session1.dateKey
+    );
+    const hasAttended2 = attendanceLog.some(
+      (e) => e.studentId === student.id && e.classId === session2.id && e.at === session2.dateKey
+    );
+
+    // Mostrar seguimiento únicamente cuando ambas carezcan de asistencia
+    if (!hasAttended1 && !hasAttended2) {
+      const guardian = guardianForStudent(student, guardiansList);
+      const isGuardian = Boolean(student.guardianId && guardian);
+      const targetPhone = isGuardian ? (guardian.phone || student.phone || '') : (student.phone || '');
+      const normalizedPhone = normalizePhoneNumber(targetPhone);
+
+      alerts.push({
+        student,
+        guardian,
+        isGuardian,
+        targetPhone,
+        normalizedPhone,
+        isValidPhone: Boolean(normalizedPhone),
+        sessions: [session1, session2]
+      });
+    }
+  }
+
+  return alerts;
+}
+
+
 // Aca vivian bookClass, cancelBooking y updateStudentPlan. Se retiraron porque
 // escribian sobre datos que no les correspondian:
 // - Reservar y liberar movian classIds, que es la inscripcion permanente del
@@ -764,7 +969,7 @@ function exportTableToCsv(type) {
 
   if (type === 'students') {
     filename = `inmotion_alumnos_${dayKey(TODAY)}.csv`;
-    const headers = ['ID', 'Nombre', 'Plan', 'Nivel', 'Telefono', 'Tutor', 'Estado'];
+    const headers = ['ID', 'Nombre', 'Plan', 'Nivel', 'Teléfono', 'Encargado', 'Estado'];
     const rows = state.students.map((s) => [
       s.id,
       `"${(s.name || '').replace(/"/g, '""')}"`,
@@ -818,10 +1023,19 @@ function recordAttendance(classId, studentIds, sessionDate, { replaceDay = false
   if (!item || !sessionDate) {
     throw new Error('Solo podés registrar una clase programada válida. Volvé a abrir la sesión.');
   }
-  if (studentIds.some((studentId) => !studentById(studentId))) throw new Error('Alumno no encontrado.');
-  // La sesión valida la inscripción: evita marcaciones cruzadas entre clases.
-  if (studentIds.some((studentId) => !(studentById(studentId).classIds || []).includes(classId))) {
-    throw new Error('Solo se puede marcar a alumnos inscritos en esta clase.');
+  for (const studentId of studentIds) {
+    const student = studentById(studentId);
+    if (!student) throw new Error('Alumno no encontrado.');
+    const lifecycle = studentLifecycleStatus(student);
+    if (lifecycle === 'suspended') {
+      throw new Error(`El alumno ${student.name || studentId} está suspendido. No se puede registrar su asistencia.`);
+    }
+    if (lifecycle === 'archived') {
+      throw new Error(`El alumno ${student.name || studentId} está archivado. No se puede registrar su asistencia.`);
+    }
+    if (!(student.classIds || []).includes(classId)) {
+      throw new Error('Solo se puede marcar a alumnos inscritos en esta clase.');
+    }
   }
   const sameSession = (entry) => entry.classId === classId && entry.at === sessionDate;
   const nextState = structuredClone(state);
@@ -845,13 +1059,14 @@ const DEMO_STUDENT_ID = 'IM-0241';
 // classIds es la inscripcion real del alumno: sin ella no se puede saber cual es
 // la proxima clase de un hijo, solo la proxima clase de la academia.
 const baseStudentSeed = [
-  { id: 'IM-0241', name: 'Valeria Ruiz', initials: 'VR', plan: 'Plan 8 clases', phone: '5555-0142', status: 'Pendiente', level: 'Nivel intermedio', classIds: ['bachata-inter', 'kpop-teens'], guardianId: GUARDIAN_ID },
-  { id: 'IM-0262', name: 'Diego Ruiz', initials: 'DR', plan: 'Plan 4 clases', phone: '5555-0177', status: 'Al día', level: '7 a 11 años', classIds: ['latino-kids'], guardianId: GUARDIAN_ID },
-  { id: 'IM-0218', name: 'Luis Méndez', initials: 'LM', plan: 'Plan ilimitado', phone: '5555-0188', status: 'Al día', level: 'Nivel avanzado', classIds: ['salsa-casino', 'bachata-inter'] },
-  { id: 'IM-0194', name: 'Andrea Pérez', initials: 'AP', plan: 'Plan 8 clases', phone: '5555-0120', status: 'Al día', level: 'Nivel intermedio', classIds: ['bachata-inter', 'latino'] },
-  { id: 'IM-0250', name: 'Santiago Cruz', initials: 'SC', plan: 'Plan 4 clases', phone: '5555-0176', status: 'Pendiente', level: 'Nivel inicial', classIds: ['salsa-basico'] },
-  { id: 'IM-0207', name: 'Camila Soto', initials: 'CS', plan: 'Plan ilimitado', phone: '5555-0159', status: 'Al día', level: 'Nivel intermedio', classIds: ['bachata-inter', 'latino', 'salsa-casino'] },
-  { id: 'IM-0229', name: 'María Fernanda León', initials: 'ML', plan: 'Plan 8 clases', phone: '5555-0134', status: 'Al día', level: 'Nivel inicial', classIds: ['salsa-basico', 'latino'] }
+  { id: 'IM-0241', name: 'Valeria Ruiz', initials: 'VR', plan: 'Plan 8 clases', phone: '5555-0142', status: 'active', lifecycleStatus: 'active', suspensionReason: '', suspendedAt: null, suspendedUntil: null, archivedAt: null, level: 'Nivel intermedio', classIds: ['bachata-inter', 'kpop-teens'], guardianId: GUARDIAN_ID },
+  { id: 'IM-0262', name: 'Diego Ruiz', initials: 'DR', plan: 'Plan 4 clases', phone: '5555-0177', status: 'active', lifecycleStatus: 'active', suspensionReason: '', suspendedAt: null, suspendedUntil: null, archivedAt: null, level: '7 a 11 años', classIds: ['latino-kids'], guardianId: GUARDIAN_ID },
+  { id: 'IM-0218', name: 'Luis Méndez', initials: 'LM', plan: 'Plan ilimitado', phone: '5555-0188', status: 'active', lifecycleStatus: 'active', suspensionReason: '', suspendedAt: null, suspendedUntil: null, archivedAt: null, level: 'Nivel avanzado', classIds: ['salsa-casino', 'bachata-inter'] },
+  { id: 'IM-0194', name: 'Andrea Pérez', initials: 'AP', plan: 'Plan 8 clases', phone: '5555-0120', status: 'active', lifecycleStatus: 'active', suspensionReason: '', suspendedAt: null, suspendedUntil: null, archivedAt: null, level: 'Nivel intermedio', classIds: ['bachata-inter', 'latino'] },
+  { id: 'IM-0250', name: 'Santiago Cruz', initials: 'SC', plan: 'Plan 4 clases', phone: 'Sin registrar', status: 'active', lifecycleStatus: 'active', suspensionReason: '', suspendedAt: null, suspendedUntil: null, archivedAt: null, level: 'Nivel inicial', classIds: ['salsa-basico'] },
+  { id: 'IM-0207', name: 'Camila Soto', initials: 'CS', plan: 'Plan ilimitado', phone: '5555-0159', status: 'active', lifecycleStatus: 'active', suspensionReason: '', suspendedAt: null, suspendedUntil: null, archivedAt: null, level: 'Nivel intermedio', classIds: ['bachata-inter', 'latino', 'salsa-casino'] },
+  { id: 'IM-0229', name: 'María Fernanda León', initials: 'ML', plan: 'Plan 8 clases', phone: '5555-0134', status: 'active', lifecycleStatus: 'active', suspensionReason: '', suspendedAt: null, suspendedUntil: null, archivedAt: null, level: 'Nivel inicial', classIds: ['salsa-basico', 'latino'] },
+  { id: 'IM-0275', name: 'Sofía Gómez', initials: 'SG', plan: 'Plan 4 clases', phone: '5555-0199', status: 'active', lifecycleStatus: 'active', suspensionReason: '', suspendedAt: null, suspendedUntil: null, archivedAt: null, level: '7 a 11 años', classIds: ['latino-kids'] }
 ];
 
 function createBaseStudents() {
@@ -1351,11 +1566,14 @@ function createDefaultState() {
     payments: createBasePayments(),
     // La bitacora es la fuente de la lista diaria y de la consulta de cada alumno.
     attendanceLog: [
+      { studentId: 'IM-0194', classId: 'latino', at: dayKey(previousDateFor(4)) },
+      { studentId: 'IM-0229', classId: 'latino', at: dayKey(previousDateFor(4)) },
+      { studentId: 'IM-0241', classId: 'kpop-teens', at: dayKey(previousDateFor(4)) },
       { studentId: 'IM-0241', classId: 'bachata-inter', at: dayKey(previousDateFor(3)) },
       { studentId: 'IM-0218', classId: 'bachata-inter', at: dayKey(previousDateFor(3)) },
       { studentId: 'IM-0194', classId: 'bachata-inter', at: dayKey(previousDateFor(3)) },
-      { studentId: 'IM-0241', classId: 'kpop-teens', at: dayKey(previousDateFor(4)) },
-      { studentId: 'IM-0262', classId: 'latino-kids', at: dayKey(previousDateFor(6)) }
+      { studentId: 'IM-0275', classId: 'latino-kids', at: dayKey(previousDateFor(6)) },
+      { studentId: 'IM-0275', classId: 'latino-kids', at: dayKey(addDays(previousDateFor(6), -7)) }
     ],
     musicSuggestions: createBaseMusicSuggestions(),
     singlePasses: createBaseSinglePasses()
@@ -1418,6 +1636,14 @@ function sanitizeStudent(raw) {
   const knownClassIds = classData.map((item) => item.id);
   // El plan se conserva tal como vino sin forzar DEFAULT_PLAN
   const plan = raw.plan !== undefined && raw.plan !== null ? cleanText(raw.plan, 80) : null;
+  const validLifecycle = ['active', 'suspended', 'archived'];
+  const rawLifecycle = raw.lifecycleStatus || (validLifecycle.includes(raw.status) ? raw.status : 'active');
+  const lifecycleStatus = validLifecycle.includes(rawLifecycle) ? rawLifecycle : 'active';
+  const paymentStatusValue = cleanText(raw.paymentStatus, 40) || (validLifecycle.includes(raw.status) ? undefined : cleanText(raw.status, 40)) || undefined;
+  const suspensionReason = cleanText(raw.suspensionReason, 200) || '';
+  const suspendedAt = raw.suspendedAt ? cleanText(raw.suspendedAt, 40) : null;
+  const suspendedUntil = raw.suspendedUntil ? cleanText(raw.suspendedUntil, 20) : null;
+  const archivedAt = raw.archivedAt ? cleanText(raw.archivedAt, 40) : null;
   return {
     id,
     profileId: cleanText(raw.profileId, 40) || undefined,
@@ -1428,7 +1654,13 @@ function sanitizeStudent(raw) {
     memberships: Array.isArray(raw.memberships) ? raw.memberships : [],
     plan,
     phone: cleanText(raw.phone, 24) || 'Sin registrar',
-    status: cleanText(raw.status, 20) || 'Pendiente',
+    paymentStatus: paymentStatusValue,
+    status: lifecycleStatus,
+    lifecycleStatus,
+    suspensionReason,
+    suspendedAt,
+    suspendedUntil,
+    archivedAt,
     level: cleanText(raw.level, 40) || 'Sin nivel',
     classIds: Array.isArray(raw.classIds) ? [...new Set(raw.classIds.filter((value) => knownClassIds.includes(value)))] : [],
     guardianId: cleanText(raw.guardianId, 40) || (guardians.some((item) => item.id === raw.guardianId) ? raw.guardianId : undefined),
@@ -1670,7 +1902,7 @@ const elements = {
   demoBadge: document.querySelector('.demo-badge')
 };
 
-function persistState(nextState) {
+function persistState(nextState = state) {
   try {
     const key = getStorageKey();
     localStorage.setItem(key, JSON.stringify({ ...nextState, version: STATE_VERSION }));
@@ -1867,7 +2099,7 @@ function classCards(classes = scheduledClasses().slice(0, 3), empty = null) {
         <span>${escapeHtml(item.level)}</span>
         <div class="class-card-actions">
           <button class="button button--small button--light" type="button" data-class-detail="${escapeHtml(item.id)}" data-context-date="${escapeHtml(contextDateKey)}" aria-label="Ver detalles de ${escapeHtml(item.name)}">Ver detalles</button>
-          <button class="button button--small button--light" type="button" data-open-music-modal="${escapeHtml(item.id)}" aria-label="Sugerir rola para ${escapeHtml(item.name)}">Rola 🎶</button>
+          <button class="button button--small button--light" type="button" data-open-music-modal="${escapeHtml(item.id)}" aria-label="Sugerir una canción para ${escapeHtml(item.name)}">Canción 🎶</button>
         </div>
       </div>
     </article>
@@ -1907,7 +2139,7 @@ function studentMusicSection() {
         <div class="section-head">
           <div>
             <span class="eyebrow">La Rockola In Motion</span>
-            <h2>Pedí tu rola para la clase</h2>
+            <h2>Pedí una canción para la clase</h2>
             <p>Elegí una de tus clases y sugerile una canción a tu maestro.</p>
           </div>
         </div>
@@ -1926,7 +2158,7 @@ function studentMusicSection() {
       <div class="section-head">
         <div>
           <span class="eyebrow">La Rockola In Motion</span>
-          <h2>Pedí tu rola para la clase</h2>
+          <h2>Pedí una canción para la clase</h2>
           <p>Elegí una de tus clases y sugerile una canción a tu maestro.</p>
         </div>
       </div>
@@ -1941,7 +2173,7 @@ function studentMusicSection() {
                 <strong>${escapeHtml(c.name)}</strong>
                 <small>${escapeHtml(c.teacher)} · ${escapeHtml(c.time)}</small>
               </span>
-              <span class="music-class-btn-action" aria-hidden="true">Sugerir rola ↗</span>
+              <span class="music-class-btn-action" aria-hidden="true">Sugerir canción ↗</span>
             </button>
           `).join('')}
         </div>
@@ -1949,13 +2181,13 @@ function studentMusicSection() {
 
       <div class="music-suggestions-list-block">
         <div class="music-subhead">
-          <h3>Tus rolas sugeridas</h3>
-          <span class="music-count-badge">${suggestions.length} rola${suggestions.length === 1 ? '' : 's'}</span>
+          <h3>Tus canciones sugeridas</h3>
+          <span class="music-count-badge">${suggestions.length === 1 ? '1 canción' : `${suggestions.length} canciones`}</span>
         </div>
 
         ${suggestions.length === 0 ? `
           <div class="empty-state">
-            <strong>Sin rolas sugeridas todavía</strong>
+            <strong>Todavía no sugeriste canciones</strong>
             <p>Elegí una de tus clases arriba para sugerir tu primera canción.</p>
           </div>
         ` : `
@@ -1972,7 +2204,7 @@ function studentMusicSection() {
                   </span>
                 </div>
                 <div class="music-card-body">
-                  <h3 class="music-song-title">${escapeHtml(item.song || 'Cualquier rola')}</h3>
+                  <h3 class="music-song-title">${escapeHtml(item.song || 'Cualquier canción')}</h3>
                   <p class="music-song-artist">${escapeHtml(item.artist || 'Artista sin especificar')}</p>
                   <div class="music-class-meta">
                     <span>${escapeHtml(item.className)}</span> · <small>Profe ${escapeHtml(item.teacherName)}</small>
@@ -2012,7 +2244,7 @@ function teacherMusicSection() {
         <div>
           <h2>Sugerido por los alumnos</h2>
         </div>
-        <div class="filter-group" role="group" aria-label="Filtrar rolas de alumnos">
+        <div class="filter-group" role="group" aria-label="Filtrar canciones sugeridas por alumnos">
           <button type="button" class="filter-chip ${musicTeacherFilter === 'all' ? 'is-active' : ''}" data-teacher-music-filter="all">
             Todas (${forTeacher.length})
           </button>
@@ -2027,7 +2259,7 @@ function teacherMusicSection() {
 
       ${filtered.length === 0 ? `
         <div class="empty-state">
-          <strong>Sin rolas en esta lista</strong>
+          <strong>Sin canciones en esta lista</strong>
           <p>No hay canciones con el filtro seleccionado.</p>
         </div>
       ` : `
@@ -2049,7 +2281,7 @@ function teacherMusicSection() {
               </div>
 
               <div class="music-card-body">
-                <h3 class="music-song-title">${escapeHtml(item.song || 'Cualquier rola')}</h3>
+                <h3 class="music-song-title">${escapeHtml(item.song || 'Cualquier canción')}</h3>
                 <p class="music-song-artist">${escapeHtml(item.artist || 'Artista sin especificar')}</p>
               </div>
 
@@ -2084,7 +2316,7 @@ function teacherMusicSection() {
 function openMusicSuggestionModal(preselectedClassId = null) {
   const student = currentStudent();
   if (!student) {
-    showToast('Acción no disponible', 'No tienes un carné o perfil de alumno vinculado.');
+    showToast('Acción no disponible', 'No tenés un carné o perfil de alumno vinculado.');
     return;
   }
   const studentClasses = classesForStudent(student.id);
@@ -2095,7 +2327,7 @@ function openMusicSuggestionModal(preselectedClassId = null) {
   currentSelectedMoodId = randomMood.id;
 
   openModal({
-    title: 'Sugerir rola',
+    title: 'Sugerir canción',
     eyebrow: `${targetClass.name} · ${targetClass.teacher}`,
     body: `
       <form id="musicSuggestionForm" class="music-suggestion-form">
@@ -2168,7 +2400,7 @@ function handleMusicSuggestionSubmit(event) {
 
   const student = currentStudent();
   if (!student) {
-    showToast('Acción no disponible', 'No tienes una ficha de alumno vinculada para enviar sugerencias.');
+    showToast('Acción no disponible', 'No tenés una ficha de alumno vinculada para enviar sugerencias.');
     return;
   }
 
@@ -2196,8 +2428,8 @@ function handleMusicSuggestionSubmit(event) {
 
   closeModal();
   renderAndFocus();
-  const displayTitle = song || (artist ? `rola de ${artist}` : 'tu rola');
-  showToast('¡Rola enviada! 🎶', `Le sugeriste "${displayTitle}" al profe ${targetClass.teacher} con la etiqueta "${mood.emoji} ${mood.label}".`);
+  const displayTitle = song || (artist ? `una canción de ${artist}` : 'tu canción');
+  showToast('¡Sugerencia enviada! 🎶', `Le sugeriste "${displayTitle}" al profe ${targetClass.teacher} con la etiqueta "${mood.emoji} ${mood.label}".`);
 }
 
 function renderStudentHome() {
@@ -2249,15 +2481,24 @@ function renderStudentHome() {
         ? `Usaste las ${allowance} clases del plan este mes.`
         : `${remaining} clase${remaining === 1 ? '' : 's'} disponible${remaining === 1 ? '' : 's'} este mes.`;
   return `
+    <header class="student-welcome">
+      <div>
+        <p class="student-welcome-kicker">Tu espacio In Motion</p>
+        <h1>${escapeHtml(greeting())}, ${escapeHtml(firstName)}</h1>
+        <p>${escapeHtml(longDate(TODAY))}</p>
+      </div>
+      <span class="student-welcome-mark" aria-hidden="true">IM</span>
+    </header>
+
     <section class="student-hero">
       <div class="student-hero-copy">
         <div>
-          <p class="eyebrow">${escapeHtml(shortDayLabel(TODAY))}</p>
-          <h1 class="hero-title">Hola, ${escapeHtml(firstName)}.<br/><span>¿Bailamos?</span></h1>
+          <p class="eyebrow">In Motion Dance Academy</p>
+          <h2 class="hero-title">¡Bailando se<br/><span>vive mejor!</span></h2>
         </div>
         <div class="hero-foot">
-          <button class="button button--red" type="button" data-go="carnet">Mostrar mi carné <span aria-hidden="true">→</span></button>
-          <p>${checkedIn ? 'Tu asistencia de hoy ya quedó registrada en esta demo.' : 'Mostrá tu carné en recepción al llegar a la academia.'}</p>
+          <button class="button button--red" type="button" data-go="clases">Ver mis clases <span aria-hidden="true">→</span></button>
+          <p>${checkedIn ? 'Tu asistencia de hoy ya quedó registrada.' : 'Todo listo para moverte, aprender y disfrutar.'}</p>
         </div>
       </div>
       <aside class="next-class ${next ? 'is-clickable' : 'is-empty'}" ${next ? `data-class-detail="${escapeHtml(next.id)}" data-context-date="${escapeHtml(dayKey(next.date))}" role="button" tabindex="0" aria-label="Ver detalles de la próxima clase: ${escapeHtml(next.name)}, ${escapeHtml(next.fullDateLabel)} a las ${escapeHtml(next.time)}"` : ''}>
@@ -2290,7 +2531,7 @@ function renderStudentHome() {
 
     <div class="journey-actions" role="group" aria-label="Explorá la academia">
       <button type="button" data-go="planes"><span class="journey-icon">${icon('money')}</span><span><strong>Encontrá tu plan</strong><small>Compará opciones a tu ritmo</small></span><span aria-hidden="true">↗</span></button>
-      <a href="../index.html"><span class="journey-icon">▷</span><span><strong>Videos para practicar</strong><small>Explorá los recaps y movimientos</small></span><span aria-hidden="true">↗</span></a>
+      <a href="../index.html"><span class="journey-icon">▷</span><span><strong>Videos para practicar</strong><small>Repasá las clases y los movimientos</small></span><span aria-hidden="true">↗</span></a>
     </div>
     <section class="section">
       <div class="section-head"><div><h2>Esta semana</h2><p>Tu agenda de clases del ${escapeHtml(weekRange())}.</p></div><button class="text-button" type="button" data-go="clases">Ver calendario →</button></div>
@@ -2771,7 +3012,7 @@ function studentCalendarMarkup() {
                   <span class="capacity">${escapeHtml(capacityText(item))} cupos</span>
                   <div class="calendar-agenda-actions">
                     <button class="button button--small ${isEnrolled ? 'button--red' : 'button--light'}" type="button" data-class-detail="${escapeHtml(item.id)}" data-context-date="${escapeHtml(dayKey(studentCalendarDate))}" aria-label="Ver detalles de ${escapeHtml(item.name)}">Ver detalles</button>
-                    <button class="button button--small button--light" type="button" data-open-music-modal="${escapeHtml(item.id)}" aria-label="Sugerir rola para ${escapeHtml(item.name)}">Rola 🎶</button>
+                    <button class="button button--small button--light" type="button" data-open-music-modal="${escapeHtml(item.id)}" aria-label="Sugerir una canción para ${escapeHtml(item.name)}">Canción 🎶</button>
                   </div>
                 </div>
               </div>
@@ -2919,11 +3160,16 @@ function qrMarkup(seed = DEMO_STUDENT_ID) {
 // aprobo, y porque escondia detras de una interaccion lo unico que hay que ver.
 // El QR vive en su propio panel, al lado: se lee sin girar nada.
 function memberCardMarkup(student) {
+  const isSuspended = studentLifecycleStatus(student) === 'suspended';
+  const isArchived = studentLifecycleStatus(student) === 'archived';
+  const badgeLabel = isSuspended ? 'Suspendido' : (isArchived ? 'Archivado' : 'Permanente');
+  const badgeClass = isSuspended ? 'member-validity-badge is-suspended' : (isArchived ? 'member-validity-badge is-archived' : 'member-validity-badge');
+  const qrNote = isSuspended ? 'Carné suspendido' : (isArchived ? 'Carné inactivo' : 'QR de demostración');
   return `
-    <article class="member-card">
+    <article class="member-card ${isSuspended ? 'is-card-suspended' : ''}">
       <div class="member-card-header">
         <img class="member-logo" src="./assets/inmotion-logo.svg" alt="In Motion Dance Academy" />
-        <span class="member-validity-badge">Permanente</span>
+        <span class="${badgeClass}">${escapeHtml(badgeLabel)}</span>
       </div>
       <div class="member-card-body">
         <div class="member-card-identity">
@@ -2938,10 +3184,10 @@ function memberCardMarkup(student) {
           </div>
         </div>
         <div class="member-qr-block">
-          <div class="member-qr-frame">
+          <div class="member-qr-frame ${isSuspended ? 'is-disabled' : ''}">
             ${qrMarkup(student.id)}
           </div>
-          <span class="member-qr-note">QR de demostración</span>
+          <span class="member-qr-note">${escapeHtml(qrNote)}</span>
         </div>
       </div>
     </article>`;
@@ -3201,41 +3447,139 @@ function adminPaymentRows(payments = state.payments, empty = null) {
   if (!payments.length) {
     return `<tr><td colspan="6"><div class="empty-state"><strong>${escapeHtml(empty?.title || 'No hay registros')}</strong>${escapeHtml(empty?.detail || 'Probá con otro filtro.')}</div></td></tr>`;
   }
-  return payments.map((item) => `
+  return payments.map((item) => {
+    const student = studentById(item.studentId);
+    const phone = student?.phone;
+    const normalizedPhone = normalizePhoneNumber(phone);
+    const hasValidPhone = Boolean(normalizedPhone);
+    const isPaid = item.status === 'Pagado';
+
+    let actionMarkup = '';
+    if (isPaid) {
+      actionMarkup = `<button class="table-action" type="button" data-receipt="${escapeHtml(item.id)}" aria-label="Comprobante de ${escapeHtml(item.student)}, ${escapeHtml(item.month)}">Comprobante</button>`;
+    } else {
+      const waButton = hasValidPhone
+        ? `<button class="table-action" type="button" data-whatsapp-payment="${escapeHtml(item.id)}" aria-label="Recordar por WhatsApp a ${escapeHtml(item.student)}">Recordar por WhatsApp</button>`
+        : `<button class="table-action is-disabled" type="button" disabled aria-disabled="true" title="Sin teléfono válido" aria-label="Sin teléfono válido para ${escapeHtml(item.student)}">Sin teléfono válido</button>`;
+      actionMarkup = `
+        <div class="table-actions-cell">
+          <button class="table-action" type="button" data-register-for="${escapeHtml(item.studentId)}" data-payment-period="${escapeHtml(item.period)}" aria-label="Registrar pago de ${escapeHtml(item.student)}, ${escapeHtml(item.month)}">Registrar</button>
+          ${waButton}
+        </div>
+      `;
+    }
+
+    return `
     <tr data-payment-row="${escapeHtml(item.id)}">
       <td><div class="person-cell"><span class="avatar" aria-hidden="true">${escapeHtml(initials(item.student))}</span><span><strong>${escapeHtml(item.student)}</strong><small>${escapeHtml(item.studentId)}</small></span></div></td>
       <td>${escapeHtml(item.month)}</td>
       <td><strong>Q ${escapeHtml(formatAmount(item.amount))}</strong></td>
       <td>${escapeHtml(item.method)}</td>
       <td><span class="status-pill ${item.status === 'Pagado' ? 'is-paid' : (paymentStatus(item) === 'En mora' ? 'is-mora' : 'is-due')}">${escapeHtml(paymentStatus(item))}</span></td>
-      <td>${item.status === 'Pagado'
-        ? `<button class="table-action" type="button" data-receipt="${escapeHtml(item.id)}" aria-label="Comprobante de ${escapeHtml(item.student)}, ${escapeHtml(item.month)}">Comprobante</button>`
-        : `<button class="table-action" type="button" data-register-for="${escapeHtml(item.studentId)}" data-payment-period="${escapeHtml(item.period)}" aria-label="Registrar pago de ${escapeHtml(item.student)}, ${escapeHtml(item.month)}">Registrar</button>`}</td>
+      <td>${actionMarkup}</td>
     </tr>
-  `).join('');
+  `;
+  }).join('');
 }
 
-function studentRows(students = state.students) {
-  if (!students.length) return '<tr><td colspan="5"><div class="empty-state"><strong>Sin coincidencias</strong>Revisá el nombre o número de carnet.</div></td></tr>';
-  return students.map((student) => {
-    const status = studentPaymentStatus(student.id);
-    const pillClass = (status === 'Al día' || status === 'Pagado')
-      ? 'is-paid'
-      : (status === 'En mora')
-      ? 'is-mora'
-      : (status === 'Pendiente')
-      ? 'is-due'
-      : 'is-undefined';
+let studentStatusFilter = 'active';
+let studentSearchQuery = '';
+
+function filteredAdminStudents(students = state.students, statusFilter = studentStatusFilter, query = studentSearchQuery) {
+  const normQuery = (query || '').trim().toLowerCase();
+  return students.filter((item) => {
+    const itemStatus = studentLifecycleStatus(item);
+    if (statusFilter === 'active' && itemStatus !== 'active') return false;
+    if (statusFilter === 'suspended' && itemStatus !== 'suspended') return false;
+    if (statusFilter === 'archived' && itemStatus !== 'archived') return false;
+    if (normQuery && !`${item.name} ${item.id}`.toLowerCase().includes(normQuery)) return false;
+    return true;
+  });
+}
+
+function studentRows(students = null) {
+  const list = students !== null ? students : filteredAdminStudents();
+  if (!list.length) return '<tr><td colspan="5"><div class="empty-state"><strong>Sin coincidencias</strong>Revisá el filtro o el término de búsqueda.</div></td></tr>';
+  return list.map((student) => {
+    const studentSt = studentLifecycleStatus(student);
+    let statusMarkup = '';
+    if (studentSt === 'suspended') {
+      statusMarkup = '<span class="status-pill is-mora">Suspendido</span>';
+    } else if (studentSt === 'archived') {
+      statusMarkup = '<span class="status-pill is-archived">Archivado</span>';
+    } else {
+      const status = student.paymentStatus || studentPaymentStatus(student.id);
+      const pillClass = (status === 'Al día' || status === 'Pagado')
+        ? 'is-paid'
+        : (status === 'En mora')
+        ? 'is-mora'
+        : (status === 'Pendiente')
+        ? 'is-due'
+        : 'is-undefined';
+      statusMarkup = `<span class="status-pill ${pillClass}">${escapeHtml(status)}</span>`;
+    }
     return `
-    <tr>
-      <td><div class="person-cell"><span class="avatar" aria-hidden="true">${escapeHtml(initials(student.name))}</span><span><strong>${escapeHtml(student.name)}</strong><small>${escapeHtml(student.id)}</small></span></div></td>
+    <tr class="${studentSt === 'archived' ? 'is-row-archived' : (studentSt === 'suspended' ? 'is-row-suspended' : '')}">
+      <td><div class="person-cell"><span class="avatar" aria-hidden="true">${escapeHtml(initials(student.name))}</span><span><strong>${escapeHtml(student.name)}</strong><small>${escapeHtml(student.id)}${studentSt === 'suspended' ? ' · Suspendido' : (studentSt === 'archived' ? ' · Archivado' : '')}</small></span></div></td>
       <td>${escapeHtml(planForStudent(student.id).planName)}${planReviewTag(planForStudent(student.id))}</td>
       <td>${escapeHtml(student.phone)}</td>
-      <td><span class="status-pill ${pillClass}">${escapeHtml(status)}</span></td>
+      <td>${statusMarkup}</td>
       <td><button class="table-action" type="button" data-student-detail="${escapeHtml(student.id)}" aria-label="Ver ficha de ${escapeHtml(student.name)}">Ver ficha</button></td>
     </tr>
   `;
   }).join('');
+}
+
+function renderAttendanceAlertCards(alerts) {
+  if (!alerts.length) {
+    return `
+      <article class="surface-card">
+        <div class="empty-state">
+          <strong>Sin alertas de inasistencia</strong>
+          Todos los alumnos con registros recientes están al día o no cuentan con dos ausencias consecutivas comprobables.
+        </div>
+      </article>
+    `;
+  }
+  return `
+    <div class="attendance-followup-grid">
+      ${alerts.map((item) => {
+        const [s1, s2] = item.sessions;
+        return `
+          <article class="surface-card attendance-followup-card">
+            <div class="attendance-card-header">
+              <div class="person-cell">
+                <span class="avatar" aria-hidden="true">${escapeHtml(initials(item.student.name))}</span>
+                <div>
+                  <strong>${escapeHtml(item.student.name)}</strong>
+                  <small>${escapeHtml(item.student.id)}${item.isGuardian ? ` · Encargado: ${escapeHtml(item.guardian.name)}` : ' · Alumno adulto'}</small>
+                </div>
+              </div>
+              <span class="status-pill is-mora">2 ausencias consecutivas</span>
+            </div>
+            <div class="attendance-card-body">
+              <div class="attendance-card-field">
+                <span class="payment-meta">Clases ausentes:</span>
+                <ul class="attendance-missed-list">
+                  <li><strong>${escapeHtml(s1.name)}</strong> · ${escapeHtml(s1.fullDateLabel || shortDate(s1.sessionDate))} · ${escapeHtml(s1.time)}</li>
+                  <li><strong>${escapeHtml(s2.name)}</strong> · ${escapeHtml(s2.fullDateLabel || shortDate(s2.sessionDate))} · ${escapeHtml(s2.time)}</li>
+                </ul>
+              </div>
+              <div class="attendance-card-field">
+                <span class="payment-meta">${item.isGuardian ? 'Teléfono del encargado:' : 'Teléfono del alumno:'}</span>
+                <strong>${escapeHtml(item.targetPhone || 'Sin registrar')}</strong>
+              </div>
+            </div>
+            <div class="attendance-card-actions">
+              ${item.isValidPhone
+                ? `<button class="button button--red button--small" type="button" data-whatsapp-attendance="${escapeHtml(item.student.id)}" aria-label="Preguntar si todo está bien a ${escapeHtml(item.isGuardian ? item.guardian.name : item.student.name)}">Preguntar si todo está bien</button>`
+                : `<button class="button button--light button--small is-disabled" type="button" disabled aria-disabled="true" title="Sin teléfono válido">Sin teléfono válido</button>`}
+            </div>
+          </article>
+        `;
+      }).join('')}
+    </div>
+  `;
 }
 
 function renderAdminHome() {
@@ -3243,6 +3587,7 @@ function renderAdminHome() {
   // Antes decia 50 alumnos y 6 maestros mientras la pantalla de al lado listaba
   // 7 registros: ahora las dos cifras salen de los mismos datos.
   const teachers = new Set(classData.map((item) => item.teacher)).size;
+  const attendanceAlerts = detectConsecutiveAbsences();
   return `
     <section class="admin-intro">
       <div><p class="eyebrow">Administración · ${escapeHtml(shortDayLabel(TODAY))}</p><h1>La academia,<br/>en orden.</h1></div>
@@ -3253,6 +3598,15 @@ function renderAdminHome() {
       <div class="filter-row" role="group" aria-label="Acciones administrativas"><button class="button button--red" type="button" data-open-payment>+ Registrar pago</button><button class="button button--light" type="button" data-open-student>+ Nuevo alumno</button><button class="button button--light" type="button" data-go="asistencia">Revisar asistencia</button></div>
     </section>
     <section class="section">
+      <div class="section-head">
+        <div>
+          <h2>Seguimiento de asistencia</h2>
+          <p>${attendanceAlerts.length === 1 ? '1 alumno tiene dos ausencias consecutivas recientes.' : (attendanceAlerts.length ? `${attendanceAlerts.length} alumnos tienen dos ausencias consecutivas recientes.` : 'No hay alertas de inasistencia consecutiva en sesiones comprobables.')}</p>
+        </div>
+      </div>
+      ${renderAttendanceAlertCards(attendanceAlerts)}
+    </section>
+    <section class="section">
       <div class="section-head"><div><h2>Pagos por resolver</h2><p>${due.length === 1 ? '1 registro necesita' : `${due.length} registros necesitan`} seguimiento.</p></div><button class="text-button" type="button" data-go="pagos">Ver todos →</button></div>
       <div class="table-wrap"><table class="data-table"><thead><tr><th scope="col">Alumno</th><th scope="col">Mes</th><th scope="col">Monto</th><th scope="col">Método</th><th scope="col">Estado</th><th scope="col">Acción</th></tr></thead><tbody>${adminPaymentRows(due, { title: 'Nada por resolver', detail: 'No hay mensualidades pendientes ni en mora en los datos demo.' })}</tbody></table></div>
     </section>
@@ -3260,6 +3614,19 @@ function renderAdminHome() {
 }
 
 function renderAdminStudents() {
+  const currentFilter = studentStatusFilter || 'active';
+  const filtered = filteredAdminStudents(state.students, currentFilter, studentSearchQuery);
+  const totalInFilter = state.students.filter((s) => {
+    const st = studentLifecycleStatus(s);
+    if (currentFilter === 'active') return st === 'active';
+    if (currentFilter === 'suspended') return st === 'suspended';
+    if (currentFilter === 'archived') return st === 'archived';
+    return true;
+  }).length;
+  const filterCountText = studentSearchQuery.trim()
+    ? `${filtered.length} de ${totalInFilter} alumnos.`
+    : `${filtered.length} alumno${filtered.length === 1 ? '' : 's'}.`;
+
   return `
     <header class="page-heading">
       <div><p class="eyebrow">Base de alumnos</p><h1>Personas,<br/>no expedientes.</h1><p>Datos ficticios para validar la experiencia de gestión.</p></div>
@@ -3268,9 +3635,35 @@ function renderAdminStudents() {
         <button class="button button--red" type="button" data-open-student>+ Nuevo alumno</button>
       </div>
     </header>
-    <div class="section-head"><label class="search-box"><span aria-hidden="true">⌕</span><span class="sr-only">Buscar alumno por nombre o carnet</span><input id="studentSearch" type="search" placeholder="Buscar por nombre o carnet" autocomplete="off" /></label><span class="tag">${escapeHtml(state.students.length)} registros demo</span></div>
-    <p class="payment-meta" id="studentSearchStatus" role="status">${escapeHtml(state.students.length)} de ${escapeHtml(state.students.length)} alumnos.</p>
-    <div class="table-wrap"><table class="data-table"><thead><tr><th scope="col">Alumno</th><th scope="col">Plan</th><th scope="col">Teléfono</th><th scope="col">Estado</th><th scope="col">Acción</th></tr></thead><tbody id="studentTableBody">${studentRows()}</tbody></table></div>
+    <div class="filter-row" id="studentStatusFilters" role="group" aria-label="Filtrar alumnos por estado">
+      <button class="filter-chip ${currentFilter === 'active' ? 'is-active' : ''}" type="button" aria-pressed="${currentFilter === 'active'}" data-student-filter="active">Activos</button>
+      <button class="filter-chip ${currentFilter === 'suspended' ? 'is-active' : ''}" type="button" aria-pressed="${currentFilter === 'suspended'}" data-student-filter="suspended">Suspendidos</button>
+      <button class="filter-chip ${currentFilter === 'archived' ? 'is-active' : ''}" type="button" aria-pressed="${currentFilter === 'archived'}" data-student-filter="archived">Archivados</button>
+      <button class="filter-chip ${currentFilter === 'all' ? 'is-active' : ''}" type="button" aria-pressed="${currentFilter === 'all'}" data-student-filter="all">Todos</button>
+    </div>
+    <div class="section-head">
+      <label class="search-box">
+        <span aria-hidden="true">⌕</span>
+        <span class="sr-only">Buscar alumno por nombre o carnet</span>
+        <input id="studentSearch" type="search" placeholder="Buscar por nombre o carnet" autocomplete="off" value="${escapeHtml(studentSearchQuery)}" />
+      </label>
+      <span class="tag" id="studentCountTag">${escapeHtml(state.students.length)} registros totales</span>
+    </div>
+    <p class="payment-meta" id="studentSearchStatus" role="status">${escapeHtml(filterCountText)}</p>
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th scope="col">Alumno</th>
+            <th scope="col">Plan</th>
+            <th scope="col">Teléfono</th>
+            <th scope="col">Estado</th>
+            <th scope="col">Acción</th>
+          </tr>
+        </thead>
+        <tbody id="studentTableBody">${studentRows(filtered)}</tbody>
+      </table>
+    </div>
   `;
 }
 
@@ -3628,8 +4021,8 @@ function consentCardMarkup(guardian) {
       <article class="surface-card">
         <p class="eyebrow">Manejo de datos de menores</p>
         <h3>Sin constancia registrada</h3>
-        <p class="payment-meta">${escapeHtml(guardian.name)}<br/>No se ha registrado una constancia de consentimiento para este tutor.</p>
-        <p class="payment-meta" style="margin-top:16px">Como tutor accedés únicamente a la información de tus propios hijos.</p>
+        <p class="payment-meta">${escapeHtml(guardian.name)}<br/>No se ha registrado una constancia de consentimiento para este encargado.</p>
+        <p class="payment-meta" style="margin-top:16px">Como encargado, solo podés ver la información de tus hijos.</p>
         <div class="form-actions"><button class="button button--light button--small" type="button" data-open-consent>Ver constancia</button></div>
       </article>
     `;
@@ -3640,7 +4033,7 @@ function consentCardMarkup(guardian) {
       <p class="eyebrow">Manejo de datos de menores${isDemo ? ' · Ejemplo demo' : ''}</p>
       <h3>Consentimiento firmado</h3>
       <p class="payment-meta">${escapeHtml(guardian.name)}<br/>Firmado el ${escapeHtml(shortDate(signed))} ${signed.getFullYear()}${isDemo ? ' (ejemplo demo)' : ''}</p>
-      <p class="payment-meta" style="margin-top:16px">Como tutor accedés únicamente a la información de tus propios hijos.</p>
+      <p class="payment-meta" style="margin-top:16px">Como encargado, solo podés ver la información de tus hijos.</p>
       <div class="form-actions"><button class="button button--light button--small" type="button" data-open-consent>Ver constancia</button></div>
     </article>
   `;
@@ -3653,17 +4046,17 @@ function renderGuardianHome() {
       <header class="page-heading">
         <div>
           <p class="eyebrow">${escapeHtml(shortDayLabel(TODAY))}</p>
-          <h1>Hola,<br/><span>Sin perfil de tutor.</span></h1>
+          <h1>Hola,<br/><span>Sin perfil de encargado.</span></h1>
         </div>
       </header>
       <div class="empty-state">
-        <strong>Perfil de tutor no vinculado</strong>
-        Tu cuenta autenticada (${escapeHtml(authenticatedUser?.email || '')}) no tiene un perfil de tutor asociado en el sistema.
+        <strong>Perfil de encargado no vinculado</strong>
+        Tu cuenta (${escapeHtml(authenticatedUser?.email || '')}) no tiene un perfil de encargado asociado.
       </div>
     `;
   }
   const children = childrenOf(guardian);
-  const firstName = guardian?.firstName || (guardian?.name ? guardian.name.split(' ')[0] : 'Tutor');
+  const firstName = guardian?.firstName || (guardian?.name ? guardian.name.split(' ')[0] : 'Encargado');
   return `
     <header class="page-heading">
       <div>
@@ -3676,7 +4069,7 @@ function renderGuardianHome() {
     <section class="section">
       <div class="section-head"><div><h2>A tu cargo</h2><p>Próxima clase, última asistencia y mensualidad del mes.</p></div><span class="tag">${children.length} alumno${children.length === 1 ? '' : 's'}</span></div>
       <div class="cards-grid">
-        ${children.length ? children.map(childCardMarkup).join('') : '<div class="empty-state"><strong>Sin alumnos a cargo</strong>No hay alumnos vinculados a tu cuenta de tutor en el sistema.</div>'}
+        ${children.length ? children.map(childCardMarkup).join('') : '<div class="empty-state"><strong>Sin alumnos a cargo</strong>No hay alumnos vinculados a tu cuenta de encargado.</div>'}
         ${guardian ? consentCardMarkup(guardian) : ''}
       </div>
     </section>
@@ -3685,7 +4078,7 @@ function renderGuardianHome() {
 
 function guardianCarnetMarkup() {
   const child = studentById(activeChildId);
-  if (!child) return '<div class="empty-state"><strong>Sin alumnos a cargo</strong>No hay ningún alumno seleccionado o vinculado a este tutor.</div>';
+  if (!child) return '<div class="empty-state"><strong>Sin alumnos a cargo</strong>No hay ningún alumno seleccionado o vinculado a este encargado.</div>';
   const next = nextClassForStudent(child.id);
   return `
     <div class="member-card-wrap">
@@ -4682,13 +5075,13 @@ function renderGuardianCard() {
   if (isSupabaseConnected && !guardian) {
     return `
       <header class="page-heading"><div><p class="eyebrow">Identificación digital</p><h1>El carné<br/>de tus hijos.</h1></div></header>
-      <div class="empty-state"><strong>Sin perfil de tutor</strong>No tenés un perfil de tutor vinculado.</div>
+      <div class="empty-state"><strong>Sin perfil de encargado</strong>No tenés un perfil de encargado vinculado.</div>
     `;
   }
   const children = childrenOf(guardian);
   if (!children.some((child) => child.id === activeChildId)) activeChildId = children[0]?.id || null;
   return `
-    <header class="page-heading"><div><p class="eyebrow">Identificación digital</p><h1>El carné<br/>de tus hijos.</h1><p>El carné es permanente y no caduca. Se muestra en recepción para registrar la llegada; el estado de la mensualidad se consulta aparte. El tutor no marca la asistencia.</p></div></header>
+    <header class="page-heading"><div><p class="eyebrow">Identificación digital</p><h1>El carné<br/>de tus hijos.</h1><p>El carné es permanente y no caduca. Se muestra en recepción para registrar la llegada; el estado de la mensualidad se consulta aparte. El encargado no marca la asistencia.</p></div></header>
     ${children.length > 0 ? `
       <div class="filter-row" role="group" aria-label="Elegir alumno">
         ${children.map((child) => `<button class="filter-chip ${child.id === activeChildId ? 'is-active' : ''}" type="button" aria-pressed="${child.id === activeChildId}" data-child-select="${escapeHtml(child.id)}">${escapeHtml(child.name)}</button>`).join('')}
@@ -4871,6 +5264,35 @@ function openScanModal() {
     showToast('Acción no disponible', 'No hay un alumno seleccionado o vinculado para escanear.');
     return;
   }
+  const lifecycle = studentLifecycleStatus(student);
+  if (lifecycle === 'suspended') {
+    openModal({
+      title: 'Carné suspendido',
+      eyebrow: `Asistencia QR · ${student.id}`,
+      body: `
+        <div class="delete-blocked-card" style="margin-bottom:16px">
+          <p class="delete-blocked-lead">El carné de este alumno está suspendido y no puede utilizarse para registrar asistencia.</p>
+          ${student.suspensionReason ? `<p class="payment-meta">Motivo: <em>${escapeHtml(student.suspensionReason)}</em></p>` : ''}
+          ${student.suspendedUntil ? `<p class="payment-meta">Vigencia de suspensión hasta: ${escapeHtml(shortDate(parseDayKey(student.suspendedUntil)))}</p>` : ''}
+        </div>
+        <div class="form-actions"><button class="button button--light" type="button" data-close-modal>Cerrar</button></div>
+      `
+    });
+    return;
+  }
+  if (lifecycle === 'archived') {
+    openModal({
+      title: 'Carné inactivo',
+      eyebrow: `Asistencia QR · ${student.id}`,
+      body: `
+        <div class="delete-blocked-card" style="margin-bottom:16px">
+          <p class="delete-blocked-lead">El carné de este alumno pertenece a un expediente archivado y no puede registrar asistencias.</p>
+        </div>
+        <div class="form-actions"><button class="button button--light" type="button" data-close-modal>Cerrar</button></div>
+      `
+    });
+    return;
+  }
   const classes = scanClasses();
   const activeClass = findClass(activeClassId) || scheduledClasses()[0];
   const sessionDate = activeClass?.date ? dayKey(activeClass.date) : dayKey(TODAY);
@@ -4998,7 +5420,7 @@ function openClassDetail(classId, contextDate = null) {
       </div>
       <p class="modal-note">Esta pantalla es de consulta. La inscripción a una clase la administra la academia; el prototipo no habilita reservas por sesión.</p>
       <div class="form-actions">
-        ${activeRole === 'student' ? `<button class="button button--red" type="button" data-open-music-modal="${escapeHtml(item.id)}">Pedir rola para esta clase 🎶</button>` : ''}
+        ${activeRole === 'student' ? `<button class="button button--red" type="button" data-open-music-modal="${escapeHtml(item.id)}">Pedir una canción para esta clase 🎶</button>` : ''}
         <button class="button button--light" type="button" data-close-modal>Cerrar</button>
       </div>
     `
@@ -5028,7 +5450,7 @@ function openStudentPayment() {
 function openConsentModal() {
   const guardian = currentGuardian();
   if (!guardian) {
-    showToast('Sin tutor', 'No hay un tutor vinculado para consultar consentimiento.');
+    showToast('Sin encargado', 'No hay un encargado vinculado para consultar el consentimiento.');
     return;
   }
   const hasConsent = Boolean(guardian.consentSignedAt);
@@ -5044,9 +5466,9 @@ function openConsentModal() {
           <p class="eyebrow">Estado de consentimiento</p>
           <h3>Sin constancia registrada</h3>
           <p class="payment-meta">No existe evidencia de consentimiento firmada para ${escapeHtml(guardian.name)} en los registros de la academia.</p>
-          <p class="payment-meta" style="margin-top:12px">Como tutor accedés únicamente a la información de tus propios hijos.</p>
+          <p class="payment-meta" style="margin-top:12px">Como encargado, solo podés ver la información de tus hijos.</p>
         </article>
-        <p class="modal-note" style="margin-top:16px">El consentimiento se firma con la academia fuera del sistema. Una vez firmado y validado físicamente, la administración registra la constancia en la ficha del tutor.</p>
+        <p class="modal-note" style="margin-top:16px">El consentimiento se firma directamente con la academia. Después, administración registra la constancia en la ficha del encargado.</p>
         <div class="form-actions"><button class="button button--red" type="button" data-close-modal>Entendido</button></div>
       `
     });
@@ -5059,7 +5481,7 @@ function openConsentModal() {
     body: `
       <article class="surface-card">
         <p class="eyebrow">Firmado el ${escapeHtml(shortDate(signed))} ${signed.getFullYear()}${isDemo ? ' (demostración)' : ''}</p>
-        <p class="payment-meta">Como tutor accedés únicamente a la información de tus propios hijos.</p>
+        <p class="payment-meta">Como encargado, solo podés ver la información de tus hijos.</p>
       </article>
       <p class="modal-note" style="margin-top:16px">El consentimiento se firma con la academia fuera del sistema. Esta pantalla no contiene el documento: solo deja constancia de que existe y de su fecha.</p>
       <div class="form-actions"><button class="button button--red" type="button" data-close-modal>Entendido</button></div>
@@ -5106,21 +5528,358 @@ function openStudentDetail(studentId) {
   const student = state.students.find((item) => item.id === studentId);
   if (!student) return;
   const enrolled = classesForStudent(student.id);
+  const st = studentLifecycleStatus(student);
+
+  let statusBadgeMarkup = '';
+  let statusBannerMarkup = '';
+  if (st === 'suspended') {
+    statusBadgeMarkup = '<span class="status-pill is-mora">Suspendido</span>';
+    statusBannerMarkup = `
+      <div class="student-detail-status-banner is-suspended">
+        <strong>Alumno suspendido</strong>
+        <span>Motivo: ${escapeHtml(student.suspensionReason || 'Sin motivo registrado')}</span>
+        ${student.suspendedAt ? `<span>Fecha de suspensión: ${escapeHtml(shortDate(parseDayKey(student.suspendedAt)))}</span>` : ''}
+        ${student.suspendedUntil ? `<span>Suspendido hasta: ${escapeHtml(shortDate(parseDayKey(student.suspendedUntil)))}</span>` : '<span>Vigencia: Indefinida</span>'}
+        <small class="payment-meta">El carné está bloqueado para registrar asistencia.</small>
+      </div>
+    `;
+  } else if (st === 'archived') {
+    statusBadgeMarkup = '<span class="status-pill is-archived">Archivado</span>';
+    statusBannerMarkup = `
+      <div class="student-detail-status-banner is-archived">
+        <strong>Expediente archivado</strong>
+        ${student.archivedAt ? `<span>Archivado el: ${escapeHtml(shortDate(parseDayKey(student.archivedAt)))}</span>` : ''}
+        ${student.suspensionReason ? `<span>Motivo previo de suspensión: ${escapeHtml(student.suspensionReason)}</span>` : ''}
+        <small class="payment-meta">Excluido de la lista principal de alumnos. Todo el historial se conserva.</small>
+      </div>
+    `;
+  } else {
+    statusBadgeMarkup = '<span class="status-pill is-paid">Activo</span>';
+  }
+
+  let actionsMenuItems = '';
+  if (isSupabaseConnected) {
+    actionsMenuItems = `
+      <div style="padding:10px 14px;font-size:0.75rem;color:var(--text-muted);border-bottom:1px solid var(--border-soft);line-height:1.4">
+        Gestión de estado no disponible en modo Supabase.
+      </div>
+      <button class="dropdown-action-item" type="button" disabled style="opacity:0.5;cursor:not-allowed"><span>⏸</span> Suspender alumno</button>
+      <button class="dropdown-action-item" type="button" disabled style="opacity:0.5;cursor:not-allowed"><span>📁</span> Archivar alumno</button>
+      <button class="dropdown-action-item dropdown-action-item--danger" type="button" disabled style="opacity:0.5;cursor:not-allowed"><span>🗑</span> Eliminar registro</button>
+    `;
+  } else if (st === 'active') {
+    actionsMenuItems = `
+      <button class="dropdown-action-item" type="button" data-student-action="suspend" data-student-id="${escapeHtml(student.id)}"><span>⏸</span> Suspender alumno</button>
+      <button class="dropdown-action-item" type="button" data-student-action="archive" data-student-id="${escapeHtml(student.id)}"><span>📁</span> Archivar alumno</button>
+      <button class="dropdown-action-item dropdown-action-item--danger" type="button" data-student-action="delete" data-student-id="${escapeHtml(student.id)}"><span>🗑</span> Eliminar registro</button>
+    `;
+  } else if (st === 'suspended') {
+    actionsMenuItems = `
+      <button class="dropdown-action-item" type="button" data-student-action="reactivate" data-student-id="${escapeHtml(student.id)}"><span>▶</span> Reactivar alumno</button>
+      <button class="dropdown-action-item" type="button" data-student-action="archive" data-student-id="${escapeHtml(student.id)}"><span>📁</span> Archivar alumno</button>
+      <button class="dropdown-action-item dropdown-action-item--danger" type="button" data-student-action="delete" data-student-id="${escapeHtml(student.id)}"><span>🗑</span> Eliminar registro</button>
+    `;
+  } else if (st === 'archived') {
+    actionsMenuItems = `
+      <button class="dropdown-action-item" type="button" data-student-action="restore" data-student-id="${escapeHtml(student.id)}"><span>↩</span> Reactivar alumno</button>
+      <button class="dropdown-action-item dropdown-action-item--danger" type="button" data-student-action="delete" data-student-id="${escapeHtml(student.id)}"><span>🗑</span> Eliminar registro</button>
+    `;
+  }
+
   openModal({
     title: student.name,
     eyebrow: `Ficha ${student.id}`,
     body: `
-      <article class="surface-card"><div class="person-cell"><span class="avatar" style="width:54px;height:54px" aria-hidden="true">${escapeHtml(initials(student.name))}</span><span><strong>${escapeHtml(student.name)}</strong><small>${escapeHtml(planForStudent(student.id).planName)}</small></span></div><p class="payment-meta" style="margin-top:22px">Teléfono · ${escapeHtml(student.phone || 'Sin registrar')}<br/>Estado de pago · ${escapeHtml(studentPaymentStatus(student.id))}</p></article>
+      <article class="surface-card">
+        <div class="person-cell">
+          <span class="avatar" style="width:54px;height:54px" aria-hidden="true">${escapeHtml(initials(student.name))}</span>
+          <div>
+            <strong>${escapeHtml(student.name)}</strong>
+            <small>${escapeHtml(planForStudent(student.id).planName)} · ${statusBadgeMarkup}</small>
+          </div>
+        </div>
+        ${statusBannerMarkup}
+        <p class="payment-meta" style="margin-top:16px">
+          Teléfono · ${escapeHtml(student.phone || 'Sin registrar')}<br/>
+          Estado de pago · ${escapeHtml(studentPaymentStatus(student.id))}
+        </p>
+      </article>
+
       <article class="surface-card" style="margin-top:16px">
         <p class="eyebrow">Clases inscritas</p>
         ${enrolled.length
           ? `<p class="payment-meta">${enrolled.map((item) => `${escapeHtml(item.name)} · ${escapeHtml(WEEKDAY_SHORT[item.weekday])} ${escapeHtml(item.time)}`).join('<br/>')}</p>`
           : '<p class="payment-meta">Sin clases asignadas. Mientras no tenga inscripciones no aparece en el calendario del alumno ni en ninguna lista de asistencia.</p>'}
-        <div class="form-actions"><button class="button button--red button--small" type="button" data-student-classes="${escapeHtml(student.id)}" aria-label="Gestionar clases de ${escapeHtml(student.name)}">Gestionar clases</button></div>
+        <div class="form-actions" style="margin-top:12px">
+          <button class="button button--red button--small" type="button" data-student-classes="${escapeHtml(student.id)}" aria-label="Gestionar clases de ${escapeHtml(student.name)}">Gestionar clases</button>
+        </div>
       </article>
+
+      <article class="surface-card" style="margin-top:16px">
+        <div class="section-head" style="margin-bottom:0">
+          <div>
+            <p class="eyebrow">Gestión de ficha</p>
+            <h3 style="margin:2px 0 0;font-size:1.05rem">Opciones del alumno</h3>
+          </div>
+          <details class="more-actions-menu" id="studentMoreActionsMenu">
+            <summary class="button button--light button--small" aria-haspopup="true">Más acciones ▾</summary>
+            <div class="more-actions-dropdown">
+              ${actionsMenuItems}
+            </div>
+          </details>
+        </div>
+      </article>
+
       <p class="modal-note" style="margin-top:16px">Ficha demo sin información sensible real.</p>
     `
   });
+}
+
+function openSuspendStudentModal(studentId) {
+  if (isSupabaseConnected) {
+    showToast('Operación bloqueada', 'La suspensión de alumnos no está disponible en modo conectado con Supabase.');
+    return;
+  }
+  const student = studentById(studentId);
+  if (!student) return;
+  openModal({
+    title: `Suspender a ${student.name}`,
+    eyebrow: `Estado del alumno · ${student.id}`,
+    body: `
+      <form id="suspendStudentForm" data-student-id="${escapeHtml(student.id)}">
+        <p class="modal-note">La suspensión no borra pagos, asistencias, clases ni historial. Mientras esté suspendido, el alumno no podrá registrar asistencia con su carné ni aparecerá en las listas de clase.</p>
+        <div class="form-grid" style="margin-top:16px">
+          <label class="field field--wide">
+            <span>Motivo de suspensión (requerido)</span>
+            <input name="suspensionReason" required placeholder="Ej. Pausa por viaje, motivo de salud..." autocomplete="off" />
+          </label>
+          <label class="field field--wide">
+            <span>Fecha opcional de finalización</span>
+            <input name="suspendedUntil" type="date" min="${dayKey(TODAY)}" />
+          </label>
+        </div>
+        <p class="payment-meta" id="suspendFormMessage" role="status" style="margin-top:8px"></p>
+        <div class="form-actions" style="margin-top:20px">
+          <button class="button button--light" type="button" data-student-detail="${escapeHtml(student.id)}">Cancelar</button>
+          <button class="button button--red" type="submit">Confirmar suspensión</button>
+        </div>
+      </form>
+    `
+  });
+}
+
+function handleSuspendStudentSubmit(event) {
+  event.preventDefault();
+  if (isSupabaseConnected) {
+    showToast('Operación bloqueada', 'La suspensión de alumnos no está disponible en modo conectado con Supabase.');
+    closeModal();
+    return;
+  }
+  const form = event.target;
+  const studentId = form.dataset.studentId;
+  const student = studentById(studentId);
+  if (!student) return;
+  const data = new FormData(form);
+  const reason = cleanText(data.get('suspensionReason'), 200);
+  if (!reason) {
+    const msg = form.querySelector('#suspendFormMessage');
+    if (msg) msg.textContent = 'Por favor ingresá un motivo para la suspensión.';
+    return;
+  }
+  const until = cleanText(data.get('suspendedUntil'), 20) || null;
+  student.status = 'suspended';
+  student.lifecycleStatus = 'suspended';
+  student.suspensionReason = reason;
+  student.suspendedAt = dayKey(TODAY);
+  student.suspendedUntil = until;
+  persistState();
+  showToast('Alumno suspendido', `${student.name} ha sido suspendido temporalmente.`);
+  openStudentDetail(student.id);
+  if (!elements.app.classList.contains('is-hidden')) {
+    updateStudentTableView();
+  }
+}
+
+function openReactivateStudentModal(studentId) {
+  if (isSupabaseConnected) {
+    showToast('Operación bloqueada', 'La reactivación de alumnos no está disponible en modo conectado con Supabase.');
+    return;
+  }
+  const student = studentById(studentId);
+  if (!student) return;
+  const wasArchived = studentLifecycleStatus(student) === 'archived';
+  openModal({
+    title: `Reactivar a ${student.name}`,
+    eyebrow: `Estado del alumno · ${student.id}`,
+    body: `
+      <form id="reactivateStudentForm" data-student-id="${escapeHtml(student.id)}">
+        <p class="modal-note">¿Querés reactivar a <strong>${escapeHtml(student.name)}</strong>? ${wasArchived ? 'Volverá a aparecer en la lista de alumnos activos.' : 'Podrá registrar asistencia con su carné y volverá a las listas de sus clases.'}</p>
+        ${student.suspensionReason ? `<p class="payment-meta">Motivo de suspensión previo: <em>${escapeHtml(student.suspensionReason)}</em></p>` : ''}
+        <div class="form-actions" style="margin-top:20px">
+          <button class="button button--light" type="button" data-student-detail="${escapeHtml(student.id)}">Cancelar</button>
+          <button class="button button--red" type="submit">Reactivar alumno</button>
+        </div>
+      </form>
+    `
+  });
+}
+
+function handleReactivateStudentSubmit(event) {
+  event.preventDefault();
+  if (isSupabaseConnected) {
+    showToast('Operación bloqueada', 'La reactivación de alumnos no está disponible en modo conectado con Supabase.');
+    closeModal();
+    return;
+  }
+  const form = event.target;
+  const studentId = form.dataset.studentId;
+  const student = studentById(studentId);
+  if (!student) return;
+  student.status = 'active';
+  student.lifecycleStatus = 'active';
+  student.suspendedAt = null;
+  student.suspendedUntil = null;
+  student.suspensionReason = '';
+  student.archivedAt = null;
+  persistState();
+  showToast('Alumno reactivado', `${student.name} vuelve a estar activo.`);
+  openStudentDetail(student.id);
+  if (!elements.app.classList.contains('is-hidden')) {
+    updateStudentTableView();
+  }
+}
+
+function openArchiveStudentModal(studentId) {
+  if (isSupabaseConnected) {
+    showToast('Operación bloqueada', 'El archivado de alumnos no está disponible en modo conectado con Supabase.');
+    return;
+  }
+  const student = studentById(studentId);
+  if (!student) return;
+  const isSuspended = studentLifecycleStatus(student) === 'suspended';
+  openModal({
+    title: `Archivar a ${student.name}`,
+    eyebrow: `Gestión de expediente · ${student.id}`,
+    body: `
+      <form id="archiveStudentForm" data-student-id="${escapeHtml(student.id)}">
+        <p class="modal-note">Al archivar a <strong>${escapeHtml(student.name)}</strong>, lo quitás de la lista principal sin borrar sus pagos, asistencias ni clases. Podés encontrarlo y reactivarlo desde el filtro “Archivados”.</p>
+        ${isSuspended ? `<p class="payment-meta">ℹ Se conservará el registro y motivo de suspensión: <em>${escapeHtml(student.suspensionReason)}</em>.</p>` : ''}
+        <div class="form-actions" style="margin-top:20px">
+          <button class="button button--light" type="button" data-student-detail="${escapeHtml(student.id)}">Cancelar</button>
+          <button class="button button--red" type="submit">Archivar alumno</button>
+        </div>
+      </form>
+    `
+  });
+}
+
+function handleArchiveStudentSubmit(event) {
+  event.preventDefault();
+  if (isSupabaseConnected) {
+    showToast('Operación bloqueada', 'El archivado de alumnos no está disponible en modo conectado con Supabase.');
+    closeModal();
+    return;
+  }
+  const form = event.target;
+  const studentId = form.dataset.studentId;
+  const student = studentById(studentId);
+  if (!student) return;
+  student.status = 'archived';
+  student.lifecycleStatus = 'archived';
+  student.archivedAt = dayKey(TODAY);
+  persistState();
+  showToast('Alumno archivado', `${student.name} ha sido archivado.`);
+  openStudentDetail(student.id);
+  if (!elements.app.classList.contains('is-hidden')) {
+    updateStudentTableView();
+  }
+}
+
+function handleDeleteStudentAction(studentId) {
+  if (isSupabaseConnected) {
+    showToast('Eliminación bloqueada', 'La eliminación permanente no está disponible en modo conectado con Supabase.');
+    return;
+  }
+  const check = canDeleteStudent(studentId);
+  if (!check.canDelete) {
+    return openDeleteBlockedModal(studentId, check.reasons);
+  }
+  return openDeleteConfirmModal(studentId);
+}
+
+function openDeleteBlockedModal(studentId, reasons) {
+  const student = studentById(studentId);
+  if (!student) return;
+  openModal({
+    title: 'No se puede eliminar este alumno',
+    eyebrow: `Acción bloqueada · ${student.id}`,
+    body: `
+      <div class="delete-blocked-card">
+        <p class="delete-blocked-lead">No se puede eliminar este alumno porque tiene historial asociado. Podés archivarlo para conservar los registros.</p>
+        <div class="delete-reasons-list">
+          <p class="payment-meta"><strong>Historial detectado:</strong></p>
+          <ul>
+            ${reasons.map((r) => `<li>${escapeHtml(r)}</li>`).join('')}
+          </ul>
+        </div>
+      </div>
+      <div class="form-actions" style="margin-top:20px">
+        <button class="button button--light" type="button" data-student-detail="${escapeHtml(student.id)}">Volver a la ficha</button>
+        <button class="button button--red" type="button" data-student-action="archive" data-student-id="${escapeHtml(student.id)}">Archivar en su lugar</button>
+      </div>
+    `
+  });
+}
+
+function openDeleteConfirmModal(studentId) {
+  const student = studentById(studentId);
+  if (!student) return;
+  openModal({
+    title: `Eliminar permanentemente`,
+    eyebrow: `Acción destructiva · ${student.id}`,
+    body: `
+      <form id="deleteStudentForm" data-student-id="${escapeHtml(student.id)}">
+        <div class="danger-zone-box">
+          <p><strong>Atención:</strong> Esta acción es definitiva y <strong>no se puede deshacer</strong>. Se eliminará permanentemente la ficha de <strong>${escapeHtml(student.name)}</strong> (${escapeHtml(student.id)}).</p>
+          <p class="modal-note">El alumno no tiene pagos, asistencias, pases ni clases vinculadas. Se eliminará únicamente este registro sin afectar a ningún otro alumno.</p>
+          <label class="field field--wide" style="margin-top:16px">
+            <span>Para confirmar la eliminación, escribí <strong>ELIMINAR</strong> en mayúsculas:</span>
+            <input id="deleteConfirmInput" type="text" autocomplete="off" placeholder="Escribí ELIMINAR" required style="font-weight:700;letter-spacing:1px" />
+          </label>
+        </div>
+        <div class="form-actions" style="margin-top:20px">
+          <button class="button button--light" type="button" data-student-detail="${escapeHtml(student.id)}">Cancelar</button>
+          <button class="button button--red" type="submit" id="deleteConfirmSubmitBtn" disabled>Eliminar definitivamente</button>
+        </div>
+      </form>
+    `
+  });
+}
+
+function handleDeleteStudentSubmit(event) {
+  event.preventDefault();
+  const form = event.target;
+  const studentId = form.dataset.studentId;
+  const input = form.querySelector('#deleteConfirmInput');
+  if (input?.value.trim() !== 'ELIMINAR') return;
+  if (isSupabaseConnected) {
+    showToast('Eliminación bloqueada', 'La eliminación permanente no está disponible en modo conectado con Supabase.');
+    return;
+  }
+  const check = canDeleteStudent(studentId);
+  if (!check.canDelete) {
+    openDeleteBlockedModal(studentId, check.reasons);
+    return;
+  }
+  const student = studentById(studentId);
+  const studentName = student?.name || studentId;
+  state.students = state.students.filter((s) => s.id !== studentId);
+  state.payments = state.payments.filter((p) => p.studentId !== studentId);
+  if (activeChildId === studentId) activeChildId = null;
+  persistState();
+  closeModal();
+  showToast('Alumno eliminado', `El registro de ${studentName} fue eliminado permanentemente.`);
+  renderAndFocus();
 }
 
 // ---------------------------------------------------------------------------
@@ -5214,7 +5973,7 @@ async function handleEnrollmentSubmit(event) {
 
 function openProfile() {
   if (isSupabaseConnected && authenticatedProfile) {
-    const roleLabels = { student: 'Alumno', teacher: 'Maestro', admin: 'Administración', guardian: 'Tutor' };
+    const roleLabels = { student: 'Alumno', teacher: 'Maestro', admin: 'Administración', guardian: 'Encargado' };
     const fullName = `${authenticatedProfile.first_name || ''} ${authenticatedProfile.last_name || ''}`.trim() || authenticatedUser?.email || 'Usuario';
     const roleTitle = roleLabels[authenticatedProfile.role] || activeRole;
     let meta = `Cuenta: ${authenticatedUser?.email || ''}`;
@@ -5259,7 +6018,7 @@ function openProfile() {
     student: [student?.name || 'Alumno demo', `Alumno · ${planForStudent(DEMO_STUDENT_ID).planName}`, student?.id || DEMO_STUDENT_ID],
     teacher: [TEACHER_NAME, 'Maestro', `${teacherClasses().length} clase${teacherClasses().length === 1 ? '' : 's'} asignada${teacherClasses().length === 1 ? '' : 's'}`],
     admin: ['Majo Borrayo', 'Administración', 'Acceso de demostración'],
-    guardian: [guardian?.name || 'Tutor demo', 'Tutor', children.length ? `${children.join(' y ')} a su cargo` : 'Sin alumnos a cargo']
+    guardian: [guardian?.name || 'Encargado demo', 'Encargado', children.length ? `${children.join(' y ')} a su cargo` : 'Sin alumnos a cargo']
   };
   const [name, role, meta] = profiles[activeRole] || profiles.student;
   openModal({
@@ -5279,6 +6038,9 @@ async function simulateScan() {
   const sessionDate = document.querySelector('#simulateScan')?.dataset?.sessionDate || dayKey(TODAY);
   try {
     if (!student) throw new Error(isSupabaseConnected ? 'No hay un alumno seleccionado o vinculado para registrar la lectura.' : 'El alumno de la demostración ya no existe. Reiniciá la demo.');
+    const scanLifecycle = studentLifecycleStatus(student);
+    if (scanLifecycle === 'suspended') throw new Error('El alumno está suspendido. Su carné no puede utilizarse para registrar asistencia.');
+    if (scanLifecycle === 'archived') throw new Error('El alumno está archivado. Su carné no está activo.');
     if (!target) throw new Error('No hay una clase válida para registrar esta lectura.');
 
     if (isSupabaseConnected) {
@@ -5332,6 +6094,108 @@ function resetDemo() {
   renderAndFocus();
 }
 
+function openWhatsAppPaymentModal(paymentId) {
+  const payment = state.payments.find((p) => p.id === paymentId);
+  if (!payment) return;
+  const student = studentById(payment.studentId);
+  const firstName = student?.name ? student.name.trim().split(/\s+/)[0] : 'Alumno';
+  const amountStr = formatAmount(payment.amount);
+  const message = generatePaymentReminderMessage({
+    firstName,
+    month: payment.month,
+    amount: amountStr
+  });
+  const rawPhone = student?.phone || '';
+  const normalized = normalizePhoneNumber(rawPhone);
+  const waUrl = normalized ? buildWhatsAppUrl(normalized, message) : '';
+  const hasValidPhone = Boolean(normalized);
+
+  openModal({
+    title: 'Recordatorio de pago',
+    eyebrow: 'Mensualidad pendiente · WhatsApp',
+    body: `
+      <article class="surface-card">
+        <div class="person-cell">
+          <span class="avatar" aria-hidden="true">${escapeHtml(initials(payment.student))}</span>
+          <div>
+            <strong>${escapeHtml(payment.student)}</strong>
+            <small>${escapeHtml(payment.studentId)}</small>
+          </div>
+        </div>
+        <p class="payment-meta" style="margin-top:16px">
+          <strong>Teléfono:</strong> ${escapeHtml(hasValidPhone ? rawPhone : 'Sin teléfono válido')}<br/>
+          <strong>Pendiente:</strong> ${escapeHtml(payment.month)} · Q ${escapeHtml(amountStr)}
+        </p>
+      </article>
+      <div class="whatsapp-preview-card">
+        <p class="eyebrow">Vista previa del mensaje</p>
+        <p class="whatsapp-preview-text">${escapeHtml(message)}</p>
+      </div>
+      <p class="modal-note">WhatsApp se abrirá con el mensaje listo para que lo revisés y lo enviés. Los pagos y registros no cambian.</p>
+      <div class="form-actions">
+        <button class="button button--light" type="button" data-close-modal>Cancelar</button>
+        <button class="button button--red" type="button" data-open-whatsapp="${escapeHtml(waUrl)}" ${hasValidPhone ? '' : 'disabled aria-disabled="true"'}>${hasValidPhone ? 'Abrir WhatsApp' : 'Sin teléfono válido'}</button>
+      </div>
+    `
+  });
+}
+
+function openWhatsAppAttendanceModal(studentId) {
+  const alerts = detectConsecutiveAbsences();
+  const alert = alerts.find((a) => a.student.id === studentId);
+  if (!alert) {
+    showToast('Sin ausencias registradas', 'Este alumno no presenta dos ausencias consecutivas comprobables.');
+    return;
+  }
+
+  const { student, guardian, isGuardian, targetPhone, isValidPhone, sessions } = alert;
+  const firstName = student.name ? student.name.trim().split(/\s+/)[0] : 'Alumno';
+  const tutorName = guardian?.name || 'Encargado';
+  const studentName = student.name;
+
+  const message = generateAbsenceFollowupMessage({
+    isGuardian,
+    tutorName,
+    studentName,
+    firstName
+  });
+
+  const waUrl = isValidPhone ? buildWhatsAppUrl(alert.normalizedPhone, message) : '';
+  const [s1, s2] = sessions;
+
+  openModal({
+    title: 'Seguimiento de asistencia',
+    eyebrow: 'Mensaje de asistencia · WhatsApp',
+    body: `
+      <article class="surface-card">
+        <div class="person-cell">
+          <span class="avatar" aria-hidden="true">${escapeHtml(initials(student.name))}</span>
+          <div>
+            <strong>${escapeHtml(student.name)}</strong>
+            <small>${escapeHtml(student.id)}${isGuardian ? ` · Encargado: ${escapeHtml(guardian.name)}` : ' · Alumno adulto'}</small>
+          </div>
+        </div>
+        <p class="payment-meta" style="margin-top:16px">
+          ${isGuardian ? `<strong>Encargado:</strong> ${escapeHtml(guardian.name)}<br/>` : ''}
+          <strong>Teléfono:</strong> ${escapeHtml(isValidPhone ? targetPhone : 'Sin teléfono válido')}<br/>
+          <strong>Clases ausentes:</strong><br/>
+          · ${escapeHtml(s1.name)} (${escapeHtml(s1.fullDateLabel || shortDate(s1.sessionDate))}, ${escapeHtml(s1.time)})<br/>
+          · ${escapeHtml(s2.name)} (${escapeHtml(s2.fullDateLabel || shortDate(s2.sessionDate))}, ${escapeHtml(s2.time)})
+        </p>
+      </article>
+      <div class="whatsapp-preview-card">
+        <p class="eyebrow">Vista previa del mensaje</p>
+        <p class="whatsapp-preview-text">${escapeHtml(message)}</p>
+      </div>
+      <p class="modal-note">WhatsApp se abrirá con el mensaje listo para que lo revisés y lo enviés. Las asistencias y registros no cambian.</p>
+      <div class="form-actions">
+        <button class="button button--light" type="button" data-close-modal>Cancelar</button>
+        <button class="button button--red" type="button" data-open-whatsapp="${escapeHtml(waUrl)}" ${isValidPhone ? '' : 'disabled aria-disabled="true"'}>${isValidPhone ? 'Abrir WhatsApp' : 'Sin teléfono válido'}</button>
+      </div>
+    `
+  });
+}
+
 function handleModalClick(event) {
   if (event.target.closest('#confirmWebMcp')) return resolveWebMcp(true);
   const randomizeMoodBtn = event.target.closest('[data-randomize-mood]');
@@ -5377,8 +6241,30 @@ function handleModalClick(event) {
   if (modalColl) return openCollectPassPaymentModal(modalColl.dataset.modalOpenCollect);
   const modalCancel = event.target.closest('[data-cancel-pass]');
   if (modalCancel) return openCancelPassModal(modalCancel.dataset.cancelPass);
+  const studentActionBtn = event.target.closest('[data-student-action]');
+  if (studentActionBtn) {
+    const action = studentActionBtn.dataset.studentAction;
+    const studentId = studentActionBtn.dataset.studentId;
+    if (action === 'suspend') return openSuspendStudentModal(studentId);
+    if (action === 'reactivate' || action === 'restore') return openReactivateStudentModal(studentId);
+    if (action === 'archive') return openArchiveStudentModal(studentId);
+    if (action === 'delete') return handleDeleteStudentAction(studentId);
+  }
+  const studentDetailModalBtn = event.target.closest('[data-student-detail]');
+  if (studentDetailModalBtn) return openStudentDetail(studentDetailModalBtn.dataset.studentDetail);
+
   const quickPass = event.target.closest('[data-open-validate-pass]');
   if (quickPass) return openValidatePassModal(quickPass.dataset.openValidatePass || null);
+  const openWa = event.target.closest('[data-open-whatsapp]');
+  if (openWa) {
+    const url = openWa.dataset.openWhatsapp;
+    if (url) {
+      window.open(url, '_blank', 'noopener,noreferrer');
+    }
+    closeModal();
+    showToast('WhatsApp abierto', 'Se preparó la conversación en WhatsApp.');
+    return;
+  }
   if (event.target.closest('[data-retry-validate]')) return openValidatePassModal(null);
   if (event.target.closest('[data-close-modal]')) return closeModal();
   if (event.target.closest('#simulateScan')) return simulateScan();
@@ -5388,6 +6274,10 @@ function handleModalClick(event) {
 function handleModalSubmit(event) {
   if (event.target.id === 'paymentForm') handlePaymentSubmit(event);
   if (event.target.id === 'studentForm') handleStudentSubmit(event);
+  if (event.target.id === 'suspendStudentForm') handleSuspendStudentSubmit(event);
+  if (event.target.id === 'reactivateStudentForm') handleReactivateStudentSubmit(event);
+  if (event.target.id === 'archiveStudentForm') handleArchiveStudentSubmit(event);
+  if (event.target.id === 'deleteStudentForm') handleDeleteStudentSubmit(event);
   if (event.target.id === 'enrollmentForm') handleEnrollmentSubmit(event);
   if (event.target.id === 'musicSuggestionForm') handleMusicSuggestionSubmit(event);
   if (event.target.id === 'createPassForm') handleCreatePassSubmit(event);
@@ -5396,6 +6286,15 @@ function handleModalSubmit(event) {
   if (event.target.id === 'authPendingAttendanceForm') handleAuthPendingAttendanceSubmit(event);
   if (event.target.id === 'collectPassPaymentForm') handleCollectPassPaymentSubmit(event);
   if (event.target.id === 'cancelPassForm') handleCancelPassSubmit(event);
+}
+
+function handleModalInput(event) {
+  if (event.target.id === 'deleteConfirmInput') {
+    const submitBtn = elements.modalLayer.querySelector('#deleteConfirmSubmitBtn');
+    if (submitBtn) {
+      submitBtn.disabled = event.target.value.trim() !== 'ELIMINAR';
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -5674,7 +6573,11 @@ async function handleStudentSubmit(event) {
     initials: initials(name),
     plan: selectedPlanName,
     phone: String(data.get('phone') || '').trim().slice(0, 24) || 'Sin registrar',
-    status: 'Pendiente',
+    status: 'active',
+    suspensionReason: '',
+    suspendedAt: null,
+    suspendedUntil: null,
+    archivedAt: null,
     level: 'Sin nivel',
     classIds: [],
     notes: String(data.get('notes') || '').trim().slice(0, 280),
@@ -5845,6 +6748,13 @@ function registerWebMcpTools() {
       const student = state.students.find((item) => item.id === input?.studentId);
       if (!classItem) throw new Error('Clase demo no encontrada.');
       if (!student) throw new Error('Alumno demo no encontrado.');
+      const mcpLifecycle = studentLifecycleStatus(student);
+      if (mcpLifecycle === 'suspended') {
+        throw new Error(`El alumno ${student.name} está suspendido. No se puede registrar su asistencia.`);
+      }
+      if (mcpLifecycle === 'archived') {
+        throw new Error(`El alumno ${student.name} está archivado. No se puede registrar su asistencia.`);
+      }
       const approved = await confirmWebMcpWrite({
         title: 'Confirmar asistencia',
         lines: [`Alumno · ${student.name} (${student.id})`, `Clase · ${classItem.name} · ${classItem.time}`, `Fecha · ${longDate(new Date())}`],
@@ -6005,6 +6915,40 @@ function applyPaymentFilter(button) {
     : { title: 'Sin pagos con este estado', detail: 'Probá con otro filtro o mirá todos los registros.' });
 }
 
+function applyStudentFilter(button) {
+  studentStatusFilter = button.dataset.studentFilter;
+  elements.content.querySelectorAll('[data-student-filter]').forEach((chip) => {
+    const active = chip === button;
+    chip.classList.toggle('is-active', active);
+    chip.setAttribute('aria-pressed', String(active));
+  });
+  updateStudentTableView();
+}
+
+function updateStudentTableView() {
+  const searchInput = elements.content.querySelector('#studentSearch');
+  const query = searchInput ? searchInput.value : studentSearchQuery;
+  studentSearchQuery = query;
+  const filtered = filteredAdminStudents(state.students, studentStatusFilter, query);
+  const totalInFilter = state.students.filter((s) => {
+    const st = studentLifecycleStatus(s);
+    if (studentStatusFilter === 'active') return st === 'active';
+    if (studentStatusFilter === 'suspended') return st === 'suspended';
+    if (studentStatusFilter === 'archived') return st === 'archived';
+    return true;
+  }).length;
+
+  const tableBody = elements.content.querySelector('#studentTableBody');
+  if (tableBody) tableBody.innerHTML = studentRows(filtered);
+
+  const status = elements.content.querySelector('#studentSearchStatus');
+  if (status) {
+    status.textContent = query.trim()
+      ? `${filtered.length} de ${totalInFilter} alumnos.`
+      : `${filtered.length} alumno${filtered.length === 1 ? '' : 's'}.`;
+  }
+}
+
 // Un solo manejador delegado para toda la página: el contenido se redibuja en cada
 // render y enganchar listeners elemento por elemento los iba duplicando.
 function handleContentClick(event) {
@@ -6072,7 +7016,7 @@ function handleContentClick(event) {
       renderAndFocus();
       showToast(
         nextStatus === 'accepted' ? '¡Agregada a la playlist! 🎧' : 'Sugerencia pendiente',
-        `"${item.song || item.artist || 'Rola'}" ${nextStatus === 'accepted' ? 'quedó lista para la clase' : 'volvió a pendientes'}.`
+        `"${item.song || item.artist || 'Canción'}" ${nextStatus === 'accepted' ? 'quedó lista para la clase' : 'volvió a pendientes'}.`
       );
     }
     return;
@@ -6087,8 +7031,8 @@ function handleContentClick(event) {
       persistOrWarn({ ...state });
       renderAndFocus();
       showToast(
-        item.liked ? '¡Te gustó esta rola! ❤️' : 'Reacción retirada',
-        `Reacción actualizada para "${item.song || item.artist || 'Rola'}".`
+        item.liked ? '¡Te gustó esta canción! ❤️' : 'Reacción retirada',
+        `Reacción actualizada para "${item.song || item.artist || 'Canción'}".`
       );
     }
     return;
@@ -6146,6 +7090,10 @@ function handleContentClick(event) {
   if (detail) return openClassDetail(detail.dataset.classDetail, detail.dataset.contextDate || null);
   const register = find('[data-register-for]');
   if (register) return openPaymentModal(register.dataset.registerFor, register.dataset.paymentPeriod);
+  const waPayment = find('[data-whatsapp-payment]');
+  if (waPayment) return openWhatsAppPaymentModal(waPayment.dataset.whatsappPayment);
+  const waAttendance = find('[data-whatsapp-attendance]');
+  if (waAttendance) return openWhatsAppAttendanceModal(waAttendance.dataset.whatsappAttendance);
   const receipt = find('[data-receipt]');
   if (receipt) return openReceipt(receipt.dataset.receipt);
   const studentDetail = find('[data-student-detail]');
@@ -6166,6 +7114,8 @@ function handleContentClick(event) {
   if (classFilter) return applyClassFilter(classFilter);
   const paymentFilter = find('[data-payment-filter]');
   if (paymentFilter) return applyPaymentFilter(paymentFilter);
+  const studentFilter = find('[data-student-filter]');
+  if (studentFilter) return applyStudentFilter(studentFilter);
 
   if (find('[data-open-create-pass]')) return openCreatePassModal();
   const openVal = find('[data-open-validate-pass]');
@@ -6217,14 +7167,11 @@ function handleContentInput(event) {
     updatePassViews();
     return;
   }
-  if (!event.target.closest('#studentSearch')) return;
-  const query = event.target.value.trim().toLowerCase();
-  const filtered = state.students.filter((item) => `${item.name} ${item.id}`.toLowerCase().includes(query));
-  elements.content.querySelector('#studentTableBody').innerHTML = studentRows(filtered);
-  // El resultado del filtro se anuncia: sin esto el cambio de la tabla pasaba
-  // inadvertido para quien usa lector de pantalla.
-  const status = elements.content.querySelector('#studentSearchStatus');
-  if (status) status.textContent = `${filtered.length} de ${state.students.length} alumnos.`;
+  if (event.target.closest('#studentSearch')) {
+    studentSearchQuery = event.target.value;
+    updateStudentTableView();
+    return;
+  }
 }
 
 function handleContentSubmit(event) {
@@ -6265,6 +7212,7 @@ elements.content.addEventListener('change', (event) => {
 });
 elements.modalLayer.addEventListener('click', handleModalClick);
 elements.modalLayer.addEventListener('submit', handleModalSubmit);
+elements.modalLayer.addEventListener('input', handleModalInput);
 elements.modalLayer.addEventListener('change', (event) => {
   if (event.target.closest('#paymentForm') && ['studentId', 'period'].includes(event.target.name)) updatePaymentForm();
   if (event.target.closest('#createPassForm')) updateCreatePassForm();

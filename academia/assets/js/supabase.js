@@ -404,6 +404,7 @@ export async function fetchRemoteStudents() {
     const planStatus = mem
       ? (mem.status === 'active' ? 'Al día' : 'Pendiente')
       : 'Sin membresía';
+    const lifecycleStatus = c.is_active === false ? 'suspended' : 'active';
 
     students.push({
       id: c.card_number,
@@ -414,7 +415,9 @@ export async function fetchRemoteStudents() {
       memberships: studentMems,
       plan: planName,
       phone: p.phone || 'Sin registrar',
-      status: planStatus,
+      paymentStatus: planStatus,
+      status: lifecycleStatus,
+      lifecycleStatus: lifecycleStatus,
       level: p.level || 'Sin nivel',
       classIds: enrollmentsMap.get(c.student_id) || [],
       notes: p.notes || '',
