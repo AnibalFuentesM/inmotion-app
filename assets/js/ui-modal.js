@@ -212,6 +212,9 @@ export function createVideoModal(modalElement, { onSaveToggle } = {}) {
     if (modalPanel) {
       modalPanel.classList.remove('modal-panel--vertical');
     }
+
+    modalElement.classList.remove('has-fullscreen-player');
+    document.body.classList.remove('dance-fs-locked');
   }
 
   /**

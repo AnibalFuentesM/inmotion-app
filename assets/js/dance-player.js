@@ -29,6 +29,20 @@ export function formatTime(seconds, includeDecimals = false) {
 }
 
 /**
+ * Escapa caracteres HTML para inyección segura en plantillas
+ * @param {string} str
+ * @returns {string}
+ */
+export function escapeHtml(str) {
+  return String(str || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+/**
  * @typedef {Object} DancePlayerOptions
  * @property {string} videoUrl
  * @property {string} [title]
@@ -43,6 +57,7 @@ export function formatTime(seconds, includeDecimals = false) {
  * @property {(isMirrored: boolean) => void} [onMirrorChange]
  * @property {(speed: number) => void} [onSpeedChange]
  * @property {(a: number|null, b: number|null, active: boolean) => void} [onLoopChange]
+ * @property {(isVertical: boolean, dims?: { width: number, height: number }) => void} [onOrientationDetected]
  */
 
 /**
@@ -59,7 +74,7 @@ export function createDancePlayer(container, options = {}) {
   let isScrubbing = false;
   let tags = Array.isArray(options.tags) ? [...options.tags] : [];
 
-  // Construir HTML del reproductor
+  // Construir HTML del reproductor optimizado para celular y pantalla completa
   container.innerHTML = `
     <div class="dance-player" tabindex="0" role="region" aria-label="Reproductor de video para aprendizaje de baile">
       <!-- Escenario de Video -->
@@ -72,14 +87,19 @@ export function createDancePlayer(container, options = {}) {
           Tu navegador no soporta reproducción de video HTML5.
         </video>
 
-        <!-- Overlay superior con estados activos -->
-        <div class="dance-overlay-top">
-          <span class="dance-status-badge dance-status-badge--mirror" data-element="mirrorBadge" style="${isMirrored ? '' : 'display: none;'}">
-            <span class="material-symbols-outlined" style="font-size: 14px;">flip</span>
-            <span>Modo Espejo Activo</span>
-          </span>
+        <!-- Top HUD Flotante: Título, Badges y Botón Salir -->
+        <div class="dance-overlay-top" data-element="overlayTop">
+          <div class="dance-fs-title-wrap">
+            <span class="dance-fs-title">${escapeHtml(options.title || 'In Motion')}</span>
+            ${(options.style || options.level) ? `<span class="dance-fs-subtitle">${escapeHtml([options.style, options.level].filter(Boolean).join(' • '))}</span>` : ''}
+          </div>
 
-          <div style="display: flex; gap: 6px;">
+          <div class="dance-overlay-badges">
+            <span class="dance-status-badge dance-status-badge--mirror" data-element="mirrorBadge" style="${isMirrored ? '' : 'display: none;'}">
+              <span class="material-symbols-outlined" style="font-size: 14px;">flip</span>
+              <span>Espejo</span>
+            </span>
+
             <span class="dance-status-badge dance-status-badge--speed" data-element="speedBadge" style="${playbackSpeed !== 1.0 ? '' : 'display: none;'}">
               <span class="material-symbols-outlined" style="font-size: 14px;">speed</span>
               <span data-element="speedBadgeText">${playbackSpeed}x</span>
@@ -89,131 +109,140 @@ export function createDancePlayer(container, options = {}) {
               <span class="material-symbols-outlined" style="font-size: 14px;">repeat</span>
               <span data-element="loopBadgeText">Bucle A-B</span>
             </span>
+
+            <!-- Botón salir directo para móvil en pantalla completa -->
+            <button type="button" class="dance-fs-close-btn" data-element="fsExitTopBtn" title="Salir de pantalla completa">
+              <span class="material-symbols-outlined" style="font-size: 18px;">fullscreen_exit</span>
+              <span>Salir</span>
+            </button>
           </div>
         </div>
 
-        <!-- Indicador central flotante de Play/Pausa -->
+        <!-- Indicador central flotante de Play/Pausa animado -->
         <div class="dance-center-icon" data-element="centerIcon">
           <span class="material-symbols-outlined" data-element="centerIconSymbol" style="font-size: 40px;">play_arrow</span>
         </div>
       </div>
 
-      <!-- Barra de tiempo y marcadores A-B -->
-      <div class="dance-timeline-wrap">
-        <div class="dance-timeline-bar" data-element="timelineBar" role="slider" aria-label="Línea de tiempo" tabindex="0">
-          <div class="dance-progress-fill" data-element="progressFill"></div>
-          <div class="dance-loop-region" data-element="loopRegion"></div>
-          <div class="dance-marker dance-marker-a" data-element="markerA" title="Punto A">A</div>
-          <div class="dance-marker dance-marker-b" data-element="markerB" title="Punto B">B</div>
-        </div>
-
-        <div class="dance-time-row">
-          <span data-element="currentTimeText">00:00</span>
-          <span data-element="durationText">00:00</span>
-        </div>
-      </div>
-
-      <!-- Panel de Controles -->
-      <div class="dance-controls-panel">
-        <!-- Fila 1: Transporte principal, Espejo y Velocidades -->
-        <div class="dance-controls-row">
-          <div class="dance-controls-group">
-            <!-- Play / Pausa -->
-            <button type="button" class="dance-btn dance-btn--primary dance-btn--icon" data-element="playBtn" title="Reproducir / Pausar (Espacio)">
-              <span class="material-symbols-outlined" data-element="playBtnIcon" style="font-size: 22px;">play_arrow</span>
-            </button>
-
-            <!-- Salto -3s (repasar la cuenta) -->
-            <button type="button" class="dance-btn" data-element="skipBackBtn" title="Retroceder 3 segundos (Repetir paso)">
-              <span class="material-symbols-outlined" style="font-size: 16px;">replay_10</span>
-              <span>-3s</span>
-            </button>
-
-            <!-- Salto +3s -->
-            <button type="button" class="dance-btn" data-element="skipForwardBtn" title="Avanzar 3 segundos">
-              <span>+3s</span>
-              <span class="material-symbols-outlined" style="font-size: 16px;">forward_10</span>
-            </button>
+      <!-- Bottom HUD Flotante (Línea de tiempo + Controles esenciales) -->
+      <div class="dance-bottom-hud" data-element="bottomHud">
+        <!-- Barra de tiempo y marcadores A-B -->
+        <div class="dance-timeline-wrap">
+          <div class="dance-timeline-bar" data-element="timelineBar" role="slider" aria-label="Línea de tiempo" tabindex="0">
+            <div class="dance-progress-fill" data-element="progressFill"></div>
+            <div class="dance-loop-region" data-element="loopRegion"></div>
+            <div class="dance-marker dance-marker-a" data-element="markerA" title="Punto A">A</div>
+            <div class="dance-marker dance-marker-b" data-element="markerB" title="Punto B">B</div>
           </div>
 
-          <!-- Selector de Velocidades (0.75x, 1x, 1.25x) -->
-          <div class="dance-controls-group">
-            <span style="font-size: 11px; font-weight: 700; color: #94a3b8; margin-right: 2px;">VEL:</span>
-            <div class="dance-speed-group" role="group" aria-label="Velocidad de reproducción">
-              <button type="button" class="dance-speed-btn ${playbackSpeed === 0.5 ? 'is-active' : ''}" data-speed="0.5" title="0.5x (Cámara lenta)">0.5x</button>
-              <button type="button" class="dance-speed-btn ${playbackSpeed === 0.75 ? 'is-active' : ''}" data-speed="0.75" title="0.75x (Desglose técnico y conteo)">0.75x</button>
-              <button type="button" class="dance-speed-btn ${playbackSpeed === 1.0 ? 'is-active' : ''}" data-speed="1.0" title="1.0x (Tempo normal)">1.0x</button>
-              <button type="button" class="dance-speed-btn ${playbackSpeed === 1.25 ? 'is-active' : ''}" data-speed="1.25" title="1.25x (Reto de velocidad y agilidad)">1.25x</button>
-            </div>
-
-            <!-- Botón MODO ESPEJO -->
-            <button type="button" class="dance-btn dance-btn--mirror ${isMirrored ? 'is-active' : ''}" data-element="mirrorBtn" title="Modo Espejo (Atajo: M)">
-              <span class="material-symbols-outlined" style="font-size: 18px;">flip</span>
-              <span>Espejo</span>
-            </button>
-
-            <!-- Pantalla Completa -->
-            <button type="button" class="dance-btn dance-btn--icon" data-element="fullscreenBtn" title="Pantalla completa">
-              <span class="material-symbols-outlined" style="font-size: 18px;">fullscreen</span>
-            </button>
+          <div class="dance-time-row">
+            <span data-element="currentTimeText">00:00</span>
+            <span data-element="durationText">00:00</span>
           </div>
         </div>
 
-        <!-- Fila 2: Panel de Bucle A-B (Loop de entrenamiento) -->
-        <div class="dance-loop-panel">
-          <div class="dance-loop-info">
-            <div class="dance-loop-title">
-              <span class="material-symbols-outlined" style="font-size: 15px; color: #22c55e;">all_inclusive</span>
-              <span>Bucle de práctica (Loop A-B)</span>
+        <!-- Panel de Controles -->
+        <div class="dance-controls-panel">
+          <!-- Fila 1: Transporte principal, Espejo, Velocidades y Pantalla completa -->
+          <div class="dance-controls-row">
+            <div class="dance-controls-group">
+              <!-- Play / Pausa -->
+              <button type="button" class="dance-btn dance-btn--primary dance-btn--icon" data-element="playBtn" title="Reproducir / Pausar (Espacio)">
+                <span class="material-symbols-outlined" data-element="playBtnIcon" style="font-size: 22px;">play_arrow</span>
+              </button>
+
+              <!-- Salto -3s (repasar la cuenta del paso) -->
+              <button type="button" class="dance-btn" data-element="skipBackBtn" title="Retroceder 3 segundos (Repetir cuenta)">
+                <span class="material-symbols-outlined" style="font-size: 16px;">replay_10</span>
+                <span>-3s</span>
+              </button>
+
+              <!-- Salto +3s -->
+              <button type="button" class="dance-btn" data-element="skipForwardBtn" title="Avanzar 3 segundos">
+                <span>+3s</span>
+                <span class="material-symbols-outlined" style="font-size: 16px;">forward_10</span>
+              </button>
             </div>
-            <div class="dance-loop-times" data-element="loopTimesDisplay">
-              ${pointA !== null || pointB !== null ? `A: ${formatTime(pointA || 0, true)} ➔ B: ${formatTime(pointB || 0, true)}` : 'Sin puntos fijados'}
+
+            <!-- Selector de Velocidades y Botones Clave -->
+            <div class="dance-controls-group">
+              <span class="dance-speed-label" style="font-size: 11px; font-weight: 700; color: #94a3b8; margin-right: 2px;">VEL:</span>
+              <div class="dance-speed-group" role="group" aria-label="Velocidad de reproducción">
+                <button type="button" class="dance-speed-btn ${playbackSpeed === 0.5 ? 'is-active' : ''}" data-speed="0.5" title="0.5x (Cámara lenta)">0.5x</button>
+                <button type="button" class="dance-speed-btn ${playbackSpeed === 0.75 ? 'is-active' : ''}" data-speed="0.75" title="0.75x (Desglose técnico y conteo)">0.75x</button>
+                <button type="button" class="dance-speed-btn ${playbackSpeed === 1.0 ? 'is-active' : ''}" data-speed="1.0" title="1.0x (Tempo normal)">1.0x</button>
+                <button type="button" class="dance-speed-btn ${playbackSpeed === 1.25 ? 'is-active' : ''}" data-speed="1.25" title="1.25x (Reto de velocidad y agilidad)">1.25x</button>
+              </div>
+
+              <!-- Botón MODO ESPEJO -->
+              <button type="button" class="dance-btn dance-btn--mirror ${isMirrored ? 'is-active' : ''}" data-element="mirrorBtn" title="Modo Espejo (Atajo: M)">
+                <span class="material-symbols-outlined" style="font-size: 18px;">flip</span>
+                <span>Espejo</span>
+              </button>
+
+              <!-- Botón Pantalla Completa -->
+              <button type="button" class="dance-btn dance-btn--icon" data-element="fullscreenBtn" title="Pantalla completa">
+                <span class="material-symbols-outlined" data-element="fullscreenIcon" style="font-size: 18px;">fullscreen</span>
+              </button>
             </div>
           </div>
 
-          <div class="dance-controls-group dance-loop-actions">
-            <!-- Botón Marcar A -->
-            <button type="button" class="dance-btn" data-element="markABtn" title="Fijar Punto A en el segundo actual (Atajo: A)">
-              <span class="material-symbols-outlined" style="font-size: 16px; color: #22c55e;">flag</span>
-              <span>Marcar [A]</span>
-            </button>
+          <!-- Fila 2: Panel de Bucle A-B (Loop de entrenamiento) -->
+          <div class="dance-loop-panel">
+            <div class="dance-loop-info">
+              <div class="dance-loop-title">
+                <span class="material-symbols-outlined" style="font-size: 15px; color: #22c55e;">all_inclusive</span>
+                <span>Bucle de práctica (Loop A-B)</span>
+              </div>
+              <div class="dance-loop-times" data-element="loopTimesDisplay">
+                ${pointA !== null || pointB !== null ? `A: ${formatTime(pointA || 0, true)} ➔ B: ${formatTime(pointB || 0, true)}` : 'Sin puntos fijados'}
+              </div>
+            </div>
 
-            <!-- Botón Marcar B -->
-            <button type="button" class="dance-btn" data-element="markBBtn" title="Fijar Punto B en el segundo actual (Atajo: B)">
-              <span class="material-symbols-outlined" style="font-size: 16px; color: #3b82f6;">flag</span>
-              <span>Marcar [B]</span>
-            </button>
+            <div class="dance-controls-group dance-loop-actions">
+              <!-- Botón Marcar A -->
+              <button type="button" class="dance-btn" data-element="markABtn" title="Fijar Punto A en el segundo actual (Atajo: A)">
+                <span class="material-symbols-outlined" style="font-size: 16px; color: #22c55e;">flag</span>
+                <span>Marcar [A]</span>
+              </button>
 
-            <!-- Alternar Bucle Activo -->
-            <button type="button" class="dance-btn dance-btn--loop ${isLoopActive ? 'is-active' : ''}" data-element="toggleLoopBtn" title="Activar/Desactivar repetición (Atajo: L)">
-              <span class="material-symbols-outlined" style="font-size: 16px;">repeat</span>
-              <span data-element="toggleLoopBtnText">${isLoopActive ? 'Bucle ON' : 'Bucle OFF'}</span>
-            </button>
+              <!-- Botón Marcar B -->
+              <button type="button" class="dance-btn" data-element="markBBtn" title="Fijar Punto B en el segundo actual (Atajo: B)">
+                <span class="material-symbols-outlined" style="font-size: 16px; color: #3b82f6;">flag</span>
+                <span>Marcar [B]</span>
+              </button>
 
-            <!-- Limpiar Puntos -->
-            <button type="button" class="dance-btn" data-element="clearLoopBtn" title="Borrar puntos A y B">
-              <span class="material-symbols-outlined" style="font-size: 16px;">close</span>
-              <span>Limpiar</span>
-            </button>
+              <!-- Alternar Bucle Activo -->
+              <button type="button" class="dance-btn dance-btn--loop ${isLoopActive ? 'is-active' : ''}" data-element="toggleLoopBtn" title="Activar/Desactivar repetición (Atajo: L)">
+                <span class="material-symbols-outlined" style="font-size: 16px;">repeat</span>
+                <span data-element="toggleLoopBtnText">${isLoopActive ? 'Bucle ON' : 'Bucle OFF'}</span>
+              </button>
+
+              <!-- Limpiar Puntos -->
+              <button type="button" class="dance-btn" data-element="clearLoopBtn" title="Borrar puntos A y B">
+                <span class="material-symbols-outlined" style="font-size: 16px;">close</span>
+                <span>Limpiar</span>
+              </button>
+            </div>
           </div>
-        </div>
 
-        <!-- Fila 3: Etiquetas del Paso -->
-        <div class="dance-tags-row" data-element="tagsRow">
-          ${renderTagsHtml(tags)}
-        </div>
+          <!-- Fila 3: Etiquetas del Paso (Ocultas en pantalla completa) -->
+          <div class="dance-tags-row" data-element="tagsRow">
+            ${renderTagsHtml(tags)}
+          </div>
 
-        <!-- Fila 4: Consejos de atajos -->
-        <div class="dance-shortcuts-hint">
-          <span><kbd>Espacio</kbd> Play/Pausa</span>
-          <span><kbd>M</kbd> Modo Espejo</span>
-          <span><kbd>A</kbd> Fijar A</span>
-          <span><kbd>B</kbd> Fijar B</span>
-          <span><kbd>L</kbd> Bucle</span>
-          <span><kbd>←</kbd> <kbd>→</kbd> ±3 seg</span>
-          <span><kbd>1</kbd> 0.75x</span>
-          <span><kbd>2</kbd> 1.0x</span>
-          <span><kbd>3</kbd> 1.25x</span>
+          <!-- Fila 4: Consejos de atajos (Ocultos en pantalla completa y móvil) -->
+          <div class="dance-shortcuts-hint">
+            <span><kbd>Espacio</kbd> Play/Pausa</span>
+            <span><kbd>M</kbd> Modo Espejo</span>
+            <span><kbd>A</kbd> Fijar A</span>
+            <span><kbd>B</kbd> Fijar B</span>
+            <span><kbd>L</kbd> Bucle</span>
+            <span><kbd>←</kbd> <kbd>→</kbd> ±3 seg</span>
+            <span><kbd>1</kbd> 0.75x</span>
+            <span><kbd>2</kbd> 1.0x</span>
+            <span><kbd>3</kbd> 1.25x</span>
+          </div>
         </div>
       </div>
     </div>
@@ -228,6 +257,7 @@ export function createDancePlayer(container, options = {}) {
   const speedBadgeText = container.querySelector('[data-element="speedBadgeText"]');
   const loopBadge = container.querySelector('[data-element="loopBadge"]');
   const loopBadgeText = container.querySelector('[data-element="loopBadgeText"]');
+  const fsExitTopBtn = container.querySelector('[data-element="fsExitTopBtn"]');
   const centerIcon = container.querySelector('[data-element="centerIcon"]');
   const centerIconSymbol = container.querySelector('[data-element="centerIconSymbol"]');
   const timelineBar = container.querySelector('[data-element="timelineBar"]');
@@ -243,6 +273,7 @@ export function createDancePlayer(container, options = {}) {
   const skipForwardBtn = container.querySelector('[data-element="skipForwardBtn"]');
   const mirrorBtn = container.querySelector('[data-element="mirrorBtn"]');
   const fullscreenBtn = container.querySelector('[data-element="fullscreenBtn"]');
+  const fullscreenIcon = container.querySelector('[data-element="fullscreenIcon"]');
   const markABtn = container.querySelector('[data-element="markABtn"]');
   const markBBtn = container.querySelector('[data-element="markBBtn"]');
   const toggleLoopBtn = container.querySelector('[data-element="toggleLoopBtn"]');
@@ -272,15 +303,6 @@ export function createDancePlayer(container, options = {}) {
           )}</span>`
       )
       .join('');
-  }
-
-  function escapeHtml(str) {
-    return String(str || '')
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#39;');
   }
 
   function flashCenterIcon(iconName) {
@@ -467,24 +489,159 @@ export function createDancePlayer(container, options = {}) {
     video.currentTime = Math.max(0, Math.min(video.duration || 0, video.currentTime + seconds));
   }
 
-  function toggleFullscreen() {
-    if (!document.fullscreenElement) {
-      playerRoot.requestFullscreen().catch(() => {});
-    } else {
-      document.exitFullscreen().catch(() => {});
+  // --- GESTIÓN DE PANTALLA COMPLETA TOTAL (DESKTOP & CELULAR) ---
+  let isFsActive = false;
+  let nativeFsTriggered = false;
+  let hudTimer = null;
+
+  function isFullscreenActive() {
+    return (
+      Boolean(document.fullscreenElement || document.webkitFullscreenElement) ||
+      playerRoot.classList.contains('is-fullscreen')
+    );
+  }
+
+  function clearHudHideTimer() {
+    if (hudTimer) {
+      clearTimeout(hudTimer);
+      hudTimer = null;
     }
   }
+
+  function scheduleHudHide() {
+    clearHudHideTimer();
+    if (!isFullscreenActive() || video.paused) {
+      playerRoot.classList.remove('is-hud-hidden');
+      return;
+    }
+    hudTimer = setTimeout(() => {
+      if (isFullscreenActive() && !video.paused) {
+        playerRoot.classList.add('is-hud-hidden');
+      }
+    }, 2800);
+  }
+
+  function wakeHud() {
+    playerRoot.classList.remove('is-hud-hidden');
+    if (isFullscreenActive() && !video.paused) {
+      scheduleHudHide();
+    }
+  }
+
+  function updateFullscreenButtons(inFs) {
+    fullscreenBtn.setAttribute('title', inFs ? 'Salir de pantalla completa' : 'Pantalla completa');
+    if (fullscreenIcon) {
+      fullscreenIcon.textContent = inFs ? 'fullscreen_exit' : 'fullscreen';
+    }
+  }
+
+  function enterFullscreenMode() {
+    isFsActive = true;
+    playerRoot.classList.add('is-fullscreen');
+    document.body.classList.add('dance-fs-locked');
+
+    // Expandir contenedor modal padre para ocupar 100% de la pantalla sin cortes
+    const modal = playerRoot.closest('#videoModal');
+    if (modal) {
+      modal.classList.add('has-fullscreen-player');
+    }
+
+    updateFullscreenButtons(true);
+
+    // Intentar API nativa de Fullscreen si el navegador la soporta
+    const requestFs =
+      playerRoot.requestFullscreen ||
+      playerRoot.webkitRequestFullscreen ||
+      playerRoot.mozRequestFullScreen ||
+      playerRoot.msRequestFullscreen;
+
+    if (requestFs && !document.fullscreenElement && !document.webkitFullscreenElement) {
+      nativeFsTriggered = true;
+      try {
+        const res = requestFs.call(playerRoot);
+        if (res && typeof res.catch === 'function') {
+          res.catch(() => {
+            nativeFsTriggered = false;
+          });
+        }
+      } catch {
+        nativeFsTriggered = false;
+      }
+    }
+
+    wakeHud();
+  }
+
+  function exitFullscreenMode() {
+    isFsActive = false;
+    nativeFsTriggered = false;
+    playerRoot.classList.remove('is-fullscreen');
+    playerRoot.classList.remove('is-hud-hidden');
+    document.body.classList.remove('dance-fs-locked');
+
+    const modal = playerRoot.closest('#videoModal');
+    if (modal) {
+      modal.classList.remove('has-fullscreen-player');
+    }
+
+    updateFullscreenButtons(false);
+    clearHudHideTimer();
+
+    // Salir de pantalla completa nativa si está activa
+    const exitFs =
+      document.exitFullscreen ||
+      document.webkitExitFullscreen ||
+      document.mozCancelFullScreen ||
+      document.msExitFullscreen;
+
+    if (exitFs && (document.fullscreenElement || document.webkitFullscreenElement)) {
+      try {
+        const res = exitFs.call(document);
+        if (res && typeof res.catch === 'function') {
+          res.catch(() => {});
+        }
+      } catch {}
+    }
+  }
+
+  function toggleFullscreen() {
+    if (isFullscreenActive()) {
+      exitFullscreenMode();
+    } else {
+      enterFullscreenMode();
+    }
+  }
+
+  function handleFsChange() {
+    const isNativeFs = Boolean(document.fullscreenElement || document.webkitFullscreenElement);
+    if (!isNativeFs && playerRoot.classList.contains('is-fullscreen') && nativeFsTriggered) {
+      exitFullscreenMode();
+    }
+  }
+
+  document.addEventListener('fullscreenchange', handleFsChange);
+  document.addEventListener('webkitfullscreenchange', handleFsChange);
+
+  // Escuchar toques e interacciones para mostrar HUD
+  playerRoot.addEventListener('pointermove', wakeHud);
+  playerRoot.addEventListener('pointerdown', wakeHud);
+  playerRoot.addEventListener('touchstart', wakeHud, { passive: true });
 
   // --- EVENT LISTENERS DEL VIDEO ---
 
   video.addEventListener('play', () => {
     playBtnIcon.textContent = 'pause';
     flashCenterIcon('play_arrow');
+    if (isFullscreenActive()) {
+      scheduleHudHide();
+    }
   });
 
   video.addEventListener('pause', () => {
     playBtnIcon.textContent = 'play_arrow';
     flashCenterIcon('pause');
+    clearHudHideTimer();
+    playerRoot.classList.remove('is-hud-hidden');
   });
 
   function checkOrientation() {
@@ -522,10 +679,19 @@ export function createDancePlayer(container, options = {}) {
     checkLoopBounds();
   });
 
-  // Clic en el video reproduce/pausa
+  // Clic en el video reproduce/pausa o despierta controles en móvil
   stage.addEventListener('click', (e) => {
-    if (e.target.closest('.dance-status-badge')) return;
+    if (e.target.closest('.dance-status-badge') || e.target.closest('.dance-fs-close-btn')) return;
+
+    if (isFullscreenActive() && playerRoot.classList.contains('is-hud-hidden')) {
+      wakeHud();
+      return;
+    }
+
     togglePlay();
+    if (isFullscreenActive()) {
+      wakeHud();
+    }
   });
 
   // Barra de progreso y scrubber
@@ -567,6 +733,13 @@ export function createDancePlayer(container, options = {}) {
   mirrorBtn.addEventListener('click', () => toggleMirror());
   fullscreenBtn.addEventListener('click', toggleFullscreen);
 
+  if (fsExitTopBtn) {
+    fsExitTopBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      exitFullscreenMode();
+    });
+  }
+
   speedButtons.forEach((btn) => {
     btn.addEventListener('click', () => {
       setSpeed(parseFloat(btn.dataset.speed));
@@ -582,7 +755,10 @@ export function createDancePlayer(container, options = {}) {
   function handleKeyDown(e) {
     if (['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName)) return;
 
-    if (e.code === 'Space') {
+    if (e.code === 'Escape' && isFullscreenActive()) {
+      e.preventDefault();
+      exitFullscreenMode();
+    } else if (e.code === 'Space') {
       e.preventDefault();
       togglePlay();
     } else if (e.code === 'KeyM') {
@@ -597,6 +773,9 @@ export function createDancePlayer(container, options = {}) {
     } else if (e.code === 'KeyL') {
       e.preventDefault();
       toggleLoop();
+    } else if (e.code === 'KeyF') {
+      e.preventDefault();
+      toggleFullscreen();
     } else if (e.code === 'ArrowLeft') {
       e.preventDefault();
       skip(-3);
@@ -644,6 +823,7 @@ export function createDancePlayer(container, options = {}) {
     markPointB,
     toggleLoop,
     clearLoop,
+    toggleFullscreen,
     play() {
       return video.play();
     },
@@ -652,6 +832,10 @@ export function createDancePlayer(container, options = {}) {
     },
     destroy() {
       window.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('fullscreenchange', handleFsChange);
+      document.removeEventListener('webkitfullscreenchange', handleFsChange);
+      clearHudHideTimer();
+      exitFullscreenMode();
       try {
         video.pause();
         video.removeAttribute('src');

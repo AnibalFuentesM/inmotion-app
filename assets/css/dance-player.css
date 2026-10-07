@@ -63,7 +63,7 @@
   transform: scaleX(-1);
 }
 
-/* Superposiciones informativas (Badges flotantes sobre el video) */
+/* Superposiciones informativas (Badges flotantes sobre el video y Top HUD) */
 .dance-overlay-top {
   position: absolute;
   top: 12px;
@@ -71,10 +71,45 @@
   right: 12px;
   display: flex;
   justify-content: space-between;
-  align-items: flex-start;
+  align-items: center;
   pointer-events: none;
   z-index: 10;
-  gap: 8px;
+  gap: 10px;
+}
+
+.dance-fs-title-wrap {
+  display: none;
+  flex-direction: column;
+  min-width: 0;
+  pointer-events: auto;
+}
+
+.dance-fs-title {
+  font-size: 13px;
+  font-weight: 800;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.9);
+}
+
+.dance-fs-subtitle {
+  font-size: 11px;
+  color: #94a3b8;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
+}
+
+.dance-overlay-badges {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  pointer-events: auto;
 }
 
 .dance-status-badge {
@@ -117,6 +152,39 @@
 @keyframes pulse-loop {
   0%, 100% { opacity: 0.95; }
   50% { opacity: 0.65; }
+}
+
+/* Botón flotante para salir de pantalla completa */
+.dance-fs-close-btn {
+  display: none;
+  align-items: center;
+  gap: 4px;
+  background: rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  color: #fff;
+  padding: 5px 12px;
+  border-radius: 9999px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  transition: all 0.2s ease;
+  pointer-events: auto;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+}
+
+.dance-fs-close-btn:hover {
+  background: #ed2630;
+  border-color: #ed2630;
+  color: #fff;
+}
+
+/* Contenedor HUD inferior */
+.dance-bottom-hud {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
 }
 
 /* Indicador central de Play/Pause animado al hacer clic */
@@ -463,15 +531,24 @@
   color: #cbd5e1;
 }
 
-/* Adaptación responsive móvil (pantallas pequeñas <= 640px) */
+/* ==============================================================================
+   ADAPTACIÓN RESPONSIVE MÓVIL (PANTALLAS <= 640px)
+   Optimizaciones táctiles para estudiantes de baile desde smartphone
+   ============================================================================== */
+
 @media (max-width: 640px) {
+  /* En móviles, ocultar atajos de teclado físicos (innecesarios en pantalla táctil) */
+  .dance-shortcuts-hint {
+    display: none !important;
+  }
+
   .dance-controls-panel {
     padding: 10px 12px 14px 12px;
     gap: 10px;
   }
 
   .dance-btn {
-    min-height: 42px; /* Cumple accesibilidad táctil */
+    min-height: 42px; /* Área táctil ergonómica para dedos */
     font-size: 11px;
     padding: 0 10px;
   }
@@ -484,6 +561,7 @@
   .dance-loop-panel {
     flex-direction: column;
     align-items: stretch;
+    gap: 8px;
   }
 
   .dance-loop-actions {
@@ -497,6 +575,13 @@
     flex: 1;
     min-width: calc(50% - 3px);
   }
+
+  .dance-video-stage.is-vertical,
+  .dance-player.is-vertical .dance-video-stage {
+    height: 56vh;
+    max-height: 480px;
+  }
+}
 
 /* Adaptación del panel modal para videos verticales */
 #videoModal .modal-panel.modal-panel--vertical {
@@ -514,11 +599,241 @@
   #videoModal .modal-panel.modal-panel--vertical {
     max-width: 100% !important;
   }
+}
 
-  .dance-video-stage.is-vertical,
-  .dance-player.is-vertical .dance-video-stage {
-    height: 58vh;
-    max-height: 480px;
-  }
+/* ==============================================================================
+   MODO PANTALLA COMPLETA TOTAL (DESKTOP & CELULAR / REELS / 9:16)
+   - El video ocupa el 100% de la pantalla sin franjas innecesarias ni cortes
+   - Controles flotantes mínimos tipo HUD sobre el video (sin tapar el baile)
+   - Auto-ocultación de controles tras 2.8s de reproducción para máxima visibilidad
+   ============================================================================== */
+
+/* Bloqueo de scroll global en body durante pantalla completa */
+body.dance-fs-locked {
+  overflow: hidden !important;
+  touch-action: none !important;
+}
+
+/* Cuando el modal contiene un reproductor ampliado a pantalla completa */
+#videoModal.has-fullscreen-player {
+  padding: 0 !important;
+  inset: 0 !important;
+  z-index: 999999 !important;
+}
+
+#videoModal.has-fullscreen-player .modal-panel {
+  transform: none !important;
+  max-width: 100vw !important;
+  width: 100vw !important;
+  max-height: 100dvh !important;
+  height: 100dvh !important;
+  border-radius: 0 !important;
+  border: none !important;
+  overflow: hidden !important;
+  background: #000 !important;
+  box-shadow: none !important;
+  margin: 0 !important;
+}
+
+/* Ocultar barra superior del modal y notas inferiores en pantalla completa */
+#videoModal.has-fullscreen-player .modal-panel > div:first-child {
+  display: none !important;
+}
+
+#videoModal.has-fullscreen-player #modalBody {
+  padding: 0 !important;
+  max-height: 100dvh !important;
+  height: 100dvh !important;
+  overflow: hidden !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+#videoModal.has-fullscreen-player #modalBody > div.relative:first-child {
+  margin: 0 !important;
+  border-radius: 0 !important;
+  border: none !important;
+  height: 100dvh !important;
+  width: 100vw !important;
+  flex: 1 !important;
+}
+
+#videoModal.has-fullscreen-player #modalBody > :not(:first-child) {
+  display: none !important;
+}
+
+/* Estructura del reproductor en Pantalla Completa (Full Viewport / Native Fullscreen) */
+.dance-player.is-fullscreen,
+.dance-player:fullscreen,
+.dance-player:-webkit-full-screen {
+  position: fixed !important;
+  inset: 0 !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  height: 100dvh !important;
+  max-height: 100dvh !important;
+  z-index: 999999 !important;
+  background: #000 !important;
+  border-radius: 0 !important;
+  border: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  box-shadow: none !important;
+}
+
+/* El escenario ocupa el 100% absoluto de la pantalla */
+.dance-player.is-fullscreen .dance-video-stage,
+.dance-player:fullscreen .dance-video-stage,
+.dance-player:-webkit-full-screen .dance-video-stage {
+  position: absolute !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  max-height: 100% !important;
+  aspect-ratio: auto !important;
+  background: #000 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  z-index: 1 !important;
+}
+
+.dance-player.is-fullscreen .dance-video,
+.dance-player:fullscreen .dance-video,
+.dance-player:-webkit-full-screen .dance-video {
+  width: 100% !important;
+  height: 100% !important;
+  max-width: 100% !important;
+  max-height: 100% !important;
+  object-fit: contain !important;
+  background: #000 !important;
+}
+
+/* Top HUD flotante con degradado suave */
+.dance-player.is-fullscreen .dance-overlay-top,
+.dance-player:fullscreen .dance-overlay-top,
+.dance-player:-webkit-full-screen .dance-overlay-top {
+  position: absolute !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  z-index: 30 !important;
+  padding: max(12px, env(safe-area-inset-top, 12px)) 16px 14px 16px !important;
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.88) 0%, rgba(0, 0, 0, 0.45) 60%, transparent 100%) !important;
+  pointer-events: auto !important;
+  transition: opacity 0.28s ease, transform 0.28s ease !important;
+}
+
+.dance-player.is-fullscreen .dance-fs-title-wrap,
+.dance-player:fullscreen .dance-fs-title-wrap,
+.dance-player:-webkit-full-screen .dance-fs-title-wrap {
+  display: flex !important;
+}
+
+.dance-player.is-fullscreen .dance-fs-close-btn,
+.dance-player:fullscreen .dance-fs-close-btn,
+.dance-player:-webkit-full-screen .dance-fs-close-btn {
+  display: inline-flex !important;
+}
+
+/* Bottom HUD flotante con controles esenciales para celular */
+.dance-player.is-fullscreen .dance-bottom-hud,
+.dance-player:fullscreen .dance-bottom-hud,
+.dance-player:-webkit-full-screen .dance-bottom-hud {
+  position: absolute !important;
+  bottom: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  z-index: 30 !important;
+  background: linear-gradient(0deg, rgba(0, 0, 0, 0.94) 0%, rgba(0, 0, 0, 0.65) 60%, transparent 100%) !important;
+  padding: 8px 14px max(14px, env(safe-area-inset-bottom, 14px)) 14px !important;
+  gap: 6px !important;
+  pointer-events: auto !important;
+  transition: opacity 0.28s ease, transform 0.28s ease !important;
+}
+
+.dance-player.is-fullscreen .dance-timeline-wrap,
+.dance-player:fullscreen .dance-timeline-wrap,
+.dance-player:-webkit-full-screen .dance-timeline-wrap {
+  background: transparent !important;
+  border-top: none !important;
+  padding: 4px 0 2px 0 !important;
+}
+
+.dance-player.is-fullscreen .dance-controls-panel,
+.dance-player:fullscreen .dance-controls-panel,
+.dance-player:-webkit-full-screen .dance-controls-panel {
+  background: transparent !important;
+  padding: 0 !important;
+  gap: 6px !important;
+}
+
+/* Ocultar elementos secundarios en pantalla completa (sin saturar la vista) */
+.dance-player.is-fullscreen .dance-tags-row,
+.dance-player:fullscreen .dance-tags-row,
+.dance-player:-webkit-full-screen .dance-tags-row,
+.dance-player.is-fullscreen .dance-shortcuts-hint,
+.dance-player:fullscreen .dance-shortcuts-hint,
+.dance-player:-webkit-full-screen .dance-shortcuts-hint,
+.dance-player.is-fullscreen .dance-speed-label,
+.dance-player:fullscreen .dance-speed-label,
+.dance-player:-webkit-full-screen .dance-speed-label,
+.dance-player.is-fullscreen .dance-loop-title,
+.dance-player:fullscreen .dance-loop-title,
+.dance-player:-webkit-full-screen .dance-loop-title {
+  display: none !important;
+}
+
+/* Panel de bucle ultra-compacto y translúcido en pantalla completa */
+.dance-player.is-fullscreen .dance-loop-panel,
+.dance-player:fullscreen .dance-loop-panel,
+.dance-player:-webkit-full-screen .dance-loop-panel {
+  background: rgba(255, 255, 255, 0.06) !important;
+  backdrop-filter: blur(8px) !important;
+  -webkit-backdrop-filter: blur(8px) !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  padding: 4px 8px !important;
+  border-radius: 8px !important;
+  gap: 6px !important;
+}
+
+.dance-player.is-fullscreen .dance-loop-times,
+.dance-player:fullscreen .dance-loop-times,
+.dance-player:-webkit-full-screen .dance-loop-times {
+  font-size: 11px !important;
+}
+
+.dance-player.is-fullscreen .dance-loop-actions .dance-btn,
+.dance-player:fullscreen .dance-loop-actions .dance-btn,
+.dance-player:-webkit-full-screen .dance-loop-actions .dance-btn {
+  min-height: 32px !important;
+  padding: 0 8px !important;
+  font-size: 11px !important;
+}
+
+/* Auto-ocultación del HUD al reproducir en pantalla completa (Inactividad) */
+.dance-player.is-fullscreen.is-hud-hidden .dance-overlay-top,
+.dance-player:fullscreen.is-hud-hidden .dance-overlay-top,
+.dance-player:-webkit-full-screen.is-hud-hidden .dance-overlay-top {
+  opacity: 0 !important;
+  pointer-events: none !important;
+  transform: translateY(-18px) !important;
+}
+
+.dance-player.is-fullscreen.is-hud-hidden .dance-bottom-hud,
+.dance-player:fullscreen.is-hud-hidden .dance-bottom-hud,
+.dance-player:-webkit-full-screen.is-hud-hidden .dance-bottom-hud {
+  opacity: 0 !important;
+  pointer-events: none !important;
+  transform: translateY(18px) !important;
+}
+
+.dance-player.is-fullscreen.is-hud-hidden {
+  cursor: none !important;
 }
 
