@@ -80,7 +80,7 @@ function buildCard(record, onCardClick, onSaveToggle) {
   image.alt = `Miniatura de ${record.step_name}`;
   image.loading = 'lazy';
   image.className =
-    'h-full w-full object-cover transition duration-500 group-hover:scale-105 group-hover:brightness-110';
+    'h-full w-full object-cover object-[center_20%] transition duration-500 group-hover:scale-105 group-hover:brightness-110';
   image.referrerPolicy = 'no-referrer';
   image.addEventListener('error', () => {
     image.src = PLACEHOLDER_THUMBNAIL;

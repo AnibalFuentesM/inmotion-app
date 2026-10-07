@@ -1,0 +1,524 @@
+/* ==============================================================================
+   IN MOTION DANCE ACADEMY - REPRODUCTOR DE APRENDIZAJE DE PASOS (DANCE PLAYER)
+   Diseñado específicamente para práctica de baile: Modo Espejo, Bucle A-B, Velocidad
+   ============================================================================== */
+
+.dance-player {
+  position: relative;
+  width: 100%;
+  background: #0d0d0d;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  overflow: hidden;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5);
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  color: #f1f5f9;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Envoltorio del video con relación de aspecto adaptable */
+.dance-video-stage {
+  position: relative;
+  width: 100%;
+  background: #000;
+  aspect-ratio: 16 / 9;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.25s ease;
+}
+
+/* Modo Vertical (Formato 9:16 / Grabaciones de móvil / Reels) */
+.dance-video-stage.is-vertical,
+.dance-player.is-vertical .dance-video-stage {
+  aspect-ratio: auto;
+  height: clamp(380px, 68vh, 660px);
+  max-height: calc(85vh - 190px);
+  background: #050505;
+}
+
+.dance-video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: #000;
+  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.dance-video-stage.is-vertical .dance-video,
+.dance-player.is-vertical .dance-video {
+  width: auto;
+  height: 100%;
+  max-width: 100%;
+  object-fit: contain;
+  margin: 0 auto;
+}
+
+/* Efecto MODO ESPEJO: Inversión horizontal por GPU */
+.dance-video.is-mirrored {
+  transform: scaleX(-1);
+}
+
+/* Superposiciones informativas (Badges flotantes sobre el video) */
+.dance-overlay-top {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  right: 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  pointer-events: none;
+  z-index: 10;
+  gap: 8px;
+}
+
+.dance-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: 9999px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  transition: all 0.2s ease;
+  pointer-events: auto;
+}
+
+.dance-status-badge--mirror {
+  background: rgba(237, 38, 48, 0.25);
+  color: #ff8589;
+  border: 1px solid rgba(237, 38, 48, 0.6);
+  box-shadow: 0 0 14px rgba(237, 38, 48, 0.3);
+}
+
+.dance-status-badge--loop {
+  background: rgba(34, 197, 94, 0.25);
+  color: #86efac;
+  border: 1px solid rgba(34, 197, 94, 0.6);
+  box-shadow: 0 0 14px rgba(34, 197, 94, 0.3);
+  animation: pulse-loop 2s infinite ease-in-out;
+}
+
+.dance-status-badge--speed {
+  background: rgba(245, 158, 11, 0.25);
+  color: #fcd34d;
+  border: 1px solid rgba(245, 158, 11, 0.6);
+}
+
+@keyframes pulse-loop {
+  0%, 100% { opacity: 0.95; }
+  50% { opacity: 0.65; }
+}
+
+/* Indicador central de Play/Pause animado al hacer clic */
+.dance-center-icon {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) scale(0.7);
+  opacity: 0;
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.6);
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  transition: all 0.25s ease;
+  z-index: 5;
+  color: #fff;
+}
+
+.dance-center-icon.animate-pop {
+  transform: translate(-50%, -50%) scale(1);
+  opacity: 1;
+}
+
+/* Línea de tiempo interactiva con rango A-B */
+.dance-timeline-wrap {
+  position: relative;
+  width: 100%;
+  padding: 10px 16px 4px 16px;
+  background: #111;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.dance-timeline-bar {
+  position: relative;
+  width: 100%;
+  height: 8px;
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 9999px;
+  cursor: pointer;
+  touch-action: none;
+}
+
+.dance-progress-fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  background: #ed2630;
+  border-radius: 9999px;
+  pointer-events: none;
+  width: 0%;
+  transition: width 0.05s linear;
+}
+
+/* Región destacada del Bucle A-B */
+.dance-loop-region {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  background: rgba(34, 197, 94, 0.45);
+  border-left: 2px solid #22c55e;
+  border-right: 2px solid #22c55e;
+  pointer-events: none;
+  display: none;
+  z-index: 2;
+  box-shadow: 0 0 10px rgba(34, 197, 94, 0.4);
+}
+
+.dance-loop-region.is-active {
+  display: block;
+}
+
+/* Pines visuales para Punto A y Punto B */
+.dance-marker {
+  position: absolute;
+  top: -7px;
+  width: 18px;
+  height: 22px;
+  transform: translateX(-50%);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 800;
+  color: #fff;
+  z-index: 4;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.7);
+  transition: transform 0.15s ease;
+}
+
+.dance-marker:hover {
+  transform: translateX(-50%) scale(1.15);
+}
+
+.dance-marker-a {
+  background: #22c55e;
+  border: 1px solid #86efac;
+}
+
+.dance-marker-b {
+  background: #3b82f6;
+  border: 1px solid #93c5fd;
+}
+
+.dance-marker.is-visible {
+  display: flex;
+}
+
+/* Tiempos de reproducción */
+.dance-time-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+  color: #94a3b8;
+  font-variant-numeric: tabular-nums;
+  margin-top: 6px;
+  padding: 0 2px;
+}
+
+/* Controles de reproducción principales */
+.dance-controls-panel {
+  padding: 12px 16px 16px 16px;
+  background: #111;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* Fila 1: Botones principales de reproducción y velocidad */
+.dance-controls-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.dance-controls-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+/* Botones con estilo táctil para bailarines */
+.dance-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 38px;
+  padding: 0 12px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  color: #e2e8f0;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+
+.dance-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.25);
+  color: #fff;
+}
+
+.dance-btn:active {
+  transform: scale(0.97);
+}
+
+.dance-btn:focus-visible {
+  outline: 2px solid #ed2630;
+  outline-offset: 2px;
+}
+
+.dance-btn--icon {
+  width: 38px;
+  padding: 0;
+}
+
+.dance-btn--primary {
+  background: #ed2630;
+  border-color: #ed2630;
+  color: #fff;
+  box-shadow: 0 0 12px rgba(237, 38, 48, 0.35);
+}
+
+.dance-btn--primary:hover {
+  background: #dc2626;
+  border-color: #dc2626;
+}
+
+/* Botón MODO ESPEJO especial */
+.dance-btn--mirror.is-active {
+  background: rgba(237, 38, 48, 0.2);
+  border-color: #ed2630;
+  color: #ff8589;
+  box-shadow: 0 0 14px rgba(237, 38, 48, 0.35);
+}
+
+/* Botón BUCLE especial */
+.dance-btn--loop.is-active {
+  background: rgba(34, 197, 94, 0.2);
+  border-color: #22c55e;
+  color: #86efac;
+  box-shadow: 0 0 14px rgba(34, 197, 94, 0.35);
+}
+
+/* Selector de velocidades (0.75x, 1x, 1.25x) */
+.dance-speed-group {
+  display: inline-flex;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 2px;
+  gap: 2px;
+}
+
+.dance-speed-btn {
+  background: transparent;
+  border: none;
+  color: #94a3b8;
+  padding: 6px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.dance-speed-btn:hover {
+  color: #fff;
+}
+
+.dance-speed-btn.is-active {
+  background: #ed2630;
+  color: #fff;
+  box-shadow: 0 0 10px rgba(237, 38, 48, 0.4);
+}
+
+/* Fila 2: Centro de Bucle A-B (Panel de repetición) */
+.dance-loop-panel {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  padding: 10px 12px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.dance-loop-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.dance-loop-title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #94a3b8;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.dance-loop-times {
+  font-size: 12px;
+  font-weight: 600;
+  color: #f1f5f9;
+  font-variant-numeric: tabular-nums;
+}
+
+.dance-nudge-btn {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: #94a3b8;
+  padding: 2px 6px;
+  font-size: 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.1s;
+}
+
+.dance-nudge-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+}
+
+/* Fila de etiquetas / tags */
+.dance-tags-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  padding-top: 4px;
+}
+
+.dance-tag-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 9px;
+  background: rgba(237, 38, 48, 0.1);
+  border: 1px solid rgba(237, 38, 48, 0.25);
+  border-radius: 9999px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #ff9da1;
+}
+
+/* Barra de atajos de teclado */
+.dance-shortcuts-hint {
+  font-size: 11px;
+  color: #64748b;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  padding: 4px 2px 0 2px;
+}
+
+.dance-shortcuts-hint kbd {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-family: inherit;
+  font-size: 10px;
+  color: #cbd5e1;
+}
+
+/* Adaptación responsive móvil (pantallas pequeñas <= 640px) */
+@media (max-width: 640px) {
+  .dance-controls-panel {
+    padding: 10px 12px 14px 12px;
+    gap: 10px;
+  }
+
+  .dance-btn {
+    min-height: 42px; /* Cumple accesibilidad táctil */
+    font-size: 11px;
+    padding: 0 10px;
+  }
+
+  .dance-speed-btn {
+    padding: 8px 9px;
+    font-size: 11px;
+  }
+
+  .dance-loop-panel {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .dance-loop-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    width: 100%;
+  }
+
+  .dance-loop-actions .dance-btn {
+    flex: 1;
+    min-width: calc(50% - 3px);
+  }
+
+/* Adaptación del panel modal para videos verticales */
+#videoModal .modal-panel.modal-panel--vertical {
+  max-width: 32rem !important;
+  width: 100%;
+  margin: 0 auto;
+  transition: max-width 0.3s ease;
+}
+
+#videoModal .modal-panel.modal-panel--vertical #modalBody {
+  padding: 12px 14px;
+}
+
+@media (max-width: 640px) {
+  #videoModal .modal-panel.modal-panel--vertical {
+    max-width: 100% !important;
+  }
+
+  .dance-video-stage.is-vertical,
+  .dance-player.is-vertical .dance-video-stage {
+    height: 58vh;
+    max-height: 480px;
+  }
+}
+

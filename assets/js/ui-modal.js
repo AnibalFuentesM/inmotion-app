@@ -1,5 +1,6 @@
 import { formatDisplayDate, getDriveFileId } from './video-model.js';
 import { isVideoSaved, toggleSavedVideo, addRecentVideo } from './storage.js';
+import { createDancePlayer } from './dance-player.js';
 
 /**
  * @param {string} url
@@ -19,7 +20,8 @@ function toDrivePreviewUrl(url) {
  * @returns {boolean}
  */
 function isDirectMediaUrl(url) {
-  return /\.(mp4|webm|ogg)(\?.*)?$/i.test(url);
+  if (!url) return false;
+  return /\.(mp4|webm|ogg|mov)(\?.*)?$/i.test(url) || /supabase\.co\/storage\/v1\/object\//i.test(url);
 }
 
 /**
@@ -60,15 +62,40 @@ function buildTagGroup(tags) {
 
 /**
  * @param {string} videoUrl
+ * @param {import('./video-model.js').VideoRecord} [record]
+ * @param {(player: any) => void} [onPlayerCreated]
  * @returns {HTMLElement}
  */
-function buildPlayer(videoUrl) {
+function buildPlayer(videoUrl, record, onPlayerCreated) {
   const playerWrap = document.createElement('div');
   playerWrap.className = 'relative mb-5 overflow-hidden rounded-xl border border-white/10 bg-black';
 
   if (!videoUrl) {
     const fallback = buildMetaRow('No se proporcionó URL del video para esta entrada.', 'p-4 text-sm text-slate-400');
     playerWrap.appendChild(fallback);
+    return playerWrap;
+  }
+
+  // Si es medio directo (MP4, WebM) o Supabase Storage -> Usar reproductor de baile profesional
+  if (isDirectMediaUrl(videoUrl)) {
+    const playerContainer = document.createElement('div');
+    playerWrap.appendChild(playerContainer);
+    const dancePlayer = createDancePlayer(playerContainer, {
+      videoUrl,
+      title: record?.step_name || 'Paso de baile',
+      tags: record?.tags || [],
+      style: record?.style || '',
+      level: record?.level || '',
+      onOrientationDetected: (isVertical) => {
+        const modalPanel = modalElement.querySelector('.modal-panel');
+        if (modalPanel) {
+          modalPanel.classList.toggle('modal-panel--vertical', isVertical);
+        }
+      }
+    });
+    if (typeof onPlayerCreated === 'function') {
+      onPlayerCreated(dancePlayer);
+    }
     return playerWrap;
   }
 
@@ -84,6 +111,14 @@ function buildPlayer(videoUrl) {
 
     playerWrap.appendChild(iframe);
 
+    // Banner informativo sobre modo espejo y bucle
+    const notice = document.createElement('div');
+    notice.className =
+      'flex items-center gap-2 border-t border-white/10 bg-amber-500/10 px-4 py-2.5 text-xs text-amber-200 w-full';
+    notice.innerHTML =
+      '<span class="material-symbols-outlined text-base text-amber-400">tips_and_updates</span><span>Para activar el <strong>Modo Espejo</strong> y <strong>Bucle A-B</strong>, aloja el video en <strong>Supabase Storage</strong> o URL directa .mp4.</span>';
+    playerWrap.appendChild(notice);
+
     const link = document.createElement('a');
     link.href = videoUrl;
     link.target = '_blank';
@@ -94,16 +129,6 @@ function buildPlayer(videoUrl) {
       '<span class="material-symbols-outlined text-base">open_in_new</span><span>Abrir video original en Google Drive</span>';
     playerWrap.appendChild(link);
 
-    return playerWrap;
-  }
-
-  if (isDirectMediaUrl(videoUrl)) {
-    const video = document.createElement('video');
-    video.className = 'aspect-video w-full bg-black';
-    video.controls = true;
-    video.preload = 'metadata';
-    video.src = videoUrl;
-    playerWrap.appendChild(video);
     return playerWrap;
   }
 
@@ -149,11 +174,22 @@ export function createVideoModal(modalElement, { onSaveToggle } = {}) {
   let currentIndex = -1;
   /** @type {import('./video-model.js').VideoRecord | null} */
   let currentRecord = null;
+  /** @type {any} */
+  let activeDancePlayer = null;
 
   /**
    * Stop any active video or audio playback immediately.
    */
   function stopPlayback() {
+    if (activeDancePlayer) {
+      try {
+        activeDancePlayer.destroy();
+      } catch {
+        // Ignore cleanup exceptions
+      }
+      activeDancePlayer = null;
+    }
+
     const iframes = modalElement.querySelectorAll('iframe');
     iframes.forEach((iframe) => {
       iframe.src = 'about:blank';
@@ -171,6 +207,11 @@ export function createVideoModal(modalElement, { onSaveToggle } = {}) {
       video.load();
       video.remove();
     });
+
+    const modalPanel = modalElement.querySelector('.modal-panel');
+    if (modalPanel) {
+      modalPanel.classList.remove('modal-panel--vertical');
+    }
   }
 
   /**
@@ -225,7 +266,11 @@ export function createVideoModal(modalElement, { onSaveToggle } = {}) {
 
     modalBody.innerHTML = '';
     modalBody.scrollTop = 0;
-    modalBody.appendChild(buildPlayer(record.video_url));
+    modalBody.appendChild(
+      buildPlayer(record.video_url, record, (player) => {
+        activeDancePlayer = player;
+      })
+    );
 
     // Metadata pills
     const metaContainer = document.createElement('div');

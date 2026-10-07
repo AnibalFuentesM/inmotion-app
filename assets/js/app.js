@@ -32,6 +32,58 @@ const elements = {
   badgeCountRecent: document.querySelector('#badgeCountRecent')
 };
 
+// Videos oficiales alojados en Supabase Storage (Salsa niveles 3 y 4)
+export const PRACTICE_PRESET_RECORDS = [
+  {
+    id: 'salsa-parejas-lvl3',
+    stableId: 'salsa-parejas-lvl3',
+    step_name: 'Salsa en Parejas · Nivel 3',
+    style: 'Salsa',
+    level: 'Nivel 3',
+    date: '2026-10-07',
+    video_url: 'https://qwjlixqtbcchyiwynfmv.supabase.co/storage/v1/object/public/dance-videos/Salsa_parejas_lvl3.mp4',
+    thumbnail_url: './assets/thumbnails/thumb-salsa-parejas-lvl3.png',
+    tags: ['salsa', 'parejas', 'nivel-3', 'figura', 'giro', 'tiempo-1'],
+    notes: 'Combinación en pareja nivel intermedio. Usá Modo Espejo para guiar la postura y el brazo del lead/follow.'
+  },
+  {
+    id: 'salsa-parejas-lvl4',
+    stableId: 'salsa-parejas-lvl4',
+    step_name: 'Salsa en Parejas · Nivel 4',
+    style: 'Salsa',
+    level: 'Nivel 4',
+    date: '2026-10-07',
+    video_url: 'https://qwjlixqtbcchyiwynfmv.supabase.co/storage/v1/object/public/dance-videos/Salsa_parejas_lvl4.mp4',
+    thumbnail_url: './assets/thumbnails/thumb-salsa-parejas-lvl4.png',
+    tags: ['salsa', 'parejas', 'nivel-4', 'avanzado', 'cruce', 'desplazamiento'],
+    notes: 'Combinación avanzada con cambio de mano y contratiempo. Probá el bucle A-B para pulir el 8-count.'
+  },
+  {
+    id: 'salsa-shine-lvl3',
+    stableId: 'salsa-shine-lvl3',
+    step_name: 'Salsa Shines (Footwork) · Nivel 3',
+    style: 'Salsa',
+    level: 'Nivel 3',
+    date: '2026-10-07',
+    video_url: 'https://qwjlixqtbcchyiwynfmv.supabase.co/storage/v1/object/public/dance-videos/Salsa_shine_lvl3.mp4',
+    thumbnail_url: './assets/thumbnails/thumb-salsa-shine-lvl3.png',
+    tags: ['salsa', 'shines', 'footwork', 'nivel-3', 'pasos-libres', 'coordinacion'],
+    notes: 'Secuencia de pasos libres. Desglosá la pisada a 0.75x y acelerá a 1.25x cuando lo tengas dominado.'
+  },
+  {
+    id: 'salsa-shine-lvl4',
+    stableId: 'salsa-shine-lvl4',
+    step_name: 'Salsa Shines (Footwork) · Nivel 4',
+    style: 'Salsa',
+    level: 'Nivel 4',
+    date: '2026-10-07',
+    video_url: 'https://qwjlixqtbcchyiwynfmv.supabase.co/storage/v1/object/public/dance-videos/salsa_shine_lvl4.mp4',
+    thumbnail_url: './assets/thumbnails/thumb-salsa-shine-lvl4.png',
+    tags: ['salsa', 'shines', 'footwork', 'nivel-4', 'sincopa', 'velocidad', 'estilo'],
+    notes: 'Footwork avanzado sincopado con velocidad. Usá el modo espejo para coordinar pie izquierdo/derecho.'
+  }
+];
+
 const state = {
   records: [],
   filtered: [],
@@ -330,27 +382,16 @@ async function loadVideos() {
   hideEmptyState();
 
   try {
-    const rawRows = await fetchSheetData(APP_CONFIG);
-    const { records, missingColumns } = normalizeVideoRecords(rawRows, APP_CONFIG.requiredColumns);
+    // Usar exclusivamente los 4 videos de salsa provistos por el usuario
+    state.records = [...PRACTICE_PRESET_RECORDS];
+    state.missingColumns = [];
+    adminPanel.syncRecords(state.records);
 
-    state.records = records;
-    state.missingColumns = missingColumns;
-    adminPanel.syncRecords(records);
-
-    populateSelect(elements.styleFilter, getUniqueFieldValues(records, 'style'), 'Todos los estilos');
-    populateSelect(elements.levelFilter, getUniqueFieldValues(records, 'level'), 'Todos los niveles');
+    populateSelect(elements.styleFilter, getUniqueFieldValues(state.records, 'style'), 'Todos los estilos');
+    populateSelect(elements.levelFilter, getUniqueFieldValues(state.records, 'level'), 'Todos los niveles');
 
     renderCatalog();
   } catch (error) {
-    state.records = [];
-    state.filtered = [];
-    adminPanel.syncRecords([]);
-    renderVideoCards({
-      container: elements.cardsGrid,
-      records: [],
-      onCardClick: () => { }
-    });
-
     const message = error instanceof Error ? error.message : 'Error desconocido al cargar los videos.';
     showError(message);
     updateResultsMeta();
