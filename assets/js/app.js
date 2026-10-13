@@ -81,6 +81,30 @@ export const PRACTICE_PRESET_RECORDS = [
     thumbnail_url: './assets/thumbnails/thumb-salsa-shine-lvl4.png',
     tags: ['salsa', 'shines', 'footwork', 'nivel-4', 'sincopa', 'velocidad', 'estilo'],
     notes: 'Footwork avanzado sincopado con velocidad. Usá el modo espejo para coordinar pie izquierdo/derecho.'
+  },
+  {
+    id: 'salsa-shine-lvl0',
+    stableId: 'salsa-shine-lvl0',
+    step_name: 'Salsa Shines (Footwork) · Nivel 0',
+    style: 'Salsa',
+    level: 'Nivel 0',
+    date: '2026-10-13',
+    video_url: 'https://qwjlixqtbcchyiwynfmv.supabase.co/storage/v1/object/public/dance-videos/Salsa_enchufe.mp4',
+    thumbnail_url: './assets/thumbnails/thumb-salsa-enchufe.png',
+    tags: ['salsa', 'shines', 'footwork', 'nivel-0', 'pasos-libres'],
+    notes: 'Secuencia de pasos libres (shines) nivel 0. Usá el Modo Espejo para coordinar pie izquierdo/derecho y practicar la pisada.'
+  },
+  {
+    id: 'salsa-parejas-lvl0',
+    stableId: 'salsa-parejas-lvl0',
+    step_name: 'Salsa en Parejas · Nivel 0',
+    style: 'Salsa',
+    level: 'Nivel 0',
+    date: '2026-10-13',
+    video_url: 'https://qwjlixqtbcchyiwynfmv.supabase.co/storage/v1/object/public/dance-videos/Salsa_parejas_lvl0.mp4',
+    thumbnail_url: './assets/thumbnails/thumb-salsa-parejas-lvl0.png',
+    tags: ['salsa', 'parejas', 'nivel-0', 'basico', 'al-lado', 'tiempo-1'],
+    notes: 'Paso básico en pareja (al lado) nivel 0. Usá el Modo Espejo para guiar la postura y el marco de brazos del lead/follow.'
   }
 ];
 
