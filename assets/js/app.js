@@ -32,7 +32,7 @@ const elements = {
   badgeCountRecent: document.querySelector('#badgeCountRecent')
 };
 
-// Videos oficiales alojados en Supabase Storage (Salsa niveles 3 y 4)
+// Videos oficiales alojados en Supabase Storage (Salsa: Nivel 0, Principiantes 1-2, Niveles 3-4)
 export const PRACTICE_PRESET_RECORDS = [
   {
     id: 'salsa-parejas-lvl3',
@@ -454,7 +454,7 @@ async function loadVideos() {
   hideEmptyState();
 
   try {
-    // Usar exclusivamente los 4 videos de salsa provistos por el usuario
+    // Usar exclusivamente los videos de salsa de PRACTICE_PRESET_RECORDS
     state.records = [...PRACTICE_PRESET_RECORDS];
     state.missingColumns = [];
     adminPanel.syncRecords(state.records);

@@ -1894,6 +1894,7 @@ const elements = {
   date: document.querySelector('#topbarDate'),
   initials: document.querySelector('#profileInitials'),
   menuButton: document.querySelector('#menuButton'),
+  sidebarClose: document.querySelector('#sidebarClose'),
   modalLayer: document.querySelector('#modalLayer'),
   modalTitle: document.querySelector('#modalTitle'),
   modalEyebrow: document.querySelector('#modalEyebrow'),
@@ -1996,7 +1997,7 @@ function leaveDemo() {
   persistOrWarn({ ...state, role: null });
   elements.app.classList.add('is-hidden');
   elements.access.classList.remove('is-hidden');
-  elements.app.classList.remove('menu-open');
+  setMenuOpen(false);
   history.replaceState(null, '', window.location.pathname);
   document.querySelector('[data-enter-role="student"]')?.focus();
 }
@@ -2054,6 +2055,8 @@ function renderAndFocus() {
 }
 
 function routeTo(route) {
+  // En movil el menu tapa el contenido: al elegir una seccion se cierra solo.
+  if (elements.app.classList.contains('menu-open')) setMenuOpen(false);
   activeRoute = route;
   history.pushState(null, '', `#/${route}`);
   renderApp();
@@ -7253,6 +7256,19 @@ elements.roleSwitcher.addEventListener('change', (event) => {
 
 elements.menuButton.addEventListener('click', () => {
   setMenuOpen(!elements.app.classList.contains('menu-open'), { moveFocus: true });
+});
+
+// Con el menu abierto en movil, la barra lateral tapa el boton hamburguesa:
+// se cierra con su propio boton o tocando fuera de ella (el fondo oscurecido).
+elements.sidebarClose?.addEventListener('click', () => {
+  setMenuOpen(false);
+  elements.menuButton.focus();
+});
+
+document.addEventListener('click', (event) => {
+  if (!elements.app.classList.contains('menu-open')) return;
+  if (elements.sidebar?.contains(event.target) || elements.menuButton.contains(event.target)) return;
+  setMenuOpen(false);
 });
 
 MOBILE_QUERY.addEventListener('change', syncMenuState);

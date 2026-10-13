@@ -128,6 +128,7 @@
 .profile-chip { background: #2a2a2e; color: #fff; }
 .menu-button { background: transparent; border-color: rgba(255, 255, 255, 0.24); cursor: pointer; }
 .menu-button span { background: #fff; }
+.sidebar-close { display: none; }
 
 /* ---- Inicio del alumno ----
    Fondo decorativo de ondas rojas (ondas-rojas.webp) sobre fondo negro,
@@ -1509,6 +1510,32 @@
     padding: 20px 14px calc(100px + env(safe-area-inset-bottom));
   }
   .app-shell:not(.menu-open) .sidebar { box-shadow: none; }
+
+  /* Menú lateral abierto: el panel tapa la hamburguesa, así que lleva su propio
+     botón de cierre y un fondo oscurecido que lo cierra al tocar fuera. */
+  .sidebar-close {
+    position: absolute;
+    top: 14px;
+    right: 14px;
+    display: grid;
+    place-items: center;
+    width: 40px;
+    height: 40px;
+    border: 1px solid rgba(255, 255, 255, 0.24);
+    border-radius: 12px;
+    background: transparent;
+    color: #fff;
+    font-size: 1.6rem;
+    line-height: 1;
+    cursor: pointer;
+  }
+  .app-shell.menu-open::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: 28;
+    background: rgba(0, 0, 0, 0.5);
+  }
 
   /* 2. Pantalla de bienvenida (Acceso) - optimización vertical */
   .access {
