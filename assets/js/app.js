@@ -129,6 +129,30 @@ export const PRACTICE_PRESET_RECORDS = [
     thumbnail_url: './assets/thumbnails/thumb-salsa-parejas-principiantes-1.png',
     tags: ['salsa', 'parejas', 'principiantes', 'figura', 'giro'],
     notes: 'Combinación en pareja para principiantes nivel 1. Usá el Modo Espejo para guiar la postura y el brazo del lead/follow.'
+  },
+  {
+    id: 'salsa-parejas-principiantes-2',
+    stableId: 'salsa-parejas-principiantes-2',
+    step_name: 'Salsa en Parejas · Principiantes 2',
+    style: 'Salsa',
+    level: 'Principiantes 2',
+    date: '2026-10-13',
+    video_url: 'https://qwjlixqtbcchyiwynfmv.supabase.co/storage/v1/object/public/dance-videos/Salsa_parejas_principiantes_2.mp4',
+    thumbnail_url: './assets/thumbnails/thumb-salsa-parejas-principiantes-2.png',
+    tags: ['salsa', 'parejas', 'principiantes', 'figura', 'giro'],
+    notes: 'Combinación en pareja para principiantes nivel 2. Usá el Modo Espejo para guiar la postura y el brazo del lead/follow.'
+  },
+  {
+    id: 'salsa-shine-principiantes-2',
+    stableId: 'salsa-shine-principiantes-2',
+    step_name: 'Salsa Shines (Footwork) · Principiantes 2',
+    style: 'Salsa',
+    level: 'Principiantes 2',
+    date: '2026-10-13',
+    video_url: 'https://qwjlixqtbcchyiwynfmv.supabase.co/storage/v1/object/public/dance-videos/Salsa_shine_principiantes_2.mp4',
+    thumbnail_url: './assets/thumbnails/thumb-salsa-shine-principiantes-2.png',
+    tags: ['salsa', 'shines', 'footwork', 'principiantes', 'pasos-libres'],
+    notes: 'Secuencia de pasos libres (shines) para principiantes nivel 2. Usá el Modo Espejo para coordinar la pisada y el conteo de tiempos.'
   }
 ];
 
