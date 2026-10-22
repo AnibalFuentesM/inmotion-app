@@ -239,7 +239,7 @@ const membershipPlans = [
     monthlyClasses: 8,
     unlimited: false,
     weeklyRhythm: 2,
-    subtitle: 'Encontrá tu ritmo',
+    subtitle: 'Encuentra tu ritmo',
     description: 'Más práctica para avanzar con constancia.'
   },
   {
@@ -360,7 +360,7 @@ function noPlanDefined() {
     unlimited: false,
     weeklyRhythm: null,
     subtitle: 'Sin cuota definida',
-    description: 'Este alumno no tiene un plan o cuota asignada. Registrá su membresía antes de procesar cobros.',
+    description: 'Este alumno no tiene un plan o cuota asignada. Registra su membresía antes de procesar cobros.',
     needsReview: true
   };
 }
@@ -817,7 +817,7 @@ function buildWhatsAppUrl(phone, message) {
 }
 
 function generatePaymentReminderMessage({ firstName, month, amount }) {
-  return `Hola, ${firstName} 👋 Te recordamos que tu mensualidad de ${month} por Q${amount} está pendiente. Si ya realizaste el pago, podés enviarnos el comprobante por este medio. ¡Gracias! — In Motion Dance Academy`;
+  return `Hola, ${firstName} 👋 Te recordamos que tu mensualidad de ${month} por Q${amount} está pendiente. Si ya realizaste el pago, puedes enviarnos el comprobante por este medio. ¡Gracias! — In Motion Dance Academy`;
 }
 
 function generateAbsenceFollowupMessage({ isGuardian, tutorName, studentName, firstName }) {
@@ -1021,7 +1021,7 @@ function recordAttendance(classId, studentIds, sessionDate, { replaceDay = false
   TODAY = new Date();
   const item = classData.find((entry) => entry.id === classId);
   if (!item || !sessionDate) {
-    throw new Error('Solo podés registrar una clase programada válida. Volvé a abrir la sesión.');
+    throw new Error('Solo puedes registrar una clase programada válida. Vuelve a abrir la sesión.');
   }
   for (const studentId of studentIds) {
     const student = studentById(studentId);
@@ -1531,7 +1531,7 @@ function generatePassCode() {
 
 function passQrMarkup(pass) {
   return `<div class="pass-qr-frame"><strong>Validación por código</strong>
-    <p class="pass-qr-caption">QR escaneable pendiente. Presentá el código corto al personal.</p></div>`;
+    <p class="pass-qr-caption">QR escaneable pendiente. Presenta el código corto al personal.</p></div>`;
 }
 
 // Estas operaciones todavía no tienen persistencia compartida en Supabase.
@@ -1551,7 +1551,7 @@ function allowPassAction(adminOnly = false) {
 function canUsePass(pass, pending = false) {
   if (!pass || passStatus(pass) !== 'available' || pass.date !== dayKey(new Date()) ||
       pass.paymentStatus !== (pending ? 'pending' : 'paid')) {
-    showToast('Pase no disponible', 'Revisá la fecha, el pago y el estado actual del pase.');
+    showToast('Pase no disponible', 'Revisa la fecha, el pago y el estado actual del pase.');
     return false;
   }
   return true;
@@ -1871,6 +1871,10 @@ function loadState() {
 let state = loadState();
 let activeRole = state.role || 'student';
 let activeRoute = 'inicio';
+// Sin ?demo la entrada es el login y el rol sale del perfil en Supabase.
+// Con ?demo se mantiene el selector de roles con datos ficticios.
+const DEMO_MODE = document.documentElement.dataset.mode === 'demo';
+const ACCESS_FOCUS_SELECTOR = DEMO_MODE ? '[data-enter-role="student"]' : '#accessLoginForm input[name="email"]';
 let activeClassId = classData[0].id;
 let lastFocusedElement = null;
 let activeChildId = null;
@@ -1908,7 +1912,7 @@ function persistState(nextState = state) {
     const key = getStorageKey();
     localStorage.setItem(key, JSON.stringify({ ...nextState, version: STATE_VERSION }));
   } catch {
-    throw new Error('No se pudo guardar en este navegador. Revisá el almacenamiento e intentá de nuevo.');
+    throw new Error('No se pudo guardar en este navegador. Revisa el almacenamiento e intenta de nuevo.');
   }
   state = nextState;
 }
@@ -1998,8 +2002,8 @@ function leaveDemo() {
   elements.app.classList.add('is-hidden');
   elements.access.classList.remove('is-hidden');
   setMenuOpen(false);
-  history.replaceState(null, '', window.location.pathname);
-  document.querySelector('[data-enter-role="student"]')?.focus();
+  history.replaceState(null, '', window.location.pathname + window.location.search);
+  document.querySelector(ACCESS_FOCUS_SELECTOR)?.focus();
 }
 
 // El menu lateral queda fuera de pantalla en movil: mientras este cerrado no debe
@@ -2111,7 +2115,7 @@ function classCards(classes = scheduledClasses().slice(0, 3), empty = null) {
 }
 
 function scheduleList(classes = scheduledClasses()) {
-  if (!classes.length) return `<div class="schedule-empty"><span class="eyebrow">Un espacio para practicar</span><h2>No hay clases con este filtro.</h2><p>Probá otro nivel o consultá la agenda completa.</p><button class="button button--light" type="button" data-class-filter="all">Ver todas las clases</button></div>`;
+  if (!classes.length) return `<div class="schedule-empty"><span class="eyebrow">Un espacio para practicar</span><h2>No hay clases con este filtro.</h2><p>Prueba otro nivel o consulta la agenda completa.</p><button class="button button--light" type="button" data-class-filter="all">Ver todas las clases</button></div>`;
   return `<div class="schedule-list">${classes.map((item) => `
     <div class="schedule-row">
       <div class="schedule-time">${escapeHtml(item.time)}<small>${escapeHtml(item.day)} · ${escapeHtml(item.dateLabel)}</small></div>
@@ -2142,8 +2146,8 @@ function studentMusicSection() {
         <div class="section-head">
           <div>
             <span class="eyebrow">La Rockola In Motion</span>
-            <h2>Pedí una canción para la clase</h2>
-            <p>Elegí una de tus clases y sugerile una canción a tu maestro.</p>
+            <h2>Pide una canción para la clase</h2>
+            <p>Elige una de tus clases y sugiérele una canción a tu maestro.</p>
           </div>
         </div>
         <div class="empty-state">
@@ -2161,13 +2165,13 @@ function studentMusicSection() {
       <div class="section-head">
         <div>
           <span class="eyebrow">La Rockola In Motion</span>
-          <h2>Pedí una canción para la clase</h2>
-          <p>Elegí una de tus clases y sugerile una canción a tu maestro.</p>
+          <h2>Pide una canción para la clase</h2>
+          <p>Elige una de tus clases y sugiérele una canción a tu maestro.</p>
         </div>
       </div>
 
       <div class="music-class-picker">
-        <p class="music-picker-label">1. Elegí tu clase para sugerir:</p>
+        <p class="music-picker-label">1. Elige tu clase para sugerir:</p>
         <div class="music-picker-grid">
           ${enrolledClasses.map((c) => `
             <button type="button" class="music-class-btn" data-open-music-modal="${escapeHtml(c.id)}">
@@ -2191,7 +2195,7 @@ function studentMusicSection() {
         ${suggestions.length === 0 ? `
           <div class="empty-state">
             <strong>Todavía no sugeriste canciones</strong>
-            <p>Elegí una de tus clases arriba para sugerir tu primera canción.</p>
+            <p>Elige una de tus clases arriba para sugerir tu primera canción.</p>
           </div>
         ` : `
           <div class="music-cards-grid">
@@ -2319,7 +2323,7 @@ function teacherMusicSection() {
 function openMusicSuggestionModal(preselectedClassId = null) {
   const student = currentStudent();
   if (!student) {
-    showToast('Acción no disponible', 'No tenés un carné o perfil de alumno vinculado.');
+    showToast('Acción no disponible', 'No tienes un carné o perfil de alumno vinculado.');
     return;
   }
   const studentClasses = classesForStudent(student.id);
@@ -2358,7 +2362,7 @@ function openMusicSuggestionModal(preselectedClassId = null) {
 
         <div class="field">
           <div class="mood-header-row">
-            <span>Elegí la etiqueta</span>
+            <span>Elige la etiqueta</span>
             <button type="button" class="mood-random-btn" data-randomize-mood title="Cambiar etiqueta al azar">🎲 Otra al azar</button>
           </div>
           <div class="music-mood-grid" role="radiogroup" aria-label="Elegir etiqueta">
@@ -2397,13 +2401,13 @@ function handleMusicSuggestionSubmit(event) {
   const moodId = formData.get('moodId') || currentSelectedMoodId || 'sed';
 
   if (!song && !artist) {
-    showToast('Faltan datos', 'Ingresá al menos la canción o el artista.');
+    showToast('Faltan datos', 'Ingresa al menos la canción o el artista.');
     return;
   }
 
   const student = currentStudent();
   if (!student) {
-    showToast('Acción no disponible', 'No tenés una ficha de alumno vinculada para enviar sugerencias.');
+    showToast('Acción no disponible', 'No tienes una ficha de alumno vinculada para enviar sugerencias.');
     return;
   }
 
@@ -2449,7 +2453,7 @@ function renderStudentHome() {
       </section>
       <div class="empty-state">
         <strong>Ficha de alumno no vinculada</strong>
-        Tu usuario autenticado (${escapeHtml(authenticatedUser?.email || '')}) no tiene un perfil de estudiante o carné asignado en la academia. Contactá a administración.
+        Tu usuario autenticado (${escapeHtml(authenticatedUser?.email || '')}) no tiene un perfil de estudiante o carné asignado en la academia. Contacta a administración.
       </div>
     `;
   }
@@ -2475,11 +2479,11 @@ function renderStudentHome() {
       ? 'Asistencia sin límite este mes'
       : `${remaining} de ${allowance} disponibles este mes`;
   const attendanceNote = allowanceUnknown
-    ? `Llevás ${attended} clase${attended === 1 ? '' : 's'} este mes. El plan guardado no está en el catálogo de la demo, así que su cupo está por confirmar.`
+    ? `Llevas ${attended} clase${attended === 1 ? '' : 's'} este mes. El plan guardado no está en el catálogo de la demo, así que su cupo está por confirmar.`
     : allowance === null
-    ? `Llevás ${attended} clase${attended === 1 ? '' : 's'} este mes. Tu plan no descuenta clases.`
+    ? `Llevas ${attended} clase${attended === 1 ? '' : 's'} este mes. Tu plan no descuenta clases.`
     : attended > allowance
-      ? `Ya superaste las ${allowance} clases del plan. Consultá las condiciones en recepción.`
+      ? `Ya superaste las ${allowance} clases del plan. Consulta las condiciones en recepción.`
       : remaining === 0
         ? `Usaste las ${allowance} clases del plan este mes.`
         : `${remaining} clase${remaining === 1 ? '' : 's'} disponible${remaining === 1 ? '' : 's'} este mes.`;
@@ -2525,16 +2529,16 @@ function renderStudentHome() {
         ` : `
           <div class="next-class-empty-box">
             <p class="next-class-empty-title">Sin próximas clases programadas</p>
-            <p class="next-class-empty-text">No tenés clases asignadas para los próximos días. Consultá el calendario para ver los horarios de la academia.</p>
+            <p class="next-class-empty-text">No tienes clases asignadas para los próximos días. Consulta el calendario para ver los horarios de la academia.</p>
             <button class="button button--small button--light" type="button" data-go="clases">Ver calendario de clases →</button>
           </div>
         `}
       </aside>
     </section>
 
-    <div class="journey-actions" role="group" aria-label="Explorá la academia">
-      <button type="button" data-go="planes"><span class="journey-icon">${icon('money')}</span><span><strong>Encontrá tu plan</strong><small>Compará opciones a tu ritmo</small></span><span aria-hidden="true">↗</span></button>
-      <a href="../index.html"><span class="journey-icon">▷</span><span><strong>Videos para practicar</strong><small>Repasá las clases y los movimientos</small></span><span aria-hidden="true">↗</span></a>
+    <div class="journey-actions" role="group" aria-label="Explora la academia">
+      <button type="button" data-go="planes"><span class="journey-icon">${icon('money')}</span><span><strong>Encuentra tu plan</strong><small>Compara opciones a tu ritmo</small></span><span aria-hidden="true">↗</span></button>
+      <a href="../index.html"><span class="journey-icon">▷</span><span><strong>Videos para practicar</strong><small>Repasa las clases y los movimientos</small></span><span aria-hidden="true">↗</span></a>
     </div>
     <section class="section">
       <div class="section-head"><div><h2>Esta semana</h2><p>Tu agenda de clases del ${escapeHtml(weekRange())}.</p></div><button class="text-button" type="button" data-go="clases">Ver calendario →</button></div>
@@ -2543,7 +2547,7 @@ function renderStudentHome() {
 
     <section class="section">
       <div class="section-head"><div><h2>Tus próximas clases</h2><p>${escapeHtml(plan.planName)} · ${escapeHtml(allowanceLine)}</p></div></div>
-      ${classCards(own, { title: 'Sin clases asignadas', detail: 'Todavía no tenés inscripciones en esta demostración. Consultá el calendario para ver los horarios.' })}
+      ${classCards(own, { title: 'Sin clases asignadas', detail: 'Todavía no tienes inscripciones en esta demostración. Consulta el calendario para ver los horarios.' })}
     </section>
 
     <section class="section split-grid">
@@ -2754,7 +2758,7 @@ function renderScheduleSelectionSummary() {
     return `
       <div class="selection-empty">
         <strong>0 clases seleccionadas</strong>
-        <p>Hacé clic en una o más casillas del calendario para comparar planes.</p>
+        <p>Haz clic en una o más casillas del calendario para comparar planes.</p>
       </div>
     `;
   }
@@ -2777,7 +2781,7 @@ function renderScheduleRecommendations() {
   if (!recommendations.length) {
     return `
       <div class="schedule-empty-rec">
-        <p><strong>Las sugerencias aparecerán aquí</strong> al marcar las clases que querés tomar.</p>
+        <p><strong>Las sugerencias aparecerán aquí</strong> al marcar las clases que quieres tomar.</p>
       </div>
     `;
   }
@@ -2808,11 +2812,11 @@ function renderScheduleRecommendations() {
           </div>
         </div>
         <p class="rec-note">${escapeHtml(rec.note)}</p>
-        <p class="rec-subnote">Estimación demo; no incluye posibles cargos iniciales. Confirmá el precio final con la academia.</p>
+        <p class="rec-subnote">Estimación demo; no incluye posibles cargos iniciales. Confirma el precio final con la academia.</p>
         <div class="rec-actions">
           ${isCurrentPlan
             ? '<span class="tag tag--dark" style="margin-top:10px;width:100%;text-align:center;display:block;padding:8px 0;">Tu plan actual ✓</span>'
-            : '<p class="rec-subnote">Comparación estimada. Para contratar este pase, confirmá condiciones y precios vigentes con la academia.</p>'
+            : '<p class="rec-subnote">Comparación estimada. Para contratar este pase, confirma condiciones y precios vigentes con la academia.</p>'
           }
         </div>
       </article>
@@ -2843,10 +2847,10 @@ function renderPlans() {
   return `
     <header class="plan-hero">
       <div>
-        <p class="eyebrow">Explorá tu próximo paso · Demo</p>
-        <h1>¿Querés mejorar<br/><span>tu plan?</span></h1>
-        <p>Elegí las clases que te gustaría tomar y encontrá una opción para tu ritmo.</p>
-        <p class="plan-disclaimer">Estimación de demostración. Confirmá tarifas y condiciones con la academia; tu plan actual no cambia.</p>
+        <p class="eyebrow">Explora tu próximo paso · Demo</p>
+        <h1>¿Quieres mejorar<br/><span>tu plan?</span></h1>
+        <p>Elige las clases que te gustaría tomar y encuentra una opción para tu ritmo.</p>
+        <p class="plan-disclaimer">Estimación de demostración. Confirma tarifas y condiciones con la academia; tu plan actual no cambia.</p>
       </div>
     </header>
 
@@ -2856,7 +2860,7 @@ function renderPlans() {
           <div class="schedule-poster-header">
             <div>
               <h2 id="scheduleTitle">Horarios de clase</h2>
-              <p>Tocá las clases que te interesan para comparar.</p>
+              <p>Toca las clases que te interesan para comparar.</p>
             </div>
             <div class="schedule-actions">
               <button type="button" class="button button--light button--small" data-schedule-action="select-all">Seleccionar todo</button>
@@ -2885,18 +2889,18 @@ function renderPlans() {
     </section>
 
     <section class="plan-faq" aria-label="Preguntas sobre los planes">
-      <h2>¿Tenés dudas?</h2>
+      <h2>¿Tienes dudas?</h2>
       <details>
         <summary>¿Cómo se calcula el pase recomendado?</summary>
         <p>La demo evalúa las combinaciones de pases que cubrirían tus clases seleccionadas y le suma un parqueo estimado por día de visita, para sugerir la de menor costo total. Tanto las reglas de combinación (Dancer Pass por disciplina, Night Pass de lunes a jueves, Weekend Pass por día de fin de semana, Teens) como el parqueo son supuestos de la simulación y no están confirmados con la academia.</p>
       </details>
       <details>
         <summary>¿Qué incluye el plan Full In Motion?</summary>
-        <p>En la simulación, Full In Motion (Q 750/mes) representa pase libre a todas las clases sin restricción de horario, con hasta 3 horas de parqueo por visita. Es un supuesto de la demo: confirmá el alcance real y el precio vigente con la academia.</p>
+        <p>En la simulación, Full In Motion (Q 750/mes) representa pase libre a todas las clases sin restricción de horario, con hasta 3 horas de parqueo por visita. Es un supuesto de la demo: confirma el alcance real y el precio vigente con la academia.</p>
       </details>
       <details>
         <summary>¿Puedo cambiar mi plan desde aquí?</summary>
-        <p>No. Este comparador es solo de consulta: no modifica tu membresía, tus inscripciones ni tus pagos. Para un cambio real, consultá disponibilidad, condiciones y precios vigentes con la academia.</p>
+        <p>No. Este comparador es solo de consulta: no modifica tu membresía, tus inscripciones ni tus pagos. Para un cambio real, consulta disponibilidad, condiciones y precios vigentes con la academia.</p>
       </details>
     </section>
   `;
@@ -2906,7 +2910,7 @@ function renderPlans() {
 function openPlanDetail(id) {
   const plan = membershipPlans.find((item) => item.id === id);
   if (!plan) return;
-  openModal({ title: `Plan ${plan.name}`, eyebrow: 'Conocé tu opción · Demo', body: `<p class="plan-price">Q ${escapeHtml(formatAmount(plan.price))}<span>/ mes</span></p><p>${escapeHtml(plan.description)}</p><ul class="plan-detail-list"><li>${escapeHtml(planRhythmText(plan))}, como orientación.</li><li>${escapeHtml(planAllowanceText(plan))}.</li><li>${escapeHtml(planUnitText(plan))}.</li><li>La inscripción y otros cargos deben confirmarse con recepción.</li></ul><p class="plan-disclaimer">Esta comparación no modifica tu membresía ni registra pagos. Los importes son ficticios.</p><button class="button" type="button" data-close-modal>Seguir comparando</button>` });
+  openModal({ title: `Plan ${plan.name}`, eyebrow: 'Conoce tu opción · Demo', body: `<p class="plan-price">Q ${escapeHtml(formatAmount(plan.price))}<span>/ mes</span></p><p>${escapeHtml(plan.description)}</p><ul class="plan-detail-list"><li>${escapeHtml(planRhythmText(plan))}, como orientación.</li><li>${escapeHtml(planAllowanceText(plan))}.</li><li>${escapeHtml(planUnitText(plan))}.</li><li>La inscripción y otros cargos deben confirmarse con recepción.</li></ul><p class="plan-disclaimer">Esta comparación no modifica tu membresía ni registra pagos. Los importes son ficticios.</p><button class="button" type="button" data-close-modal>Seguir comparando</button>` });
 }
 
 let studentCalendarDate = startOfDay(TODAY);
@@ -3027,7 +3031,7 @@ function studentCalendarMarkup() {
   } else {
     let emptyDescription = 'No hay clases programadas para este día.';
     if (studentCalendarFilter === 'mine') {
-      emptyDescription = 'No tenés clases inscritas para este día.';
+      emptyDescription = 'No tienes clases inscritas para este día.';
     } else if (studentCalendarFilter !== 'all') {
       emptyDescription = 'No hay clases de este nivel para la fecha seleccionada.';
     }
@@ -3095,7 +3099,7 @@ function renderStudentClasses() {
       <div>
         <p class="eyebrow">Agenda y horarios</p>
         <h1>Tu calendario<br/>de clases.</h1>
-        <p>Consultá tus clases y horarios disponibles. Abrí los detalles de cualquier sesión para ver salón, profesor y cupos.</p>
+        <p>Consulta tus clases y horarios disponibles. Abre los detalles de cualquier sesión para ver salón, profesor y cupos.</p>
       </div>
       <button class="button" type="button" data-go="carnet">Mostrar mi carné</button>
     </header>
@@ -3226,10 +3230,10 @@ function renderStudentCard() {
   if (!student) {
     return `
     <header class="page-heading"><div><p class="eyebrow">Identificación digital</p><h1>Tu carnet.<br/>Siempre listo.</h1></div></header>
-    <div class="empty-state"><strong>${isSupabaseConnected ? 'Sin carné vinculado' : 'Sin alumno en la demo'}</strong>${isSupabaseConnected ? 'Tu usuario conectado no tiene un carné o ficha de estudiante asociada en el sistema.' : 'Reiniciá la demostración para recuperar el padrón inicial.'}</div>`;
+    <div class="empty-state"><strong>${isSupabaseConnected ? 'Sin carné vinculado' : 'Sin alumno en la demo'}</strong>${isSupabaseConnected ? 'Tu usuario conectado no tiene un carné o ficha de estudiante asociada en el sistema.' : 'Reinicia la demostración para recuperar el padrón inicial.'}</div>`;
   }
   return `
-    <header class="page-heading"><div><p class="eyebrow">Identificación digital</p><h1>Tu carnet.<br/>Siempre listo.</h1><p>Tu número de carné es permanente y no caduca. Presentá tu credencial en recepción al llegar a clase.</p></div></header>
+    <header class="page-heading"><div><p class="eyebrow">Identificación digital</p><h1>Tu carnet.<br/>Siempre listo.</h1><p>Tu número de carné es permanente y no caduca. Presenta tu credencial en recepción al llegar a clase.</p></div></header>
     <div class="member-card-wrap">
       ${memberCardMarkup(student)}
       <aside class="surface-card member-info-card">
@@ -3299,7 +3303,7 @@ function renderTeacherHome() {
           ${next ? `<button class="button button--red" type="button" data-take-attendance="${escapeHtml((today[0] || next).id)}">${count ? 'Abrir asistencia de hoy' : 'Abrir próxima clase'}</button>` : ''}
           <button class="button button--light" type="button" data-open-validate-pass>Validar pase individual</button>
         </div>
-        <p>${next ? `Tu siguiente clase es ${escapeHtml(next.day.toLowerCase())} a las ${escapeHtml(next.time)}<br/>en el ${escapeHtml(next.room)}.` : 'No tenés clases asignadas.'}</p>
+        <p>${next ? `Tu siguiente clase es ${escapeHtml(next.day.toLowerCase())} a las ${escapeHtml(next.time)}<br/>en el ${escapeHtml(next.room)}.` : 'No tienes clases asignadas.'}</p>
       </div>
     </section>
     <section class="section"><div class="section-head"><div><h2>Tu agenda</h2><p>Próximas clases asignadas.</p></div><button class="text-button" type="button" data-go="agenda">Ver semana →</button></div>${teacherCards()}</section>
@@ -3312,7 +3316,7 @@ function renderTeacherAgenda() {
   if (isSupabaseConnected && !teacher) {
     return `
       <header class="page-heading"><div><p class="eyebrow">Agenda docente</p><h1>Sin clases<br/>asignadas.</h1></div></header>
-      <div class="empty-state"><strong>Sin perfil docente</strong>No tenés un perfil docente vinculado en el sistema.</div>
+      <div class="empty-state"><strong>Sin perfil docente</strong>No tienes un perfil docente vinculado en el sistema.</div>
     `;
   }
   const teacherName = teacher?.name || 'Alex Aquino';
@@ -3404,7 +3408,7 @@ function renderTeacherAttendance() {
       <div>
         <p class="eyebrow">Control de asistencia</p>
         <h1>¿Quién vino<br/>a bailar?</h1>
-        <p>Marcá la lista y guardá esta sesión localmente.</p>
+        <p>Marca la lista y guarda esta sesión localmente.</p>
       </div>
       <div class="heading-actions">
         <button class="button button--red" type="button" data-open-validate-pass>Validar pase</button>
@@ -3429,7 +3433,7 @@ function renderTeacherAttendance() {
       <aside class="surface-card">
         <p class="eyebrow">Validación de pases</p>
         <h2>Pases y carné</h2>
-        <p class="payment-meta">Validá asistencia de alumnos con pase de prueba o particular mediante código corto.</p>
+        <p class="payment-meta">Valida asistencia de alumnos con pase de prueba o particular mediante código corto.</p>
         <button class="button button--red" style="width:100%;margin-top:16px" type="button" data-open-validate-pass>Validar pase individual</button>
         
         <hr style="margin:24px 0;border:none;border-top:1px solid rgba(255,255,255,0.08)" />
@@ -3448,7 +3452,7 @@ function pendingPayments() {
 
 function adminPaymentRows(payments = state.payments, empty = null) {
   if (!payments.length) {
-    return `<tr><td colspan="6"><div class="empty-state"><strong>${escapeHtml(empty?.title || 'No hay registros')}</strong>${escapeHtml(empty?.detail || 'Probá con otro filtro.')}</div></td></tr>`;
+    return `<tr><td colspan="6"><div class="empty-state"><strong>${escapeHtml(empty?.title || 'No hay registros')}</strong>${escapeHtml(empty?.detail || 'Prueba con otro filtro.')}</div></td></tr>`;
   }
   return payments.map((item) => {
     const student = studentById(item.studentId);
@@ -3502,7 +3506,7 @@ function filteredAdminStudents(students = state.students, statusFilter = student
 
 function studentRows(students = null) {
   const list = students !== null ? students : filteredAdminStudents();
-  if (!list.length) return '<tr><td colspan="5"><div class="empty-state"><strong>Sin coincidencias</strong>Revisá el filtro o el término de búsqueda.</div></td></tr>';
+  if (!list.length) return '<tr><td colspan="5"><div class="empty-state"><strong>Sin coincidencias</strong>Revisa el filtro o el término de búsqueda.</div></td></tr>';
   return list.map((student) => {
     const studentSt = studentLifecycleStatus(student);
     let statusMarkup = '';
@@ -3763,7 +3767,7 @@ function filteredPassesList() {
 
 function adminPassRows(passes = filteredPassesList()) {
   if (!passes.length) {
-    return `<tr><td colspan="9" style="text-align:center;padding:32px 16px"><div class="empty-state"><strong>Sin pases que coincidan</strong>Probá ajustando los filtros de fecha, tipo o estado, o emití un nuevo pase.</div></td></tr>`;
+    return `<tr><td colspan="9" style="text-align:center;padding:32px 16px"><div class="empty-state"><strong>Sin pases que coincidan</strong>Prueba ajustando los filtros de fecha, tipo o estado, o emite un nuevo pase.</div></td></tr>`;
   }
   return passes.map((pass) => {
     const status = passStatus(pass);
@@ -3811,7 +3815,7 @@ function adminPassRows(passes = filteredPassesList()) {
 
 function adminPassCardsMobile(passes = filteredPassesList()) {
   if (!passes.length) {
-    return `<div class="empty-state"><strong>Sin pases que coincidan</strong>Probá cambiando los filtros o emití un nuevo pase.</div>`;
+    return `<div class="empty-state"><strong>Sin pases que coincidan</strong>Prueba cambiando los filtros o emite un nuevo pase.</div>`;
   }
   return passes.map((pass) => {
     const status = passStatus(pass);
@@ -4025,7 +4029,7 @@ function consentCardMarkup(guardian) {
         <p class="eyebrow">Manejo de datos de menores</p>
         <h3>Sin constancia registrada</h3>
         <p class="payment-meta">${escapeHtml(guardian.name)}<br/>No se ha registrado una constancia de consentimiento para este encargado.</p>
-        <p class="payment-meta" style="margin-top:16px">Como encargado, solo podés ver la información de tus hijos.</p>
+        <p class="payment-meta" style="margin-top:16px">Como encargado, solo puedes ver la información de tus hijos.</p>
         <div class="form-actions"><button class="button button--light button--small" type="button" data-open-consent>Ver constancia</button></div>
       </article>
     `;
@@ -4036,7 +4040,7 @@ function consentCardMarkup(guardian) {
       <p class="eyebrow">Manejo de datos de menores${isDemo ? ' · Ejemplo demo' : ''}</p>
       <h3>Consentimiento firmado</h3>
       <p class="payment-meta">${escapeHtml(guardian.name)}<br/>Firmado el ${escapeHtml(shortDate(signed))} ${signed.getFullYear()}${isDemo ? ' (ejemplo demo)' : ''}</p>
-      <p class="payment-meta" style="margin-top:16px">Como encargado, solo podés ver la información de tus hijos.</p>
+      <p class="payment-meta" style="margin-top:16px">Como encargado, solo puedes ver la información de tus hijos.</p>
       <div class="form-actions"><button class="button button--light button--small" type="button" data-open-consent>Ver constancia</button></div>
     </article>
   `;
@@ -4090,7 +4094,7 @@ function guardianCarnetMarkup() {
         <div>
           <p class="eyebrow">Recepción</p>
           <h2>${escapeHtml(child.name.split(' ')[0])} en la academia</h2>
-          <p class="payment-meta">${next ? `Mostrá este carné al llegar a <strong>${escapeHtml(next.name)}</strong>, ${escapeHtml(next.day.toLowerCase())} a las ${escapeHtml(next.time)}.` : 'Mostrá este carné en recepción al llegar a la academia.'} El carné es permanente y no caduca con el ciclo de pago.</p>
+          <p class="payment-meta">${next ? `Muestra este carné al llegar a <strong>${escapeHtml(next.name)}</strong>, ${escapeHtml(next.day.toLowerCase())} a las ${escapeHtml(next.time)}.` : 'Muestra este carné en recepción al llegar a la academia.'} El carné es permanente y no caduca con el ciclo de pago.</p>
         </div>
         <div class="member-info-badges">
           <div class="info-badge">
@@ -4312,7 +4316,7 @@ function updateCreatePassForm() {
       amountInput.readOnly = false;
       if (amountInput.dataset.previousType !== 'private') amountInput.value = '';
       // El importe particular lo ingresa administración, sin precio sugerido.
-      if (amountHint) amountHint.textContent = 'Ingresá el importe acordado para la clase particular (mayor a Q0).';
+      if (amountHint) amountHint.textContent = 'Ingresa el importe acordado para la clase particular (mayor a Q0).';
     }
   }
 
@@ -4365,12 +4369,12 @@ function handleCreatePassSubmit(event) {
     contact = cleanText(form.elements.visitorContact.value, 80);
     if (!studentName) {
       submitBtn.disabled = false;
-      showToast('Datos incompletos', 'Ingresá el nombre completo del visitante.');
+      showToast('Datos incompletos', 'Ingresa el nombre completo del visitante.');
       return;
     }
     if (!contact) {
       submitBtn.disabled = false;
-      showToast('Datos incompletos', 'Ingresá el teléfono o contacto del visitante.');
+      showToast('Datos incompletos', 'Ingresa el teléfono o contacto del visitante.');
       return;
     }
   } else {
@@ -4378,7 +4382,7 @@ function handleCreatePassSubmit(event) {
     const student = studentById(studentId);
     if (!student) {
       submitBtn.disabled = false;
-      showToast('Alumno inválido', 'Seleccioná un alumno válido.');
+      showToast('Alumno inválido', 'Selecciona un alumno válido.');
       return;
     }
     studentName = student.name;
@@ -4414,7 +4418,7 @@ function handleCreatePassSubmit(event) {
       (classOption === 'custom' && passType !== 'private') ||
       (classOption !== 'custom' && (!selectedClass || selectedDate.getDay() !== selectedClass.weekday))) {
     submitBtn.disabled = false;
-    showToast('Revisá la programación', 'Elegí una fecha vigente que coincida con el día de la clase. Las sesiones personalizadas son para particulares.');
+    showToast('Revisa la programación', 'Elige una fecha vigente que coincida con el día de la clase. Las sesiones personalizadas son para particulares.');
     return;
   }
 
@@ -4584,7 +4588,7 @@ function openValidatePassModal(initialCode = null) {
       body: `
         <div class="banner banner--danger" style="margin-bottom:20px">
           <strong>Código no encontrado o mal formado</strong>
-          <p>No se encontró ningún pase con el código “${escapeHtml(query)}”. Verificá que el código corto de 6 caracteres o identificador esté bien escrito.</p>
+          <p>No se encontró ningún pase con el código “${escapeHtml(query)}”. Verifica que el código corto de 6 caracteres o identificador esté bien escrito.</p>
         </div>
         <form id="validatePassSearchForm" class="form-stack">
           <label class="field">
@@ -4618,7 +4622,7 @@ function openValidatePassModal(initialCode = null) {
       <div class="camera-status-banner surface-card" style="margin-bottom:20px">
         <p class="eyebrow" style="color:var(--brand-red)">Lector de cámara</p>
         <p class="payment-meta" style="margin:4px 0 0 0">
-          <strong>Escaneo por cámara pendiente:</strong> En este prototipo (sin dependencias añadidas) no hay lector de cámara en vivo. Validá ingresando el código del pase o seleccionando un pase programado para hoy.
+          <strong>Escaneo por cámara pendiente:</strong> En este prototipo (sin dependencias añadidas) no hay lector de cámara en vivo. Valida ingresando el código del pase o seleccionando un pase programado para hoy.
         </p>
       </div>
 
@@ -4637,7 +4641,7 @@ function openValidatePassModal(initialCode = null) {
       <div class="section-head" style="margin-top:16px">
         <div>
           <h3>Pases programados para hoy</h3>
-          <p>Tocá un pase para abrir su validación directa.</p>
+          <p>Toca un pase para abrir su validación directa.</p>
         </div>
         <span class="tag">${todayPasses.length}</span>
       </div>
@@ -4659,7 +4663,7 @@ function openValidatePassModal(initialCode = null) {
           `;
         }).join('')}
       </div>
-      ` : '<p class="modal-note">No hay pases programados para hoy en la demo. Ingresá el código para buscar en otras fechas.</p>'}
+      ` : '<p class="modal-note">No hay pases programados para hoy en la demo. Ingresa el código para buscar en otras fechas.</p>'}
     `
   });
 }
@@ -4765,7 +4769,7 @@ function renderValidationPassCard(pass) {
 
       ${activeRole === 'teacher' ? `
       <p class="modal-note" style="color:var(--brand-red);margin-top:12px">
-        Como maestro podés ver el cobro pendiente, pero no podés registrar cobros ni autorizar excepciones. Por favor indicá al alumno pasar por recepción o administración.
+        Como maestro puedes ver el cobro pendiente, pero no puedes registrar cobros ni autorizar excepciones. Por favor indica al alumno pasar por recepción o administración.
       </p>
       <div class="form-actions" style="margin-top:16px">
         <button class="button button--light" type="button" data-retry-validate>Buscar otro pase</button>
@@ -4781,7 +4785,7 @@ function renderValidationPassCard(pass) {
           <summary class="exception-summary" style="cursor:pointer;font-weight:600">Autorizar entrada con pago pendiente (Excepción)</summary>
           <form id="authPendingAttendanceForm" style="margin-top:16px">
             <input type="hidden" name="passId" value="${escapeHtml(pass.id)}" />
-            <p class="payment-meta">Podés permitir el acceso excepcional. El pase se marcará como utilizado pero el cobro permanecerá pendiente.</p>
+            <p class="payment-meta">Puedes permitir el acceso excepcional. El pase se marcará como utilizado pero el cobro permanecerá pendiente.</p>
             <label class="field" style="margin-top:12px">
               <span>Nota de autorización / Motivo *</span>
               <input type="text" name="pendingNote" placeholder="Ej. Autorizado por administración: pagará al salir" required />
@@ -5045,7 +5049,7 @@ function handleCancelPassSubmit(event) {
   const reason = cleanText(form.elements.cancelReason.value, 200);
   if (!reason) {
     submitBtn.disabled = false;
-    showToast('Motivo requerido', 'Ingresá el motivo de la cancelación.');
+    showToast('Motivo requerido', 'Ingresa el motivo de la cancelación.');
     return;
   }
 
@@ -5078,7 +5082,7 @@ function renderGuardianCard() {
   if (isSupabaseConnected && !guardian) {
     return `
       <header class="page-heading"><div><p class="eyebrow">Identificación digital</p><h1>El carné<br/>de tus hijos.</h1></div></header>
-      <div class="empty-state"><strong>Sin perfil de encargado</strong>No tenés un perfil de encargado vinculado.</div>
+      <div class="empty-state"><strong>Sin perfil de encargado</strong>No tienes un perfil de encargado vinculado.</div>
     `;
   }
   const children = childrenOf(guardian);
@@ -5090,7 +5094,7 @@ function renderGuardianCard() {
         ${children.map((child) => `<button class="filter-chip ${child.id === activeChildId ? 'is-active' : ''}" type="button" aria-pressed="${child.id === activeChildId}" data-child-select="${escapeHtml(child.id)}">${escapeHtml(child.name)}</button>`).join('')}
       </div>
       <div id="guardianCarnet">${guardianCarnetMarkup()}</div>
-    ` : '<div class="empty-state"><strong>Sin alumnos a cargo</strong>No hay carnés disponibles porque no tenés alumnos asociados.</div>'}
+    ` : '<div class="empty-state"><strong>Sin alumnos a cargo</strong>No hay carnés disponibles porque no tienes alumnos asociados.</div>'}
   `;
 }
 
@@ -5174,7 +5178,7 @@ function restoreFocus() {
     return;
   }
   const fallback = elements.app.classList.contains('is-hidden')
-    ? document.querySelector('[data-enter-role="student"]')
+    ? document.querySelector(ACCESS_FOCUS_SELECTOR)
     : elements.content;
   fallback?.focus?.({ preventScroll: true });
 }
@@ -5238,7 +5242,7 @@ function confirmWebMcpWrite({ title, lines, confirmLabel }) {
           <p class="eyebrow">Se va a registrar</p>
           ${lines.map((line) => `<p class="payment-meta">${escapeHtml(line)}</p>`).join('')}
         </article>
-        <p class="modal-note" style="margin-top:16px">Nada se guarda hasta que confirmés. Si cancelás, la solicitud se rechaza y el estado no cambia.</p>
+        <p class="modal-note" style="margin-top:16px">Nada se guarda hasta que confirmes. Si cancelas, la solicitud se rechaza y el estado no cambia.</p>
         <div class="form-actions"><button class="button button--light" type="button" data-close-modal>Cancelar</button><button class="button button--red" type="button" id="confirmWebMcp">${escapeHtml(confirmLabel)}</button></div>
       `
     });
@@ -5303,7 +5307,7 @@ function openScanModal() {
     title: 'Escanear carnet',
     eyebrow: 'Asistencia QR · Simulación',
     body: `
-      <div class="scan-stage"><span class="scan-line"></span><p class="scan-copy">Alineá el código dentro del recuadro</p></div>
+      <div class="scan-stage"><span class="scan-line"></span><p class="scan-copy">Alinea el código dentro del recuadro</p></div>
       <p class="modal-note">${isSupabaseConnected ? 'Modo conectado' : 'Demo local'}: no se activa la cámara. El botón simula la lectura del carnet ${escapeHtml(student.id)}.</p>
       ${classes.length ? `<label class="field"><span>Clase · ${escapeHtml(student.name)}</span><select id="scanClass">${classes.map((item) => `<option value="${escapeHtml(item.id)}" ${item.id === activeClassId ? 'selected' : ''}>${escapeHtml(item.name)} · ${escapeHtml(item.time)} (${escapeHtml(item.day)})</option>`).join('')}</select></label>
       <div class="form-actions"><button class="button button--red" type="button" id="simulateScan" data-session-date="${escapeHtml(sessionDate)}">Simular lectura</button></div>`
@@ -5360,7 +5364,7 @@ function updatePaymentForm() {
     : required.amount === null
     ? (required.source === 'sin_cuota'
         ? `No existe una cuota registrada para el período ${period}. No se puede registrar el pago sin información suficiente de la cuota correspondiente.`
-        : `El plan guardado de este alumno (${required.plan.planName}) no figura en el catálogo de la demo. No se le asigna una cuota: corregí el plan del alumno antes de registrar el pago.`)
+        : `El plan guardado de este alumno (${required.plan.planName}) no figura en el catálogo de la demo. No se le asigna una cuota: corrige el plan del alumno antes de registrar el pago.`)
     : existing
       ? `Se registrará la liquidación completa de la mensualidad del período ${period}: Q ${formatAmount(required.amount)}.`
       : `Cuota correspondiente al período ${period}: Q ${formatAmount(required.amount)}. No cancela deudas de otros meses.`;
@@ -5469,7 +5473,7 @@ function openConsentModal() {
           <p class="eyebrow">Estado de consentimiento</p>
           <h3>Sin constancia registrada</h3>
           <p class="payment-meta">No existe evidencia de consentimiento firmada para ${escapeHtml(guardian.name)} en los registros de la academia.</p>
-          <p class="payment-meta" style="margin-top:12px">Como encargado, solo podés ver la información de tus hijos.</p>
+          <p class="payment-meta" style="margin-top:12px">Como encargado, solo puedes ver la información de tus hijos.</p>
         </article>
         <p class="modal-note" style="margin-top:16px">El consentimiento se firma directamente con la academia. Después, administración registra la constancia en la ficha del encargado.</p>
         <div class="form-actions"><button class="button button--red" type="button" data-close-modal>Entendido</button></div>
@@ -5484,7 +5488,7 @@ function openConsentModal() {
     body: `
       <article class="surface-card">
         <p class="eyebrow">Firmado el ${escapeHtml(shortDate(signed))} ${signed.getFullYear()}${isDemo ? ' (demostración)' : ''}</p>
-        <p class="payment-meta">Como encargado, solo podés ver la información de tus hijos.</p>
+        <p class="payment-meta">Como encargado, solo puedes ver la información de tus hijos.</p>
       </article>
       <p class="modal-note" style="margin-top:16px">El consentimiento se firma con la academia fuera del sistema. Esta pantalla no contiene el documento: solo deja constancia de que existe y de su fecha.</p>
       <div class="form-actions"><button class="button button--red" type="button" data-close-modal>Entendido</button></div>
@@ -5686,7 +5690,7 @@ function handleSuspendStudentSubmit(event) {
   const reason = cleanText(data.get('suspensionReason'), 200);
   if (!reason) {
     const msg = form.querySelector('#suspendFormMessage');
-    if (msg) msg.textContent = 'Por favor ingresá un motivo para la suspensión.';
+    if (msg) msg.textContent = 'Por favor ingresa un motivo para la suspensión.';
     return;
   }
   const until = cleanText(data.get('suspendedUntil'), 20) || null;
@@ -5716,7 +5720,7 @@ function openReactivateStudentModal(studentId) {
     eyebrow: `Estado del alumno · ${student.id}`,
     body: `
       <form id="reactivateStudentForm" data-student-id="${escapeHtml(student.id)}">
-        <p class="modal-note">¿Querés reactivar a <strong>${escapeHtml(student.name)}</strong>? ${wasArchived ? 'Volverá a aparecer en la lista de alumnos activos.' : 'Podrá registrar asistencia con su carné y volverá a las listas de sus clases.'}</p>
+        <p class="modal-note">¿Quieres reactivar a <strong>${escapeHtml(student.name)}</strong>? ${wasArchived ? 'Volverá a aparecer en la lista de alumnos activos.' : 'Podrá registrar asistencia con su carné y volverá a las listas de sus clases.'}</p>
         ${student.suspensionReason ? `<p class="payment-meta">Motivo de suspensión previo: <em>${escapeHtml(student.suspensionReason)}</em></p>` : ''}
         <div class="form-actions" style="margin-top:20px">
           <button class="button button--light" type="button" data-student-detail="${escapeHtml(student.id)}">Cancelar</button>
@@ -5765,7 +5769,7 @@ function openArchiveStudentModal(studentId) {
     eyebrow: `Gestión de expediente · ${student.id}`,
     body: `
       <form id="archiveStudentForm" data-student-id="${escapeHtml(student.id)}">
-        <p class="modal-note">Al archivar a <strong>${escapeHtml(student.name)}</strong>, lo quitás de la lista principal sin borrar sus pagos, asistencias ni clases. Podés encontrarlo y reactivarlo desde el filtro “Archivados”.</p>
+        <p class="modal-note">Al archivar a <strong>${escapeHtml(student.name)}</strong>, lo quitas de la lista principal sin borrar sus pagos, asistencias ni clases. Puedes encontrarlo y reactivarlo desde el filtro “Archivados”.</p>
         ${isSuspended ? `<p class="payment-meta">ℹ Se conservará el registro y motivo de suspensión: <em>${escapeHtml(student.suspensionReason)}</em>.</p>` : ''}
         <div class="form-actions" style="margin-top:20px">
           <button class="button button--light" type="button" data-student-detail="${escapeHtml(student.id)}">Cancelar</button>
@@ -5818,7 +5822,7 @@ function openDeleteBlockedModal(studentId, reasons) {
     eyebrow: `Acción bloqueada · ${student.id}`,
     body: `
       <div class="delete-blocked-card">
-        <p class="delete-blocked-lead">No se puede eliminar este alumno porque tiene historial asociado. Podés archivarlo para conservar los registros.</p>
+        <p class="delete-blocked-lead">No se puede eliminar este alumno porque tiene historial asociado. Puedes archivarlo para conservar los registros.</p>
         <div class="delete-reasons-list">
           <p class="payment-meta"><strong>Historial detectado:</strong></p>
           <ul>
@@ -5846,8 +5850,8 @@ function openDeleteConfirmModal(studentId) {
           <p><strong>Atención:</strong> Esta acción es definitiva y <strong>no se puede deshacer</strong>. Se eliminará permanentemente la ficha de <strong>${escapeHtml(student.name)}</strong> (${escapeHtml(student.id)}).</p>
           <p class="modal-note">El alumno no tiene pagos, asistencias, pases ni clases vinculadas. Se eliminará únicamente este registro sin afectar a ningún otro alumno.</p>
           <label class="field field--wide" style="margin-top:16px">
-            <span>Para confirmar la eliminación, escribí <strong>ELIMINAR</strong> en mayúsculas:</span>
-            <input id="deleteConfirmInput" type="text" autocomplete="off" placeholder="Escribí ELIMINAR" required style="font-weight:700;letter-spacing:1px" />
+            <span>Para confirmar la eliminación, escribe <strong>ELIMINAR</strong> en mayúsculas:</span>
+            <input id="deleteConfirmInput" type="text" autocomplete="off" placeholder="Escribe ELIMINAR" required style="font-weight:700;letter-spacing:1px" />
           </label>
         </div>
         <div class="form-actions" style="margin-top:20px">
@@ -5899,7 +5903,7 @@ function openStudentClassesModal(studentId) {
     eyebrow: `Inscripciones · ${student.id}`,
     body: `
       <form id="enrollmentForm" data-student-id="${escapeHtml(student.id)}">
-        <p class="modal-note">Marcá las clases en las que queda inscrito. Se guarda en este navegador, no reserva sesiones ni crea lista de espera y no modifica pagos.</p>
+        <p class="modal-note">Marca las clases en las que queda inscrito. Se guarda en este navegador, no reserva sesiones ni crea lista de espera y no modifica pagos.</p>
         <div class="attendance-roster" role="group" aria-label="Clases de la semana">
           ${scheduledClasses().map((item) => {
             const isOn = selected.includes(item.id);
@@ -5927,7 +5931,7 @@ async function handleEnrollmentSubmit(event) {
   const submitBtn = form.querySelector('button[type="submit"]');
   const student = studentById(form.dataset.studentId);
   if (!student) {
-    if (message) message.textContent = 'El alumno ya no existe en esta demo. Cerrá y volvé a abrir la ficha.';
+    if (message) message.textContent = 'El alumno ya no existe en esta demo. Cierra y vuelve a abrir la ficha.';
     return;
   }
   const knownClassIds = classData.map((item) => item.id);
@@ -6040,7 +6044,7 @@ async function simulateScan() {
   const target = scanClasses().find((item) => item.id === document.querySelector('#scanClass')?.value);
   const sessionDate = document.querySelector('#simulateScan')?.dataset?.sessionDate || dayKey(TODAY);
   try {
-    if (!student) throw new Error(isSupabaseConnected ? 'No hay un alumno seleccionado o vinculado para registrar la lectura.' : 'El alumno de la demostración ya no existe. Reiniciá la demo.');
+    if (!student) throw new Error(isSupabaseConnected ? 'No hay un alumno seleccionado o vinculado para registrar la lectura.' : 'El alumno de la demostración ya no existe. Reinicia la demo.');
     const scanLifecycle = studentLifecycleStatus(student);
     if (scanLifecycle === 'suspended') throw new Error('El alumno está suspendido. Su carné no puede utilizarse para registrar asistencia.');
     if (scanLifecycle === 'archived') throw new Error('El alumno está archivado. Su carné no está activo.');
@@ -6134,7 +6138,7 @@ function openWhatsAppPaymentModal(paymentId) {
         <p class="eyebrow">Vista previa del mensaje</p>
         <p class="whatsapp-preview-text">${escapeHtml(message)}</p>
       </div>
-      <p class="modal-note">WhatsApp se abrirá con el mensaje listo para que lo revisés y lo enviés. Los pagos y registros no cambian.</p>
+      <p class="modal-note">WhatsApp se abrirá con el mensaje listo para que lo revises y lo envíes. Los pagos y registros no cambian.</p>
       <div class="form-actions">
         <button class="button button--light" type="button" data-close-modal>Cancelar</button>
         <button class="button button--red" type="button" data-open-whatsapp="${escapeHtml(waUrl)}" ${hasValidPhone ? '' : 'disabled aria-disabled="true"'}>${hasValidPhone ? 'Abrir WhatsApp' : 'Sin teléfono válido'}</button>
@@ -6190,7 +6194,7 @@ function openWhatsAppAttendanceModal(studentId) {
         <p class="eyebrow">Vista previa del mensaje</p>
         <p class="whatsapp-preview-text">${escapeHtml(message)}</p>
       </div>
-      <p class="modal-note">WhatsApp se abrirá con el mensaje listo para que lo revisés y lo enviés. Las asistencias y registros no cambian.</p>
+      <p class="modal-note">WhatsApp se abrirá con el mensaje listo para que lo revises y lo envíes. Las asistencias y registros no cambian.</p>
       <div class="form-actions">
         <button class="button button--light" type="button" data-close-modal>Cancelar</button>
         <button class="button button--red" type="button" data-open-whatsapp="${escapeHtml(waUrl)}" ${isValidPhone ? '' : 'disabled aria-disabled="true"'}>${isValidPhone ? 'Abrir WhatsApp' : 'Sin teléfono válido'}</button>
@@ -6398,7 +6402,7 @@ function preparePaymentRecord({ studentId, period, amount, method, reference = '
   TODAY = new Date();
   const student = studentById(studentId);
   if (!student) throw new Error('Alumno no encontrado.');
-  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(period)) throw new Error('Elegí un período válido.');
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(period)) throw new Error('Elige un período válido.');
   if (!Number.isFinite(amount) || amount <= 0) throw new Error('El monto debe ser mayor que cero.');
   if (!PAYMENT_METHODS.includes(method)) throw new Error('Método de pago no válido.');
   const required = requiredPaymentFor(student.id, period);
@@ -6406,9 +6410,9 @@ function preparePaymentRecord({ studentId, period, amount, method, reference = '
   if (existing?.status === 'Pagado') throw new Error('Este mes ya está pagado. El registro existente no se reemplazó.');
   if (required.amount === null) {
     if (required.source === 'sin_cuota') {
-      throw new Error(`No existe información suficiente de cuota para el período ${period} y este alumno. No se pueden inventar importes; definí la membresía u obligación correspondiente antes de registrar el pago.`);
+      throw new Error(`No existe información suficiente de cuota para el período ${period} y este alumno. No se pueden inventar importes; define la membresía u obligación correspondiente antes de registrar el pago.`);
     }
-    throw new Error(`El plan guardado de este alumno (${required.plan.planName}) no figura en el catálogo de la demo, así que no hay cuota que registrar. Corregí el plan del alumno antes de registrar el pago.`);
+    throw new Error(`El plan guardado de este alumno (${required.plan.planName}) no figura en el catálogo de la demo, así que no hay cuota que registrar. Corrige el plan del alumno antes de registrar el pago.`);
   }
   if (!sameAmount(amount, required.amount)) {
     throw new Error(`El registro debe cubrir ${requiredPaymentText(required)}. La demo solo admite liquidaciones completas: no registra abonos, descuentos ni cargos adicionales.`);
@@ -6527,7 +6531,7 @@ async function handlePaymentSubmit(event) {
         submitBtn.textContent = 'Guardar pago';
       }
       if (message) {
-        message.textContent = `Error remoto: ${err.message}. Podés corregir o reintentar sin duplicar.`;
+        message.textContent = `Error remoto: ${err.message}. Puedes corregir o reintentar sin duplicar.`;
       }
       return;
     }
@@ -6564,7 +6568,7 @@ async function handleStudentSubmit(event) {
   const submitBtn = form.querySelector('button[type="submit"]');
   const name = String(data.get('name') || '').trim().replace(/\s+/g, ' ');
   if (name.length < 3) {
-    if (message) message.textContent = 'Escribí el nombre completo del alumno.';
+    if (message) message.textContent = 'Escribe el nombre completo del alumno.';
     return;
   }
   const selectedPlanName = PLAN_NAMES.includes(String(data.get('plan'))) ? String(data.get('plan')) : DEFAULT_PLAN.planName;
@@ -6687,7 +6691,7 @@ async function handleStudentSubmit(event) {
     console.warn('[In Motion] Fallo de localStorage al persistir nuevo alumno:', storageError.message);
     if (remoteConfirmed) {
       closeModal();
-      showToast('Alumno creado en la nube', `${student.name} (${student.id}) fue creado en Supabase. Advertencia: no se pudo guardar en este navegador (${storageError.message}). Podés registrar su pago o consultar su ficha.`);
+      showToast('Alumno creado en la nube', `${student.name} (${student.id}) fue creado en Supabase. Advertencia: no se pudo guardar en este navegador (${storageError.message}). Puedes registrar su pago o consultar su ficha.`);
       renderAndFocus();
       return;
     } else {
@@ -6703,7 +6707,7 @@ async function handleStudentSubmit(event) {
   } catch (renderError) {
     console.error('[In Motion] Error al actualizar la interfaz tras alta de alumno:', renderError);
     if (remoteConfirmed) {
-      showToast('Alumno creado en la nube', `${student.name} (${student.id}) ya fue creado en Supabase. Falla de interfaz: ${renderError.message}. Podés consultar la ficha del alumno.`);
+      showToast('Alumno creado en la nube', `${student.name} (${student.id}) ya fue creado en Supabase. Falla de interfaz: ${renderError.message}. Puedes consultar la ficha del alumno.`);
     }
   }
 }
@@ -6745,7 +6749,7 @@ function registerWebMcpTools() {
     annotations: { readOnlyHint: false, untrustedContentHint: false },
     async execute(input) {
       if (isSupabaseConnected) {
-        throw new Error('Esta herramienta demo está bloqueada en modo conectado con Supabase. Usá la interfaz de asistencia conectada.');
+        throw new Error('Esta herramienta demo está bloqueada en modo conectado con Supabase. Usa la interfaz de asistencia conectada.');
       }
       const classItem = classData.find((item) => item.id === input?.classId);
       const student = state.students.find((item) => item.id === input?.studentId);
@@ -6849,7 +6853,7 @@ async function handleAttendanceSubmit(event) {
         submitBtn.disabled = false;
         submitBtn.textContent = 'Guardar asistencia';
       }
-      showToast('No se guardó la asistencia', `Error remoto: ${error.message}. Podés reintentar.`);
+      showToast('No se guardó la asistencia', `Error remoto: ${error.message}. Puedes reintentar.`);
       return;
     } finally {
       if (submitBtn) {
@@ -6914,8 +6918,8 @@ function applyPaymentFilter(button) {
   const filter = button.dataset.paymentFilter;
   const filtered = filter === 'all' ? state.payments : state.payments.filter((item) => paymentStatus(item) === filter);
   elements.content.querySelector('#paymentTableBody').innerHTML = adminPaymentRows(filtered, filter === 'all'
-    ? { title: 'Sin pagos registrados', detail: 'Registrá el primer cobro con “+ Registrar pago”.' }
-    : { title: 'Sin pagos con este estado', detail: 'Probá con otro filtro o mirá todos los registros.' });
+    ? { title: 'Sin pagos registrados', detail: 'Registra el primer cobro con “+ Registrar pago”.' }
+    : { title: 'Sin pagos con este estado', detail: 'Prueba con otro filtro o mira todos los registros.' });
 }
 
 function applyStudentFilter(button) {
@@ -7297,7 +7301,7 @@ window.addEventListener('popstate', () => {
   if (!elements.app.classList.contains('is-hidden')) renderApp();
 });
 
-if (state.role) {
+if (DEMO_MODE && state.role) {
   activeRole = state.role;
   activeRoute = window.location.hash.replace('#/', '') || 'inicio';
   window.setTimeout(() => {
@@ -7334,7 +7338,76 @@ async function handleSignOut() {
   activeRole = state.role || 'student';
   updateShell();
   leaveDemo();
-  showToast('Sesión cerrada', 'Has vuelto al modo demostración local.');
+  showToast('Sesión cerrada', DEMO_MODE ? 'Has vuelto al modo demostración local.' : 'Hasta pronto.');
+}
+
+// La intro tapa la pantalla 2.45 s; entrar antes dejaría la app detrás de la cortina.
+const INTRO_DONE_AT = performance.now() + 2450;
+
+function enterAuthenticatedApp() {
+  const route = window.location.hash.replace('#/', '') || 'inicio';
+  window.setTimeout(() => enterDemo(activeRole, route), Math.max(0, INTRO_DONE_AT - performance.now()));
+}
+
+// Aplica una sesión recién iniciada o restaurada. En modo login una cuenta sin rol
+// válido no entra: mostrarle el portal de alumno por defecto sería darle otra vista.
+async function applyAuthenticatedSession(res) {
+  const role = res.profile?.role;
+  if (!DEMO_MODE && !roleConfig[role]) {
+    await signOut();
+    throw new Error('Tu cuenta todavía no tiene un perfil asignado. Pide a recepción que lo active.');
+  }
+  clearCurrentSessionState();
+  authenticatedUser = res.user;
+  authenticatedProfile = res.profile;
+  isSupabaseConnected = true;
+  if (roleConfig[role]) activeRole = role;
+  state = loadState();
+  await syncWithSupabase();
+}
+
+function loginErrorMessage(err) {
+  const text = String(err?.message || '');
+  if (/invalid login credentials|invalid_grant/i.test(text)) return 'El correo o la contraseña no coinciden.';
+  if (/email not confirmed/i.test(text)) return 'Tu correo todavía no está confirmado. Revisa tu bandeja de entrada.';
+  if (/failed to fetch|network/i.test(text)) return 'No hay conexión. Revisa tu internet e intenta de nuevo.';
+  return text || 'No se pudo iniciar sesión. Intenta de nuevo.';
+}
+
+async function handleAccessLogin(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const errEl = document.querySelector('#accessLoginError');
+  const submitBtn = document.querySelector('#accessLoginSubmit');
+  const email = String(form.email.value || '').trim();
+  const password = String(form.password.value || '');
+  if (!email || !password) {
+    errEl.textContent = 'Escribe tu correo y tu contraseña.';
+    (email ? form.password : form.email).focus();
+    return;
+  }
+  errEl.textContent = '';
+  submitBtn.disabled = true;
+  submitBtn.firstChild.textContent = 'Ingresando… ';
+  try {
+    const res = await signInWithPassword(email, password);
+    await applyAuthenticatedSession(res);
+    form.reset();
+    enterDemo(activeRole, 'inicio');
+    showToast('Sesión iniciada', `Hola, ${res.profile?.first_name || email}.`);
+  } catch (err) {
+    errEl.textContent = loginErrorMessage(err);
+    form.password.focus();
+  } finally {
+    submitBtn.disabled = false;
+    submitBtn.firstChild.textContent = 'Ingresar ';
+  }
+}
+
+document.querySelector('#accessLoginForm')?.addEventListener('submit', handleAccessLogin);
+if (!DEMO_MODE) {
+  const exitButton = document.querySelector('#exitDemo');
+  if (exitButton) exitButton.innerHTML = 'Cerrar sesión <span>↙</span>';
 }
 
 function openAuthModal() {
@@ -7370,7 +7443,7 @@ function openAuthModal() {
       title: 'Iniciar sesión en Supabase',
       eyebrow: 'Conexión a la nube',
       body: `
-        <p class="modal-note">Iniciá sesión para ingresar en modo conectado con permisos RLS según tu rol oficial.</p>
+        <p class="modal-note">Inicia sesión para ingresar en modo conectado con permisos RLS según tu rol oficial.</p>
         <form id="authLoginForm" class="modal-form">
           <label class="field">
             <span>Correo electrónico</span>
@@ -7403,17 +7476,9 @@ function openAuthModal() {
       if (errEl) errEl.textContent = '';
       try {
         const res = await signInWithPassword(email, password);
-        clearCurrentSessionState();
-        authenticatedUser = res.user;
-        authenticatedProfile = res.profile;
-        isSupabaseConnected = true;
-        if (res.profile?.role && roleConfig[res.profile.role]) {
-          activeRole = res.profile.role;
-        }
-        state = loadState();
+        await applyAuthenticatedSession(res);
         closeModal();
         showToast('Sesión iniciada', `Conectado como ${res.profile?.first_name || email} · Rol: ${activeRole}`);
-        await syncWithSupabase();
         renderAndFocus();
       } catch (err) {
         if (submitBtn) {
@@ -7479,15 +7544,8 @@ async function initSessionAndBoot() {
   try {
     const authSession = await restoreSession();
     if (authSession && authSession.profile) {
-      clearCurrentSessionState();
-      authenticatedUser = authSession.user;
-      authenticatedProfile = authSession.profile;
-      isSupabaseConnected = true;
-      if (authSession.profile.role && roleConfig[authSession.profile.role]) {
-        activeRole = authSession.profile.role;
-      }
-      state = loadState();
-      await syncWithSupabase();
+      await applyAuthenticatedSession(authSession);
+      if (!DEMO_MODE) enterAuthenticatedApp();
     } else {
       isSupabaseConnected = false;
       state = loadState();

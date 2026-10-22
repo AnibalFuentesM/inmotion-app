@@ -108,6 +108,8 @@ body.modal-open { overflow: hidden; }
 #videoModal .modal-panel { max-height: calc(100dvh - 2rem); }
 #modalTitle { white-space: normal; overflow-wrap: anywhere; }
 #videoModal button, .save-video-btn { min-width: 44px; min-height: 44px; }
+/* En celular, los botones del bucle A-B van de dos en dos (sin esto el min-width de arriba los parte en sílabas). */
+@media (max-width: 640px) { #videoModal .dance-loop-actions .dance-btn { min-width: calc(50% - 3px); } }
 #activeFiltersBar > span { max-width: 100%; overflow-wrap: anywhere; }
 #activeFiltersBar button { min-width: 44px; min-height: 44px; flex-shrink: 0; }
 @media (max-width: 640px) {

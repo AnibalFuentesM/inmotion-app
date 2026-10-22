@@ -87,7 +87,7 @@ function buildPlayer(videoUrl, record, onPlayerCreated) {
       style: record?.style || '',
       level: record?.level || '',
       onOrientationDetected: (isVertical) => {
-        const modalPanel = modalElement.querySelector('.modal-panel');
+        const modalPanel = playerWrap.closest('.modal-panel');
         if (modalPanel) {
           modalPanel.classList.toggle('modal-panel--vertical', isVertical);
         }

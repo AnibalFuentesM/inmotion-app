@@ -3949,3 +3949,27 @@ button.day-pill.is-clickable:focus-visible {
     font-size: 0.88rem;
   }
 }
+
+/* ---- Entrada: login real o demo (?demo) ---- */
+html:not([data-mode="demo"]) [data-demo-only],
+html[data-mode="demo"] [data-login-only] { display: none !important; }
+.access-login {
+  display: grid;
+  gap: 14px;
+  margin-top: 24px;
+}
+.access-login .access-plan-link { margin-top: 4px; }
+.access-login .access-plan-link:disabled { opacity: .7; cursor: progress; }
+.access-login-error {
+  min-height: 1.2em;
+  margin: 0;
+  color: var(--red);
+  font-size: .85rem;
+  font-weight: 600;
+}
+.access-login-error:empty { min-height: 0; }
+.access-login-help {
+  margin: 0;
+  color: var(--muted);
+  font-size: .8rem;
+}

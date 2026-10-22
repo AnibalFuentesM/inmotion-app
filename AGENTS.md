@@ -64,7 +64,11 @@ Se trabaja **siempre sobre esta misma app**: `academia/`, dentro de
 6. **El catálogo se configura solo desde `assets/js/config.js`.** No hardcodees URLs
    de Sheets ni de Apps Script en otro archivo.
 7. **No hay paso de build.** No agregues bundler, framework ni dependencias sin acordarlo.
-8. **Nunca commitear** `.env*.local` ni `.vercel/` (ya están en `.gitignore`).
+8. **Entrada de la academia: login o demo.** Sin parámetros, `academia/` muestra el login
+   (Supabase Auth) y el rol sale de `profiles.role`; una cuenta sin rol válido no entra.
+   El selector de roles con datos ficticios solo aparece en `academia/?demo`. En el HTML,
+   `data-demo-only` y `data-login-only` marcan qué se ve en cada modo.
+9. **Nunca commitear** `.env*.local` ni `.vercel/` (ya están en `.gitignore`).
 
 ## Convenciones
 

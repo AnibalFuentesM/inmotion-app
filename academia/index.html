@@ -2,9 +2,11 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8" />
+  <!-- Sin ?demo la entrada es el login real; con ?demo, el selector de roles con datos ficticios. -->
+  <script>document.documentElement.dataset.mode = new URLSearchParams(location.search).has('demo') ? 'demo' : 'login';</script>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, interactive-widget=resizes-content" />
   <meta name="theme-color" content="#0B0B0C" />
-  <meta name="description" content="Prototipo navegable de gestión para In Motion Dance Academy." />
+  <meta name="description" content="App de In Motion Dance Academy para alumnos, encargados y equipo." />
   <meta name="robots" content="noindex, nofollow" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -57,10 +59,25 @@
     <div class="access-grid" aria-hidden="true"></div>
     <div class="access-card">
       <img class="access-logo" src="./assets/inmotion-logo.svg" alt="In Motion Dance Academy" />
-      <p class="eyebrow">Prototipo navegable · Datos demo</p>
-      <h1 id="accessTitle">Entrá a tu ritmo.</h1>
-      <p class="access-copy">Elegí cómo querés entrar: como alumno, maestro, administrador o encargado. Los cambios se guardan solo en este navegador.</p>
-      <div class="role-options" role="group" aria-label="Elegir acceso de demostración">
+      <p class="eyebrow" data-demo-only>Prototipo navegable · Datos demo</p>
+      <p class="eyebrow" data-login-only>Alumnos, encargados y equipo</p>
+      <h1 id="accessTitle">Entra a tu ritmo.</h1>
+      <p class="access-copy" data-demo-only>Elige cómo quieres entrar: como alumno, maestro, administrador o encargado. Los cambios se guardan solo en este navegador.</p>
+      <p class="access-copy" data-login-only>Ingresa con tu correo y la app te lleva a tu portal.</p>
+      <form class="access-login" id="accessLoginForm" data-login-only novalidate>
+        <label class="field">
+          <span>Correo electrónico</span>
+          <input type="email" name="email" required autocomplete="username" inputmode="email" placeholder="tucorreo@ejemplo.com" />
+        </label>
+        <label class="field">
+          <span>Contraseña</span>
+          <input type="password" name="password" required autocomplete="current-password" />
+        </label>
+        <p class="access-login-error" id="accessLoginError" role="alert"></p>
+        <button class="access-plan-link" type="submit" id="accessLoginSubmit">Ingresar <span aria-hidden="true">↗</span></button>
+        <p class="access-login-help">¿No tienes cuenta u olvidaste tu contraseña? Pídela en recepción.</p>
+      </form>
+      <div class="role-options" role="group" aria-label="Elegir acceso de demostración" data-demo-only>
         <button class="role-option is-primary" type="button" data-enter-role="student">
           <span class="role-number">01</span>
           <span><strong>Alumno</strong><small>Clases, carnet y asistencia</small></span>
@@ -82,7 +99,7 @@
           <span class="role-arrow" aria-hidden="true">↗</span>
         </button>
       </div>
-      <button class="access-plan-link" type="button" data-enter-role="student" data-entry-route="planes">Encontrá tu plan <span aria-hidden="true">↗</span></button>
+      <button class="access-plan-link" type="button" data-enter-role="student" data-entry-route="planes" data-demo-only>Encuentra tu plan <span aria-hidden="true">↗</span></button>
       <a class="catalog-link" href="../index.html">Videos para practicar <span aria-hidden="true">→</span></a>
     </div>
     <aside class="access-poster" aria-hidden="true">
@@ -101,10 +118,10 @@
       </a>
       <nav class="side-nav" id="sideNav" aria-label="Navegación principal"></nav>
       <div class="side-bottom">
-        <span class="demo-badge"><i aria-hidden="true"></i> Modo demostración</span>
+        <span class="demo-badge" data-demo-only><i aria-hidden="true"></i> Modo demostración</span>
         <a href="../index.html" class="side-link">Videos para practicar <span>↗</span></a>
         <button class="side-link" type="button" id="exitDemo">Cambiar acceso <span>↙</span></button>
-        <button class="side-link" type="button" id="resetDemo">Reiniciar demo <span>⟲</span></button>
+        <button class="side-link" type="button" id="resetDemo" data-demo-only>Reiniciar demo <span>⟲</span></button>
       </div>
     </aside>
 
@@ -119,7 +136,7 @@
           <p class="topbar-date" id="topbarDate"></p>
         </div>
         <div class="topbar-actions">
-          <label class="role-switcher" for="roleSwitcher">
+          <label class="role-switcher" for="roleSwitcher" data-demo-only>
             <span class="sr-only">Cambiar rol de demostración</span>
             <select id="roleSwitcher">
               <option value="student">Alumno · Valeria</option>

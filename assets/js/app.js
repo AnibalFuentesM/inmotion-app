@@ -44,7 +44,7 @@ export const PRACTICE_PRESET_RECORDS = [
     video_url: 'https://qwjlixqtbcchyiwynfmv.supabase.co/storage/v1/object/public/dance-videos/Salsa_parejas_lvl3.mp4',
     thumbnail_url: './assets/thumbnails/thumb-salsa-parejas-lvl3.webp',
     tags: ['salsa', 'parejas', 'principiante', 'nivel-3', 'figura', 'giro', 'tiempo-1'],
-    notes: 'Combinación en pareja de nivel 3. Usá Modo Espejo para guiar la postura y el brazo del lead/follow.'
+    notes: 'Combinación en pareja de nivel 3. Usa Modo Espejo para guiar la postura y el brazo del lead/follow.'
   },
   {
     id: 'salsa-parejas-lvl4',
@@ -56,7 +56,7 @@ export const PRACTICE_PRESET_RECORDS = [
     video_url: 'https://qwjlixqtbcchyiwynfmv.supabase.co/storage/v1/object/public/dance-videos/Salsa_parejas_lvl4.mp4',
     thumbnail_url: './assets/thumbnails/thumb-salsa-parejas-lvl4.webp',
     tags: ['salsa', 'parejas', 'principiante', 'nivel-4', 'cruce', 'desplazamiento'],
-    notes: 'Combinación de nivel 4 con cambio de mano y contratiempo. Probá el bucle A-B para pulir el 8-count.'
+    notes: 'Combinación de nivel 4 con cambio de mano y contratiempo. Prueba el bucle A-B para pulir el 8-count.'
   },
   {
     id: 'salsa-shine-lvl3',
@@ -68,7 +68,7 @@ export const PRACTICE_PRESET_RECORDS = [
     video_url: 'https://qwjlixqtbcchyiwynfmv.supabase.co/storage/v1/object/public/dance-videos/Salsa_shine_lvl3.mp4',
     thumbnail_url: './assets/thumbnails/thumb-salsa-shine-lvl3.webp',
     tags: ['salsa', 'shines', 'footwork', 'principiante', 'nivel-3', 'pasos-libres', 'coordinacion'],
-    notes: 'Secuencia de pasos libres. Desglosá la pisada a 0.75x y acelerá a 1.25x cuando lo tengas dominado.'
+    notes: 'Secuencia de pasos libres. Desglosa la pisada a 0.75x y acelera a 1.25x cuando lo tengas dominado.'
   },
   {
     id: 'salsa-shine-lvl4',
@@ -80,7 +80,7 @@ export const PRACTICE_PRESET_RECORDS = [
     video_url: 'https://qwjlixqtbcchyiwynfmv.supabase.co/storage/v1/object/public/dance-videos/salsa_shine_lvl4.mp4',
     thumbnail_url: './assets/thumbnails/thumb-salsa-shine-lvl4.webp',
     tags: ['salsa', 'shines', 'footwork', 'principiante', 'nivel-4', 'sincopa', 'velocidad', 'estilo'],
-    notes: 'Footwork sincopado con velocidad. Usá el modo espejo para coordinar pie izquierdo/derecho.'
+    notes: 'Footwork sincopado con velocidad. Usa el modo espejo para coordinar pie izquierdo/derecho.'
   },
   {
     id: 'salsa-shine-lvl0',
@@ -92,7 +92,7 @@ export const PRACTICE_PRESET_RECORDS = [
     video_url: 'https://qwjlixqtbcchyiwynfmv.supabase.co/storage/v1/object/public/dance-videos/Salsa_enchufe.mp4',
     thumbnail_url: './assets/thumbnails/thumb-salsa-shine-lvl0.webp',
     tags: ['salsa', 'shines', 'footwork', 'principiante', 'nivel-0', 'pasos-libres'],
-    notes: 'Secuencia de pasos libres (shines) para principiantes nivel 0. Usá el Modo Espejo para coordinar pie izquierdo/derecho y practicar la pisada.'
+    notes: 'Secuencia de pasos libres (shines) para principiantes nivel 0. Usa el Modo Espejo para coordinar pie izquierdo/derecho y practicar la pisada.'
   },
   {
     id: 'salsa-parejas-lvl0',
@@ -104,7 +104,7 @@ export const PRACTICE_PRESET_RECORDS = [
     video_url: 'https://qwjlixqtbcchyiwynfmv.supabase.co/storage/v1/object/public/dance-videos/Salsa_parejas_lvl0.mp4',
     thumbnail_url: './assets/thumbnails/thumb-salsa-parejas-lvl0.webp',
     tags: ['salsa', 'parejas', 'principiante', 'nivel-0', 'basico', 'al-lado', 'tiempo-1'],
-    notes: 'Paso básico en pareja (al lado) para principiantes nivel 0. Usá el Modo Espejo para guiar la postura y el marco de brazos del lead/follow.'
+    notes: 'Paso básico en pareja (al lado) para principiantes nivel 0. Usa el Modo Espejo para guiar la postura y el marco de brazos del lead/follow.'
   },
   {
     id: 'salsa-shine-principiantes-1',
@@ -116,7 +116,7 @@ export const PRACTICE_PRESET_RECORDS = [
     video_url: 'https://qwjlixqtbcchyiwynfmv.supabase.co/storage/v1/object/public/dance-videos/Salsa_shine_principiantes_1.mp4',
     thumbnail_url: './assets/thumbnails/thumb-salsa-shine-principiantes-1.webp',
     tags: ['salsa', 'shines', 'footwork', 'principiante', 'nivel-1', 'pasos-libres'],
-    notes: 'Secuencia de pasos libres (shines) para principiantes nivel 1. Usá el Modo Espejo para coordinar la pisada y el conteo de tiempos.'
+    notes: 'Secuencia de pasos libres (shines) para principiantes nivel 1. Usa el Modo Espejo para coordinar la pisada y el conteo de tiempos.'
   },
   {
     id: 'salsa-parejas-principiantes-1',
@@ -128,7 +128,7 @@ export const PRACTICE_PRESET_RECORDS = [
     video_url: 'https://qwjlixqtbcchyiwynfmv.supabase.co/storage/v1/object/public/dance-videos/Salsa_parejas_principiantes_1.mp4',
     thumbnail_url: './assets/thumbnails/thumb-salsa-parejas-principiantes-1.webp',
     tags: ['salsa', 'parejas', 'principiante', 'nivel-1', 'figura', 'giro'],
-    notes: 'Combinación en pareja para principiantes nivel 1. Usá el Modo Espejo para guiar la postura y el brazo del lead/follow.'
+    notes: 'Combinación en pareja para principiantes nivel 1. Usa el Modo Espejo para guiar la postura y el brazo del lead/follow.'
   },
   {
     id: 'salsa-parejas-principiantes-2',
@@ -140,7 +140,7 @@ export const PRACTICE_PRESET_RECORDS = [
     video_url: 'https://qwjlixqtbcchyiwynfmv.supabase.co/storage/v1/object/public/dance-videos/Salsa_parejas_principiantes_2.mp4',
     thumbnail_url: './assets/thumbnails/thumb-salsa-parejas-principiantes-2.webp',
     tags: ['salsa', 'parejas', 'principiante', 'nivel-2', 'figura', 'giro'],
-    notes: 'Combinación en pareja para principiantes nivel 2. Usá el Modo Espejo para guiar la postura y el brazo del lead/follow.'
+    notes: 'Combinación en pareja para principiantes nivel 2. Usa el Modo Espejo para guiar la postura y el brazo del lead/follow.'
   },
   {
     id: 'salsa-shine-principiantes-2',
@@ -152,7 +152,7 @@ export const PRACTICE_PRESET_RECORDS = [
     video_url: 'https://qwjlixqtbcchyiwynfmv.supabase.co/storage/v1/object/public/dance-videos/Salsa_shine_principiantes_2.mp4',
     thumbnail_url: './assets/thumbnails/thumb-salsa-shine-principiantes-2.webp',
     tags: ['salsa', 'shines', 'footwork', 'principiante', 'nivel-2', 'pasos-libres'],
-    notes: 'Secuencia de pasos libres (shines) para principiantes nivel 2. Usá el Modo Espejo para coordinar la pisada y el conteo de tiempos.'
+    notes: 'Secuencia de pasos libres (shines) para principiantes nivel 2. Usa el Modo Espejo para coordinar la pisada y el conteo de tiempos.'
   }
 ];
 
