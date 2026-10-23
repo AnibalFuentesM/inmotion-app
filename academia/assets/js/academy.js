@@ -615,6 +615,15 @@ function paymentStatus(payment) {
   return payment.dueDate && payment.dueDate < dayKey(TODAY) ? 'En mora' : 'Pendiente';
 }
 
+// Mientras la academia no cargue sus pagos en la base, un alumno sin ningún pago
+// registrado no ve «Pendiente» (podría haber pagado en recepción). Admin ve el real.
+function studentPaymentLabel(studentId, payment) {
+  const status = paymentStatus(payment);
+  if (DEMO_MODE || status !== 'Pendiente') return status;
+  const hasAnyPayment = state.payments.some((item) => item.studentId === studentId && item.status === 'Pagado');
+  return hasAnyPayment ? status : 'Por confirmar en recepción';
+}
+
 function paymentDateText(payment) {
   if (!payment) return 'Sin registro para este mes.';
   if (payment.status === 'Pagado') return payment.paidAt ? shortDate(parseDayKey(payment.paidAt)) : payment.date;
@@ -2576,7 +2585,7 @@ function renderStudentHome() {
       <article class="surface-card">
         <p class="eyebrow">Mensualidad · ${escapeHtml(monthName(TODAY))}</p>
         <div class="payment-status">
-          <div><p class="payment-amount">Q ${escapeHtml(payment ? formatAmount(payment.amount) : '—')}</p><p class="payment-meta">${escapeHtml(paymentStatus(payment))} · ${escapeHtml(paymentDateText(payment))}<br/>${plan.noPlan ? 'Tu plan se confirma en recepción' : `${escapeHtml(plan.planName)} · ${escapeHtml(priceText(plan.price))}${plan.needsReview ? '' : ' al mes'}`}</p></div>
+          <div><p class="payment-amount">Q ${escapeHtml(payment ? formatAmount(payment.amount) : '—')}</p><p class="payment-meta">${escapeHtml(studentPaymentLabel(studentId, payment))} · ${escapeHtml(paymentDateText(payment))}<br/>${plan.noPlan ? 'Tu plan se confirma en recepción' : `${escapeHtml(plan.planName)} · ${escapeHtml(priceText(plan.price))}${plan.needsReview ? '' : ' al mes'}`}</p></div>
           <button class="button ${paid ? 'button--light' : ''}" type="button" data-student-payment>${paid ? 'Ver comprobante' : 'Ver detalle'}</button>
         </div>
         <button class="button button--light button--small coming-soon-button" type="button" disabled aria-disabled="true">Pagar desde la app · Próximamente</button>
@@ -3228,7 +3237,7 @@ function memberCardMarkup(student) {
 function membershipStatusMarkup(student) {
   const plan = planForStudent(student.id);
   const payment = monthlyPaymentFor(student.id);
-  const status = paymentStatus(payment);
+  const status = studentPaymentLabel(student.id, payment);
   const paid = payment?.status === 'Pagado';
   return `
     <section class="section">
@@ -5497,10 +5506,10 @@ function openStudentPayment() {
   const plan = planForStudent(student.id);
   const paid = payment?.status === 'Pagado';
   openModal({
-    title: paid ? 'Comprobante interno' : payment ? 'Mensualidad pendiente' : 'Mensualidad sin registro',
+    title: paid ? 'Comprobante interno' : payment ? (studentPaymentLabel(student.id, payment) === 'Pendiente' ? 'Mensualidad pendiente' : 'Mensualidad') : 'Mensualidad sin registro',
     eyebrow: monthLabel(TODAY),
     body: `
-      <article class="surface-card"><p class="eyebrow">${escapeHtml(paymentStatus(payment))}</p><p class="payment-amount">Q ${escapeHtml(payment ? formatAmount(payment.amount) : '—')}</p><p class="payment-meta">${paid ? `${escapeHtml(payment.method)} · ` : ''}${escapeHtml(paymentDateText(payment))}<br/>${escapeHtml(plan.planName)}${planReviewTag(plan)} · ${escapeHtml(priceText(plan.price))}${plan.needsReview ? '' : ' al mes'}</p></article>
+      <article class="surface-card"><p class="eyebrow">${escapeHtml(studentPaymentLabel(student.id, payment))}</p><p class="payment-amount">Q ${escapeHtml(payment ? formatAmount(payment.amount) : '—')}</p><p class="payment-meta">${paid ? `${escapeHtml(payment.method)} · ` : ''}${escapeHtml(paymentDateText(payment))}<br/>${escapeHtml(plan.planName)}${planReviewTag(plan)} · ${escapeHtml(priceText(plan.price))}${plan.needsReview ? '' : ' al mes'}</p></article>
       <p class="modal-note" style="margin-top:16px">La academia cobra por sus medios habituales. La app solo refleja el registro interno; no hay pasarela ni pago con tarjeta.</p>
     `
   });
