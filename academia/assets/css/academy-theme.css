@@ -4013,3 +4013,6 @@ html[data-mode="demo"] [data-login-only] { display: none !important; }
 /* Nombres largos del horario real (p. ej. «Intermedio 1/2 Salsa y Bachata»)
    desbordaban la tarjeta de la rockola a 375px. */
 .music-class-btn { min-width: 0; max-width: 100%; }
+/* Ticket de parqueo: aviso de «Próximamente» en la fila de accesos del alumno. */
+.journey-actions > .is-coming-soon { grid-column: 1 / -1; cursor: default; opacity: .7; }
+.journey-actions > .is-coming-soon:hover { border-color: var(--line); box-shadow: none; transform: none; }

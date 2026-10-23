@@ -2499,6 +2499,7 @@ function renderStudentHome() {
     <div class="journey-actions" role="group" aria-label="Explora la academia">
       <button type="button" data-go="planes"><span class="journey-icon">${icon('money')}</span><span><strong>Encuentra tu plan</strong><small>Compara opciones a tu ritmo</small></span><span aria-hidden="true">↗</span></button>
       <a href="../index.html"><span class="journey-icon">▷</span><span><strong>Videos para practicar</strong><small>Repasa las clases y los movimientos</small></span><span aria-hidden="true">↗</span></a>
+      <button type="button" class="is-coming-soon" disabled aria-disabled="true"><span class="journey-icon">${icon('ticket')}</span><span><strong>Ticket de parqueo</strong><small>Próximamente: pídelo desde la app, si aplica</small></span><span class="tag">Pronto</span></button>
     </div>
     <section class="section">
       <div class="section-head"><div><h2>Esta semana</h2><p>Tu agenda de clases del ${escapeHtml(weekRange())}.</p></div><button class="text-button" type="button" data-go="clases">Ver calendario →</button></div>
@@ -2848,6 +2849,10 @@ function renderPlans() {
       <details>
         <summary>¿Qué incluye el plan Full In Motion?</summary>
         <p>Full In Motion (Q ${PASS_PLANS.full.price}/mes) incluye todos los horarios de la academia.</p>
+      </details>
+      <details>
+        <summary>¿Y el parqueo?</summary>
+        <p>Próximamente podrás pedir tu ticket de parqueo, si aplica, desde la app.</p>
       </details>
       <details>
         <summary>¿Puedo cambiar mi plan desde aquí?</summary>
