@@ -3973,3 +3973,43 @@ html[data-mode="demo"] [data-login-only] { display: none !important; }
   color: var(--muted);
   font-size: .8rem;
 }
+
+/* ---------------------------------------------------------------------------
+   Tarifas reales y avisos de "Próximamente" (oct 2026)
+   --------------------------------------------------------------------------- */
+.coming-soon-button,
+.coming-soon-button:disabled {
+  margin-top: 14px;
+  cursor: not-allowed;
+  opacity: .7;
+}
+.coming-soon-card h2 { margin: 6px 0 4px; }
+
+.plan-fees { margin: 8px 0 32px; }
+.plan-fee-list,
+.plan-fee-extras { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.plan-fee-list { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); }
+.plan-fee-list li {
+  display: grid;
+  gap: 4px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--paper);
+}
+.plan-fee-list strong { font-size: 1rem; }
+.plan-fee-list span { color: var(--red); font-weight: 700; }
+.plan-fee-list small { color: var(--muted); line-height: 1.5; }
+.plan-fee-extras { margin-top: 12px; }
+.plan-fee-extras strong { white-space: nowrap; }
+.plan-fee-extras li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+}
+.plan-fees .plan-disclaimer { margin: 14px 0 0; }
+/* Nombres largos del horario real (p. ej. «Intermedio 1/2 Salsa y Bachata»)
+   desbordaban la tarjeta de la rockola a 375px. */
+.music-class-btn { min-width: 0; max-width: 100%; }

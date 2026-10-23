@@ -115,29 +115,37 @@ const roleConfig = {
   }
 };
 
+// Horario real oct-dic 2026 (mismos ids que docs/migrations/007). Los maestros y
+// cupos son de demostración; en modo conectado la lista llega de Supabase.
 let classData = [
-  { id: 'bachata-inter', weekday: 3, time: '6:00 PM', name: 'Bachata Intermedio', level: 'Nivel intermedio', teacher: 'Alex Aquino', room: 'Salón', enrolled: 14, capacity: 18 },
-  { id: 'salsa-basico', weekday: 3, time: '7:15 PM', name: 'Salsa Principiantes', level: 'Nivel inicial', teacher: 'Luis Ramírez', room: 'Salón', enrolled: 9, capacity: 20 },
-  { id: 'kpop-teens', weekday: 4, time: '5:00 PM', name: 'K-Pop Teens', level: '12 a 17 años', teacher: 'Majo Borrayo', room: 'Salón', enrolled: 18, capacity: 18 },
-  { id: 'latino', weekday: 4, time: '7:00 PM', name: 'Baile Latino', level: 'Todos los niveles', teacher: 'Alex Aquino', room: 'Salón', enrolled: 12, capacity: 20 },
-  { id: 'latino-kids', weekday: 6, time: '10:00 AM', name: 'Baile Latino Kids', level: '7 a 11 años', teacher: 'Sofía Castillo', room: 'Salón', enrolled: 7, capacity: 12 },
-  { id: 'salsa-casino', weekday: 6, time: '11:30 AM', name: 'Salsa Casino', level: 'Nivel avanzado', teacher: 'Leo Méndez', room: 'Salón', enrolled: 10, capacity: 14 }
+  { id: 'latin-lun', weekday: 1, time: '6:00 PM', name: 'Latin Dance', level: 'Nivel abierto', teacher: 'Alex Aquino', room: 'Salón', enrolled: 12, capacity: 20 },
+  { id: 'princ12-lun', weekday: 1, time: '7:00 PM', name: 'Principiante 1/2 Salsa y Bachata', level: 'Principiante', teacher: 'Luis Ramírez', room: 'Salón', enrolled: 14, capacity: 20 },
+  { id: 'princ34-lun', weekday: 1, time: '8:00 PM', name: 'Principiante 3/4 Salsa y Bachata', level: 'Principiante', teacher: 'Luis Ramírez', room: 'Salón', enrolled: 11, capacity: 20 },
+  { id: 'avanzado-mar', weekday: 2, time: '7:00 PM', name: 'Avanzado Salsa y Bachata', level: 'Avanzado', teacher: 'Leo Méndez', room: 'Salón', enrolled: 15, capacity: 20 },
+  { id: 'interm12-mar', weekday: 2, time: '8:00 PM', name: 'Intermedio 1/2 Salsa y Bachata', level: 'Intermedio', teacher: 'Alex Aquino', room: 'Salón', enrolled: 13, capacity: 20 },
+  { id: 'latin-mie', weekday: 3, time: '6:00 PM', name: 'Latin Dance', level: 'Nivel abierto', teacher: 'Alex Aquino', room: 'Salón', enrolled: 10, capacity: 20 },
+  { id: 'princ12-mie', weekday: 3, time: '7:00 PM', name: 'Principiante 1/2 Salsa y Bachata', level: 'Principiante', teacher: 'Luis Ramírez', room: 'Salón', enrolled: 14, capacity: 20 },
+  { id: 'princ34-mie', weekday: 3, time: '8:00 PM', name: 'Principiante 3/4 Salsa y Bachata', level: 'Principiante', teacher: 'Luis Ramírez', room: 'Salón', enrolled: 11, capacity: 20 },
+  { id: 'avanzado-jue', weekday: 4, time: '7:00 PM', name: 'Avanzado Salsa y Bachata', level: 'Avanzado', teacher: 'Leo Méndez', room: 'Salón', enrolled: 15, capacity: 20 },
+  { id: 'interm12-jue', weekday: 4, time: '8:00 PM', name: 'Intermedio 1/2 Salsa y Bachata', level: 'Intermedio', teacher: 'Alex Aquino', room: 'Salón', enrolled: 13, capacity: 20 },
+  { id: 'urbano-teens-sab', weekday: 6, time: '9:00 AM', name: 'Urbano Teens', level: 'Teens', teacher: 'Majo Borrayo', room: 'Salón', enrolled: 9, capacity: 20 },
+  { id: 'kpop-teens-sab', weekday: 6, time: '10:00 AM', name: 'K-Pop Teens', level: 'Teens', teacher: 'Majo Borrayo', room: 'Salón', enrolled: 12, capacity: 20 },
+  { id: 'latino-teens-sab', weekday: 6, time: '11:00 AM', name: 'Latino Teens', level: 'Teens', teacher: 'Sofía Castillo', room: 'Salón', enrolled: 8, capacity: 20 },
+  { id: 'salsa-cubana-sab', weekday: 6, time: '4:00 PM', name: 'Salsa Cubana (Rueda de Casino)', level: 'Nivel abierto', teacher: 'Leo Méndez', room: 'Salón', enrolled: 14, capacity: 20 },
+  { id: 'kpop-dom', weekday: 0, time: '10:00 AM', name: 'K-Pop', level: 'Nivel abierto', teacher: 'Majo Borrayo', room: 'Salón', enrolled: 10, capacity: 20 }
 ];
 
 // ---------------------------------------------------------------------------
-// Horario semanal, pases y tarifas del Comparador de Planes (SelectorPlanes)
-//
-// SUPUESTOS DE LA SIMULACION, NO CONDICIONES DE LA ACADEMIA.
-// Las cifras de pases y los cargos de apertura salen de un video de referencia
-// y no estan confirmadas con In Motion. Las reglas derivadas -un Dancer Pass por
-// track, Night Pass para lunes a jueves, Weekend Pass por dia de fin de semana,
-// parqueo de Q 15 entre semana y Q 20 el fin de semana, y el parqueo incluido
-// del Full In Motion- las armo la demo para poder comparar; nadie las aprobo.
-// Mientras sigan sin confirmarse, la interfaz las presenta como supuestos.
+// Horario semanal y tarifas reales de In Motion, octubre a diciembre 2026
+// (inmotiongt.com/horarios-y-tarifas). Si cambian, se actualizan aquí y en la
+// tabla classes de Supabase (docs/migrations/007).
 // ---------------------------------------------------------------------------
 const SCHEDULE_FEES = {
   registration: 150,
+  // Membership anual: se cobra cada año en enero.
   membership: 125,
+  // Alumno nuevo: precio del primer mes.
+  newStudentFirstMonth: 250
 };
 
 const PASS_PLANS = {
@@ -169,113 +177,68 @@ const SCHEDULE_TIME_SLOTS = [
 
 const SCHEDULE_TRACKS = {
   latinOpen: 'Latin Dance Nivel Abierto',
-  level1: 'Nivel 1 Salsa y Bachata',
-  level2: 'Nivel 2 Salsa y Bachata',
-  urbano: 'Urbano',
-  level4: 'Nivel 4 Salsa y Bachata',
-  level3: 'Nivel 3 Salsa y Bachata',
-  salsaCubana: 'Salsa Cubana',
-  salsaCasino: 'Salsa Casino',
+  princ12: 'Principiante 1/2 Salsa y Bachata',
+  princ34: 'Principiante 3/4 Salsa y Bachata',
+  avanzado: 'Avanzado Salsa y Bachata',
+  interm12: 'Intermedio 1/2 Salsa y Bachata',
   teens: 'Teens',
+  salsaCubana: 'Salsa Cubana',
   kpop: 'K-Pop'
 };
 
 const SCHEDULE_COLORS = {
   latinOpen: '#686d72',
-  level1: '#e20c14',
-  level2: '#d97706',
-  urbano: '#16a34a',
-  level4: '#ea580c',
-  level3: '#2563eb',
+  princ12: '#e20c14',
+  princ34: '#eab308',
+  avanzado: '#ea580c',
+  interm12: '#2563eb',
   teens: '#db2777',
   salsaCubana: '#0891b2',
-  kpop: '#059669',
-  salsaCasino: '#7c3aed'
+  kpop: '#166534'
 };
 
 const SCHEDULE_CLASSES = [
-  { id: 'latin-mon', day: 'lunes', slot: '6pm', time: '6:00 pm', name: 'Latin Dance Nivel Abierto', track: 'latinOpen', category: 'weekday', color: SCHEDULE_COLORS.latinOpen },
-  { id: 'level1-mon', day: 'lunes', slot: '7pm', time: '7:00 pm', name: 'Nivel 1 Básico Salsa y Bachata', track: 'level1', category: 'weekday', color: SCHEDULE_COLORS.level1 },
-  { id: 'level2-mon', day: 'lunes', slot: '8pm', time: '8:00 pm', name: 'Nivel 2 Principiante Salsa y Bachata', track: 'level2', category: 'weekday', color: SCHEDULE_COLORS.level2 },
-  { id: 'urbano-tue', day: 'martes', slot: '6pm', time: '6:00 pm', name: 'Urbano', track: 'urbano', category: 'weekday', color: SCHEDULE_COLORS.urbano },
-  { id: 'level4-tue', day: 'martes', slot: '7pm', time: '7:00 pm', name: 'Nivel 4 Intermedio Salsa y Bachata', track: 'level4', category: 'weekday', color: SCHEDULE_COLORS.level4 },
-  { id: 'level3-tue', day: 'martes', slot: '8pm', time: '8:00 pm', name: 'Nivel 3 Prin / Inter Salsa y Bachata', track: 'level3', category: 'weekday', color: SCHEDULE_COLORS.level3 },
-  { id: 'latin-wed', day: 'miercoles', slot: '6pm', time: '6:00 pm', name: 'Latin Dance Nivel Abierto', track: 'latinOpen', category: 'weekday', color: SCHEDULE_COLORS.latinOpen },
-  { id: 'level1-wed', day: 'miercoles', slot: '7pm', time: '7:00 pm', name: 'Nivel 1 Básico Salsa y Bachata', track: 'level1', category: 'weekday', color: SCHEDULE_COLORS.level1 },
-  { id: 'level2-wed', day: 'miercoles', slot: '8pm', time: '8:00 pm', name: 'Nivel 2 Principiante Salsa y Bachata', track: 'level2', category: 'weekday', color: SCHEDULE_COLORS.level2 },
-  { id: 'urbano-thu', day: 'jueves', slot: '6pm', time: '6:00 pm', name: 'Urbano', track: 'urbano', category: 'weekday', color: SCHEDULE_COLORS.urbano },
-  { id: 'level4-thu', day: 'jueves', slot: '7pm', time: '7:00 pm', name: 'Nivel 4 Intermedio Salsa y Bachata', track: 'level4', category: 'weekday', color: SCHEDULE_COLORS.level4 },
-  { id: 'level3-thu', day: 'jueves', slot: '8pm', time: '8:00 pm', name: 'Nivel 3 Prin / Inter Salsa y Bachata', track: 'level3', category: 'weekday', color: SCHEDULE_COLORS.level3 },
-  { id: 'teens-urbano-sat', day: 'sabado', slot: '9am', time: '9:00 a 10:00 am', name: 'Urbano Teens', track: 'teens', category: 'teen', color: SCHEDULE_COLORS.teens },
-  { id: 'teens-kpop-sat', day: 'sabado', slot: '10am', time: '10:00 a 11:00 am', name: 'K-Pop Teens', track: 'teens', category: 'teen', color: SCHEDULE_COLORS.teens },
-  { id: 'teens-latino-sat', day: 'sabado', slot: '11am', time: '11:00 am a 12:00 pm', name: 'Latino Teens', track: 'teens', category: 'teen', color: SCHEDULE_COLORS.teens },
-  { id: 'cubana-sat', day: 'sabado', slot: '4pm', time: '4:00 a 5:30 pm', name: 'Salsa Cubana (Rueda de Casino)', track: 'salsaCubana', category: 'weekend', color: SCHEDULE_COLORS.salsaCubana },
-  { id: 'kpop-sun', day: 'domingo', slot: '10am', time: '10:00 a 11:00 am', name: 'K-Pop', track: 'kpop', category: 'weekend', color: SCHEDULE_COLORS.kpop },
-  { id: 'casino-sun', day: 'domingo', slot: '4pm', time: '4:00 a 5:30 pm', name: 'Salsa Casino', track: 'salsaCasino', category: 'weekend', color: SCHEDULE_COLORS.salsaCasino }
+  { id: 'latin-lun', day: 'lunes', slot: '6pm', time: '6:00 pm', name: 'Latin Dance Nivel Abierto', track: 'latinOpen', category: 'weekday', color: SCHEDULE_COLORS.latinOpen },
+  { id: 'princ12-lun', day: 'lunes', slot: '7pm', time: '7:00 pm', name: 'Principiante 1/2 Salsa y Bachata', track: 'princ12', category: 'weekday', color: SCHEDULE_COLORS.princ12 },
+  { id: 'princ34-lun', day: 'lunes', slot: '8pm', time: '8:00 pm', name: 'Principiante 3/4 Salsa y Bachata', track: 'princ34', category: 'weekday', color: SCHEDULE_COLORS.princ34 },
+  { id: 'avanzado-mar', day: 'martes', slot: '7pm', time: '7:00 pm', name: 'Avanzado Salsa y Bachata', track: 'avanzado', category: 'weekday', color: SCHEDULE_COLORS.avanzado },
+  { id: 'interm12-mar', day: 'martes', slot: '8pm', time: '8:00 pm', name: 'Intermedio 1/2 Salsa y Bachata', track: 'interm12', category: 'weekday', color: SCHEDULE_COLORS.interm12 },
+  { id: 'latin-mie', day: 'miercoles', slot: '6pm', time: '6:00 pm', name: 'Latin Dance Nivel Abierto', track: 'latinOpen', category: 'weekday', color: SCHEDULE_COLORS.latinOpen },
+  { id: 'princ12-mie', day: 'miercoles', slot: '7pm', time: '7:00 pm', name: 'Principiante 1/2 Salsa y Bachata', track: 'princ12', category: 'weekday', color: SCHEDULE_COLORS.princ12 },
+  { id: 'princ34-mie', day: 'miercoles', slot: '8pm', time: '8:00 pm', name: 'Principiante 3/4 Salsa y Bachata', track: 'princ34', category: 'weekday', color: SCHEDULE_COLORS.princ34 },
+  { id: 'avanzado-jue', day: 'jueves', slot: '7pm', time: '7:00 pm', name: 'Avanzado Salsa y Bachata', track: 'avanzado', category: 'weekday', color: SCHEDULE_COLORS.avanzado },
+  { id: 'interm12-jue', day: 'jueves', slot: '8pm', time: '8:00 pm', name: 'Intermedio 1/2 Salsa y Bachata', track: 'interm12', category: 'weekday', color: SCHEDULE_COLORS.interm12 },
+  { id: 'urbano-teens-sab', day: 'sabado', slot: '9am', time: '9:00 a 10:00 am', name: 'Urbano Teens', track: 'teens', category: 'teen', color: SCHEDULE_COLORS.teens },
+  { id: 'kpop-teens-sab', day: 'sabado', slot: '10am', time: '10:00 a 11:00 am', name: 'K-Pop Teens', track: 'teens', category: 'teen', color: SCHEDULE_COLORS.teens },
+  { id: 'latino-teens-sab', day: 'sabado', slot: '11am', time: '11:00 am a 12:00 pm', name: 'Latino Teens', track: 'teens', category: 'teen', color: SCHEDULE_COLORS.teens },
+  { id: 'salsa-cubana-sab', day: 'sabado', slot: '4pm', time: '4:00 a 5:30 pm', name: 'Salsa Cubana (Rueda de Casino)', track: 'salsaCubana', category: 'weekend', color: SCHEDULE_COLORS.salsaCubana },
+  { id: 'kpop-dom', day: 'domingo', slot: '10am', time: '10:00 a 11:00 am', name: 'K-Pop', track: 'kpop', category: 'weekend', color: SCHEDULE_COLORS.kpop }
 ];
 
 
 // ---------------------------------------------------------------------------
-// Definicion unica de los planes. De aca salen el comparador, la cuota que se
-// sugiere al registrar un pago, el carnet y el cupo de clases del mes: antes
-// cada pantalla llevaba su propia copia de los importes y del numero de clases.
-// Importes ficticios de demostracion.
+// Definicion unica de los planes: las mensualidades reales de In Motion. De aca
+// salen el comparador, la cuota que se sugiere al registrar un pago, el carnet y
+// el cupo de clases del mes. Ningun pase tiene tope mensual de clases.
 // ---------------------------------------------------------------------------
 const membershipPlans = [
-  {
-    id: 'four',
-    planName: 'Plan 4 clases',
-    name: '4 clases',
-    price: 300,
-    monthlyClasses: 4,
-    unlimited: false,
-    weeklyRhythm: 1,
-    subtitle: 'Tu primer paso',
-    description: 'Un espacio semanal para empezar y disfrutar.'
-  },
-  {
-    id: 'eight',
-    planName: 'Plan 8 clases',
-    name: '8 clases',
-    price: 450,
-    monthlyClasses: 8,
-    unlimited: false,
-    weeklyRhythm: 2,
-    subtitle: 'Encuentra tu ritmo',
-    description: 'Más práctica para avanzar con constancia.'
-  },
-  {
-    id: 'unlimited',
-    planName: 'Plan ilimitado',
-    name: 'Ilimitado',
-    price: 625,
-    // Sin cupo mensual: se representa con null, nunca con Infinity, para que
-    // ninguna pantalla muestre "Infinity" ni calcule un saldo negativo.
-    monthlyClasses: null,
-    unlimited: true,
-    weeklyRhythm: 3,
-    subtitle: 'Todo tu movimiento',
-    description: 'Para hacer del baile parte de tu semana.'
-  },
   {
     id: 'dancer',
     planName: 'Dancer Pass',
     name: 'Dancer Pass',
-    price: 395,
+    price: PASS_PLANS.dancer.price,
     monthlyClasses: null,
     unlimited: true,
-    weeklyRhythm: 2,
-    subtitle: 'Tu disciplina favorita',
-    description: 'Acceso al estilo de baile seleccionado entre semana.'
+    subtitle: 'Tu clase favorita',
+    description: 'Acceso a una clase del horario entre semana (por ejemplo, Principiante 1/2 lunes y miércoles).'
   },
   {
     id: 'night',
     planName: 'Night Pass',
     name: 'Night Pass',
-    price: 595,
+    price: PASS_PLANS.night.price,
     monthlyClasses: null,
     unlimited: true,
-    weeklyRhythm: 3,
     subtitle: 'Noches entre semana',
     description: 'Acceso a todas las clases de lunes a jueves en la noche.'
   },
@@ -283,38 +246,35 @@ const membershipPlans = [
     id: 'weekend',
     planName: 'Weekend Pass',
     name: 'Weekend Pass',
-    price: 300,
+    price: PASS_PLANS.weekend.price,
     monthlyClasses: null,
     unlimited: true,
-    weeklyRhythm: 1,
     subtitle: 'Fin de semana',
-    description: 'Acceso a clases de fin de semana (sábado o domingo).'
+    description: 'Aplica para las clases del sábado o del domingo.'
   },
   {
     id: 'teens',
     planName: 'Teens In Motion',
     name: 'Teens In Motion',
-    price: 495,
+    price: PASS_PLANS.teens.price,
     monthlyClasses: null,
     unlimited: true,
-    weeklyRhythm: 1,
     subtitle: 'Sábados Teens',
-    description: 'Acceso a las clases juveniles Teens de los sábados.'
+    description: 'Acceso a las clases Teens del sábado: Urbano, K-Pop y Latino.'
   },
   {
     id: 'full',
     planName: 'Full In Motion',
     name: 'Full In Motion',
-    price: 750,
+    price: PASS_PLANS.full.price,
     monthlyClasses: null,
     unlimited: true,
-    weeklyRhythm: 4,
-    subtitle: 'Pase ilimitado total',
-    description: 'Acceso ilimitado a todos los horarios con parqueo incluido hasta 3 horas.'
+    subtitle: 'Todos los horarios',
+    description: 'Incluye todos los horarios de la academia.'
   }
 ];
 
-const DEFAULT_PLAN = membershipPlans[1];
+const DEFAULT_PLAN = membershipPlans[0];
 const PLAN_NAMES = membershipPlans.map((plan) => plan.planName);
 
 function formatAmount(value) {
@@ -345,7 +305,6 @@ function unknownPlan(name) {
     price: null,
     monthlyClasses: null,
     unlimited: false,
-    weeklyRhythm: null,
     subtitle: 'Plan fuera del catálogo',
     description: 'Este plan no figura en el catálogo de la demo. Se conserva tal como fue guardado y necesita revisión antes de cobrarlo o asignarle cupos.',
     needsReview: true
@@ -360,10 +319,10 @@ function noPlanDefined() {
     price: null,
     monthlyClasses: null,
     unlimited: false,
-    weeklyRhythm: null,
     subtitle: 'Sin cuota definida',
     description: 'Este alumno no tiene un plan o cuota asignada. Registra su membresía antes de procesar cobros.',
-    needsReview: true
+    needsReview: true,
+    noPlan: true
   };
 }
 
@@ -373,31 +332,17 @@ function priceText(value) {
 }
 
 
-function planRhythmText(plan) {
-  if (plan.needsReview) return 'Frecuencia semanal por confirmar';
-  if (plan.unlimited) return `${plan.weeklyRhythm} o más clases por semana`;
-  return `${plan.weeklyRhythm} clase${plan.weeklyRhythm === 1 ? '' : 's'} por semana`;
-}
-
 function planAllowanceText(plan) {
   if (plan.needsReview) return 'Cupo mensual por confirmar';
   return plan.unlimited ? 'Asistencia sin límite mensual' : `${plan.monthlyClasses} clases al mes`;
 }
 
-function planUnitText(plan) {
-  if (plan.needsReview) return 'Importe por clase por confirmar';
-  if (plan.unlimited) return 'Sin límite de clases en el plan demo';
-  return `Q ${formatAmount(plan.price / plan.monthlyClasses)} por clase`;
-}
 
 // Etiqueta corta para senalar en pantalla un plan que quedo fuera del catalogo.
 function planReviewTag(plan) {
   return plan.needsReview ? ' <span class="tag">Revisar plan</span>' : '';
 }
 
-function recommendedPlanFor(frequency) {
-  return membershipPlans.find((plan) => plan.weeklyRhythm === frequency) || membershipPlans[membershipPlans.length - 1];
-}
 
 function startOfDay(date) {
   const copy = new Date(date);
@@ -1061,14 +1006,14 @@ const DEMO_STUDENT_ID = 'IM-0241';
 // classIds es la inscripcion real del alumno: sin ella no se puede saber cual es
 // la proxima clase de un hijo, solo la proxima clase de la academia.
 const baseStudentSeed = [
-  { id: 'IM-0241', name: 'Valeria Ruiz', initials: 'VR', plan: 'Plan 8 clases', phone: '5555-0142', status: 'active', lifecycleStatus: 'active', suspensionReason: '', suspendedAt: null, suspendedUntil: null, archivedAt: null, level: 'Nivel intermedio', classIds: ['bachata-inter', 'kpop-teens'], guardianId: GUARDIAN_ID },
-  { id: 'IM-0262', name: 'Diego Ruiz', initials: 'DR', plan: 'Plan 4 clases', phone: '5555-0177', status: 'active', lifecycleStatus: 'active', suspensionReason: '', suspendedAt: null, suspendedUntil: null, archivedAt: null, level: '7 a 11 años', classIds: ['latino-kids'], guardianId: GUARDIAN_ID },
-  { id: 'IM-0218', name: 'Luis Méndez', initials: 'LM', plan: 'Plan ilimitado', phone: '5555-0188', status: 'active', lifecycleStatus: 'active', suspensionReason: '', suspendedAt: null, suspendedUntil: null, archivedAt: null, level: 'Nivel avanzado', classIds: ['salsa-casino', 'bachata-inter'] },
-  { id: 'IM-0194', name: 'Andrea Pérez', initials: 'AP', plan: 'Plan 8 clases', phone: '5555-0120', status: 'active', lifecycleStatus: 'active', suspensionReason: '', suspendedAt: null, suspendedUntil: null, archivedAt: null, level: 'Nivel intermedio', classIds: ['bachata-inter', 'latino'] },
-  { id: 'IM-0250', name: 'Santiago Cruz', initials: 'SC', plan: 'Plan 4 clases', phone: 'Sin registrar', status: 'active', lifecycleStatus: 'active', suspensionReason: '', suspendedAt: null, suspendedUntil: null, archivedAt: null, level: 'Nivel inicial', classIds: ['salsa-basico'] },
-  { id: 'IM-0207', name: 'Camila Soto', initials: 'CS', plan: 'Plan ilimitado', phone: '5555-0159', status: 'active', lifecycleStatus: 'active', suspensionReason: '', suspendedAt: null, suspendedUntil: null, archivedAt: null, level: 'Nivel intermedio', classIds: ['bachata-inter', 'latino', 'salsa-casino'] },
-  { id: 'IM-0229', name: 'María Fernanda León', initials: 'ML', plan: 'Plan 8 clases', phone: '5555-0134', status: 'active', lifecycleStatus: 'active', suspensionReason: '', suspendedAt: null, suspendedUntil: null, archivedAt: null, level: 'Nivel inicial', classIds: ['salsa-basico', 'latino'] },
-  { id: 'IM-0275', name: 'Sofía Gómez', initials: 'SG', plan: 'Plan 4 clases', phone: '5555-0199', status: 'active', lifecycleStatus: 'active', suspensionReason: '', suspendedAt: null, suspendedUntil: null, archivedAt: null, level: '7 a 11 años', classIds: ['latino-kids'] }
+  { id: 'IM-0241', name: 'Valeria Ruiz', initials: 'VR', plan: 'Night Pass', phone: '5555-0142', status: 'active', lifecycleStatus: 'active', suspensionReason: '', suspendedAt: null, suspendedUntil: null, archivedAt: null, level: 'Nivel 4', classIds: ['interm12-mar', 'kpop-teens-sab'], guardianId: GUARDIAN_ID },
+  { id: 'IM-0262', name: 'Diego Ruiz', initials: 'DR', plan: 'Dancer Pass', phone: '5555-0177', status: 'active', lifecycleStatus: 'active', suspensionReason: '', suspendedAt: null, suspendedUntil: null, archivedAt: null, level: 'Sábados', classIds: ['latino-teens-sab'], guardianId: GUARDIAN_ID },
+  { id: 'IM-0218', name: 'Luis Méndez', initials: 'LM', plan: 'Full In Motion', phone: '5555-0188', status: 'active', lifecycleStatus: 'active', suspensionReason: '', suspendedAt: null, suspendedUntil: null, archivedAt: null, level: 'Nivel 5', classIds: ['avanzado-jue', 'interm12-mar'] },
+  { id: 'IM-0194', name: 'Andrea Pérez', initials: 'AP', plan: 'Night Pass', phone: '5555-0120', status: 'active', lifecycleStatus: 'active', suspensionReason: '', suspendedAt: null, suspendedUntil: null, archivedAt: null, level: 'Nivel 4', classIds: ['interm12-mar', 'latin-mie'] },
+  { id: 'IM-0250', name: 'Santiago Cruz', initials: 'SC', plan: 'Dancer Pass', phone: 'Sin registrar', status: 'active', lifecycleStatus: 'active', suspensionReason: '', suspendedAt: null, suspendedUntil: null, archivedAt: null, level: 'Nivel 1', classIds: ['princ12-lun'] },
+  { id: 'IM-0207', name: 'Camila Soto', initials: 'CS', plan: 'Full In Motion', phone: '5555-0159', status: 'active', lifecycleStatus: 'active', suspensionReason: '', suspendedAt: null, suspendedUntil: null, archivedAt: null, level: 'Nivel 4', classIds: ['interm12-mar', 'latin-mie', 'avanzado-jue'] },
+  { id: 'IM-0229', name: 'María Fernanda León', initials: 'ML', plan: 'Night Pass', phone: '5555-0134', status: 'active', lifecycleStatus: 'active', suspensionReason: '', suspendedAt: null, suspendedUntil: null, archivedAt: null, level: 'Nivel 1', classIds: ['princ12-lun', 'latin-mie'] },
+  { id: 'IM-0275', name: 'Sofía Gómez', initials: 'SG', plan: 'Dancer Pass', phone: '5555-0199', status: 'active', lifecycleStatus: 'active', suspensionReason: '', suspendedAt: null, suspendedUntil: null, archivedAt: null, level: 'Sábados', classIds: ['latino-teens-sab'] }
 ];
 
 function createBaseStudents() {
@@ -1137,8 +1082,8 @@ function createBaseMusicSuggestions() {
       id: 'sug-1',
       studentId: 'IM-0241',
       studentName: 'Valeria Rosales',
-      classId: 'bachata-inter',
-      className: 'Bachata Intermedio',
+      classId: 'interm12-mar',
+      className: 'Intermedio 1/2 Salsa y Bachata',
       teacherName: 'Alex Aquino',
       song: 'Dile al Amor',
       artist: 'Aventura',
@@ -1153,8 +1098,8 @@ function createBaseMusicSuggestions() {
       id: 'sug-2',
       studentId: 'IM-0241',
       studentName: 'Valeria Rosales',
-      classId: 'bachata-inter',
-      className: 'Bachata Intermedio',
+      classId: 'interm12-mar',
+      className: 'Intermedio 1/2 Salsa y Bachata',
       teacherName: 'Alex Aquino',
       song: 'Propuesta Indecente',
       artist: 'Romeo Santos',
@@ -1169,8 +1114,8 @@ function createBaseMusicSuggestions() {
       id: 'sug-3',
       studentId: 'IM-0218',
       studentName: 'Carlos Gómez',
-      classId: 'bachata-inter',
-      className: 'Bachata Intermedio',
+      classId: 'interm12-mar',
+      className: 'Intermedio 1/2 Salsa y Bachata',
       teacherName: 'Alex Aquino',
       song: 'Sobredosis',
       artist: 'Romeo Santos ft. Ozuna',
@@ -1185,8 +1130,8 @@ function createBaseMusicSuggestions() {
       id: 'sug-4',
       studentId: 'IM-0241',
       studentName: 'Valeria Rosales',
-      classId: 'latino',
-      className: 'Baile Latino',
+      classId: 'latin-mie',
+      className: 'Latin Dance',
       teacherName: 'Alex Aquino',
       song: 'Esa que tiene trompetas',
       artist: 'No me sé el nombre',
@@ -1227,8 +1172,8 @@ function createBaseSinglePasses() {
       studentId: null,
       studentName: 'Mariana Morales',
       contact: '5555-4421',
-      classId: 'bachata-inter',
-      className: 'Bachata Intermedio',
+      classId: 'interm12-mar',
+      className: 'Intermedio 1/2 Salsa y Bachata',
       teacher: 'Alex Aquino',
       date: dayKey(TODAY),
       time: '6:00 PM',
@@ -1285,7 +1230,7 @@ function createBaseSinglePasses() {
       studentId: null,
       studentName: 'Esteban Cordón',
       contact: '5555-9012',
-      classId: 'kpop-teens',
+      classId: 'kpop-teens-sab',
       className: 'K-Pop Teens',
       teacher: 'Majo Borrayo',
       date: dayKey(previousDateFor(2)),
@@ -1343,8 +1288,8 @@ function createBaseSinglePasses() {
       studentId: null,
       studentName: 'Andrea Salazar',
       contact: '5555-3344',
-      classId: 'latino-kids',
-      className: 'Ritmos Latinos Kids',
+      classId: 'latino-teens-sab',
+      className: 'Latino Teens',
       teacher: 'Sofía Castillo',
       date: dayKey(previousDateFor(3)),
       time: '4:00 PM',
@@ -1568,14 +1513,14 @@ function createDefaultState() {
     payments: createBasePayments(),
     // La bitacora es la fuente de la lista diaria y de la consulta de cada alumno.
     attendanceLog: [
-      { studentId: 'IM-0194', classId: 'latino', at: dayKey(previousDateFor(4)) },
-      { studentId: 'IM-0229', classId: 'latino', at: dayKey(previousDateFor(4)) },
-      { studentId: 'IM-0241', classId: 'kpop-teens', at: dayKey(previousDateFor(4)) },
-      { studentId: 'IM-0241', classId: 'bachata-inter', at: dayKey(previousDateFor(3)) },
-      { studentId: 'IM-0218', classId: 'bachata-inter', at: dayKey(previousDateFor(3)) },
-      { studentId: 'IM-0194', classId: 'bachata-inter', at: dayKey(previousDateFor(3)) },
-      { studentId: 'IM-0275', classId: 'latino-kids', at: dayKey(previousDateFor(6)) },
-      { studentId: 'IM-0275', classId: 'latino-kids', at: dayKey(addDays(previousDateFor(6), -7)) }
+      { studentId: 'IM-0194', classId: 'latin-mie', at: dayKey(previousDateFor(3)) },
+      { studentId: 'IM-0229', classId: 'latin-mie', at: dayKey(previousDateFor(3)) },
+      { studentId: 'IM-0241', classId: 'kpop-teens-sab', at: dayKey(previousDateFor(6)) },
+      { studentId: 'IM-0241', classId: 'interm12-mar', at: dayKey(previousDateFor(2)) },
+      { studentId: 'IM-0218', classId: 'interm12-mar', at: dayKey(previousDateFor(2)) },
+      { studentId: 'IM-0194', classId: 'interm12-mar', at: dayKey(previousDateFor(2)) },
+      { studentId: 'IM-0275', classId: 'latino-teens-sab', at: dayKey(previousDateFor(6)) },
+      { studentId: 'IM-0275', classId: 'latino-teens-sab', at: dayKey(addDays(previousDateFor(6), -7)) }
     ],
     musicSuggestions: createBaseMusicSuggestions(),
     singlePasses: createBaseSinglePasses()
@@ -1876,6 +1821,19 @@ let activeRoute = 'inicio';
 // Sin ?demo la entrada es el login y el rol sale del perfil en Supabase.
 // Con ?demo se mantiene el selector de roles con datos ficticios.
 const DEMO_MODE = document.documentElement.dataset.mode === 'demo';
+// La asistencia todavía no está activa en la app real: solo la demo la simula.
+const ATTENDANCE_ENABLED = DEMO_MODE;
+
+function comingSoonCard(title, detail) {
+  return `<article class="surface-card coming-soon-card"><p class="eyebrow">${escapeHtml(title)}</p><h2>Próximamente</h2><p class="payment-meta">${escapeHtml(detail)}</p></article>`;
+}
+
+function attendanceComingSoon() {
+  return `
+    <header class="page-heading"><div><p class="eyebrow">Asistencia</p><h1>Próximamente.</h1><p>Muy pronto podrás registrar la asistencia de cada clase desde la app.</p></div></header>
+    ${comingSoonCard('Asistencia', 'Mientras tanto, la asistencia se lleva como siempre en la academia.')}
+  `;
+}
 const ACCESS_FOCUS_SELECTOR = DEMO_MODE ? '[data-enter-role="student"]' : '#accessLoginForm input[name="login"]';
 let activeClassId = classData[0].id;
 let lastFocusedElement = null;
@@ -2330,7 +2288,7 @@ function openMusicSuggestionModal(preselectedClassId = null) {
   }
   const studentClasses = classesForStudent(student.id);
   const options = studentClasses.length ? studentClasses : classData;
-  const defaultClassId = preselectedClassId || options[0]?.id || 'bachata-inter';
+  const defaultClassId = preselectedClassId || options[0]?.id || 'interm12-mar';
   const targetClass = findClass(defaultClassId) || options[0];
   const randomMood = MUSIC_MOODS[Math.floor(Math.random() * MUSIC_MOODS.length)] || MUSIC_MOODS[0];
   currentSelectedMoodId = randomMood.id;
@@ -2548,25 +2506,26 @@ function renderStudentHome() {
     </section>
 
     <section class="section">
-      <div class="section-head"><div><h2>Tus próximas clases</h2><p>${escapeHtml(plan.planName)} · ${escapeHtml(allowanceLine)}</p></div></div>
-      ${classCards(own, { title: 'Sin clases asignadas', detail: 'Todavía no tienes inscripciones en esta demostración. Consulta el calendario para ver los horarios.' })}
+      <div class="section-head"><div><h2>Tus próximas clases</h2><p>${plan.noPlan ? 'Tu plan se confirma en recepción' : `${escapeHtml(plan.planName)} · ${escapeHtml(allowanceLine)}`}</p></div></div>
+      ${classCards(own, { title: 'Sin clases asignadas', detail: 'Todavía no tienes clases asignadas. Consulta el calendario para ver los horarios.' })}
     </section>
 
     <section class="section split-grid">
       <article class="surface-card">
         <p class="eyebrow">Mensualidad · ${escapeHtml(monthName(TODAY))}</p>
         <div class="payment-status">
-          <div><p class="payment-amount">Q ${escapeHtml(payment ? formatAmount(payment.amount) : '—')}</p><p class="payment-meta">${escapeHtml(paymentStatus(payment))} · ${escapeHtml(paymentDateText(payment))}<br/>${escapeHtml(plan.planName)} · ${escapeHtml(priceText(plan.price))}${plan.needsReview ? '' : ' al mes'}</p></div>
+          <div><p class="payment-amount">Q ${escapeHtml(payment ? formatAmount(payment.amount) : '—')}</p><p class="payment-meta">${escapeHtml(paymentStatus(payment))} · ${escapeHtml(paymentDateText(payment))}<br/>${plan.noPlan ? 'Tu plan se confirma en recepción' : `${escapeHtml(plan.planName)} · ${escapeHtml(priceText(plan.price))}${plan.needsReview ? '' : ' al mes'}`}</p></div>
           <button class="button ${paid ? 'button--light' : ''}" type="button" data-student-payment>${paid ? 'Ver comprobante' : 'Ver detalle'}</button>
         </div>
+        <button class="button button--light button--small coming-soon-button" type="button" disabled aria-disabled="true">Pagar desde la app · Próximamente</button>
       </article>
-      <article class="surface-card">
+      ${!ATTENDANCE_ENABLED ? comingSoonCard('Asistencia del mes', 'Muy pronto verás aquí las clases a las que asististe.') : `<article class="surface-card">
         <p class="eyebrow">Asistencia del mes</p>
         ${allowance === null || allowanceUnknown
           ? `<h2>${attended} clase${attended === 1 ? '' : 's'} este mes</h2>`
           : `<h2>${attended} de ${allowance} clases</h2><progress class="attendance-progress" value="${Math.min(attended, allowance)}" max="${allowance}" aria-label="Clases asistidas este mes">${attended} de ${allowance}</progress>`}
         <p class="payment-meta">${escapeHtml(attendanceNote)}</p>
-      </article>
+      </article>`}
     </section>
 
     ${studentMusicSection()}
@@ -2574,16 +2533,8 @@ function renderStudentHome() {
 }
 
 // ---------------------------------------------------------------------------
-// Motor de recomendación de pases y parqueo (SelectorPlanes)
+// Motor de recomendación de pases (SelectorPlanes)
 // ---------------------------------------------------------------------------
-function parkingForScheduleSelection(classes) {
-  const uniqueDays = [...new Set(classes.map((item) => item.day))];
-  return uniqueDays.reduce((total, day) => {
-    const dayInfo = SCHEDULE_DAYS.find((candidate) => candidate.id === day);
-    return total + (dayInfo?.type === 'weekend' ? 20 : 15);
-  }, 0);
-}
-
 function summarizePassParts(parts) {
   const counts = parts.reduce((summary, part) => {
     summary.set(part, (summary.get(part) || 0) + 1);
@@ -2596,7 +2547,6 @@ function summarizePassParts(parts) {
 }
 
 function compareRecommendations(a, b) {
-  if (a.total !== b.total) return a.total - b.total;
   if (a.monthly !== b.monthly) return a.monthly - b.monthly;
   return a.title.localeCompare(b.title, 'es');
 }
@@ -2608,15 +2558,12 @@ function buildScheduleRecommendations(classes) {
     id: 'full',
     title: PASS_PLANS.full.name,
     monthly: PASS_PLANS.full.price,
-    parking: 0,
-    total: PASS_PLANS.full.price,
-    note: 'Acceso ilimitado a todas las clases y horarios. La simulación asume que cubre hasta 3 horas de parqueo por visita; queda por confirmar con la academia.'
+    note: 'Incluye todos los horarios de la academia.'
   };
 
   const weekdayClasses = classes.filter((item) => item.category === 'weekday');
   const teenClasses = classes.filter((item) => item.category === 'teen');
   const weekendClasses = classes.filter((item) => item.category === 'weekend');
-  const regularParking = parkingForScheduleSelection(classes);
   const options = [];
 
   const weekdayOptions = buildWeekdayOptions(weekdayClasses);
@@ -2641,8 +2588,6 @@ function buildScheduleRecommendations(classes) {
             id: parts.join('-'),
             title: summarizePassParts(parts),
             monthly,
-            parking: regularParking,
-            total: monthly + regularParking,
             note: [weekday.note, weekend.note, teens.note].filter(Boolean).join(' ')
           });
         }
@@ -2701,9 +2646,8 @@ function dedupeRecommendations(recommendations) {
   const byKey = new Map();
 
   for (const recommendation of recommendations) {
-    const key = `${recommendation.title}|${recommendation.monthly}|${recommendation.parking}`;
-    const current = byKey.get(key);
-    if (!current || recommendation.total < current.total) {
+    const key = `${recommendation.title}|${recommendation.monthly}`;
+    if (!byKey.has(key)) {
       byKey.set(key, recommendation);
     }
   }
@@ -2800,25 +2744,17 @@ function renderScheduleRecommendations() {
           ${isBest ? '<span class="badge badge--best">✦ Recomendado</span>' : ''}
         </div>
         <div class="rec-prices">
-          <div class="price-row">
+          <div class="price-row total-row">
             <span>Mensualidad</span>
             <strong>Q ${escapeHtml(formatAmount(rec.monthly))}</strong>
           </div>
-          <div class="price-row">
-            <span>Parqueo estimado</span>
-            <strong>${rec.parking === 0 ? 'Incluido' : `Q ${escapeHtml(formatAmount(rec.parking))}`}</strong>
-          </div>
-          <div class="price-row total-row">
-            <span>Total mensual estimado</span>
-            <strong>Q ${escapeHtml(formatAmount(rec.total))}</strong>
-          </div>
         </div>
         <p class="rec-note">${escapeHtml(rec.note)}</p>
-        <p class="rec-subnote">Estimación demo; no incluye posibles cargos iniciales. Confirma el precio final con la academia.</p>
+        <p class="rec-subnote">No incluye la inscripción (Q ${SCHEDULE_FEES.registration}) ni el membership anual (Q ${SCHEDULE_FEES.membership}).</p>
         <div class="rec-actions">
           ${isCurrentPlan
             ? '<span class="tag tag--dark" style="margin-top:10px;width:100%;text-align:center;display:block;padding:8px 0;">Tu plan actual ✓</span>'
-            : '<p class="rec-subnote">Comparación estimada. Para contratar este pase, confirma condiciones y precios vigentes con la academia.</p>'
+            : '<p class="rec-subnote">Para contratar este pase, pregunta en recepción.</p>'
           }
         </div>
       </article>
@@ -2849,12 +2785,25 @@ function renderPlans() {
   return `
     <header class="plan-hero">
       <div>
-        <p class="eyebrow">Explora tu próximo paso · Demo</p>
+        <p class="eyebrow">Horario y tarifas · octubre a diciembre 2026</p>
         <h1>¿Quieres mejorar<br/><span>tu plan?</span></h1>
         <p>Elige las clases que te gustaría tomar y encuentra una opción para tu ritmo.</p>
-        <p class="plan-disclaimer">Estimación de demostración. Confirma tarifas y condiciones con la academia; tu plan actual no cambia.</p>
+        <p class="plan-disclaimer">Consulta de horario y tarifas. Tu plan actual no cambia desde aquí.</p>
+        <button class="button button--light button--small coming-soon-button" type="button" disabled aria-disabled="true">Pagar desde la app · Próximamente</button>
       </div>
     </header>
+
+    <section class="plan-fees" aria-label="Tarifas">
+      <ul class="plan-fee-list">
+        ${membershipPlans.map((plan) => `<li><strong>${escapeHtml(plan.name)}</strong><span>Q ${escapeHtml(formatAmount(plan.price))} / mes</span><small>${escapeHtml(plan.description)}</small></li>`).join('')}
+      </ul>
+      <ul class="plan-fee-extras">
+        <li><span>Inscripción</span><strong>Q ${SCHEDULE_FEES.registration}</strong></li>
+        <li><span>Membership (se cobra cada año en enero)</span><strong>Q ${SCHEDULE_FEES.membership}</strong></li>
+        <li><span>Alumno nuevo: tu primer mes</span><strong>Q ${SCHEDULE_FEES.newStudentFirstMonth}</strong></li>
+      </ul>
+      <p class="plan-disclaimer">La promoción de alumno nuevo no aplica si ya pagaste clases en In Motion, si canjeaste un cupón o si hay otra promoción ese mes. Horario y clases sujetos a cambio sin previo aviso.</p>
+    </section>
 
     <section class="schedule-comparator-section" aria-labelledby="scheduleTitle">
       <div class="schedule-comparator-layout">
@@ -2894,15 +2843,15 @@ function renderPlans() {
       <h2>¿Tienes dudas?</h2>
       <details>
         <summary>¿Cómo se calcula el pase recomendado?</summary>
-        <p>La demo evalúa las combinaciones de pases que cubrirían tus clases seleccionadas y le suma un parqueo estimado por día de visita, para sugerir la de menor costo total. Tanto las reglas de combinación (Dancer Pass por disciplina, Night Pass de lunes a jueves, Weekend Pass por día de fin de semana, Teens) como el parqueo son supuestos de la simulación y no están confirmados con la academia.</p>
+        <p>Se comparan los pases que cubren las clases que marcaste (Dancer Pass por clase, Night Pass para lunes a jueves, Weekend Pass por sábado o domingo, Teens In Motion para los sábados Teens) y se sugiere la mensualidad más baja.</p>
       </details>
       <details>
         <summary>¿Qué incluye el plan Full In Motion?</summary>
-        <p>En la simulación, Full In Motion (Q 750/mes) representa pase libre a todas las clases sin restricción de horario, con hasta 3 horas de parqueo por visita. Es un supuesto de la demo: confirma el alcance real y el precio vigente con la academia.</p>
+        <p>Full In Motion (Q ${PASS_PLANS.full.price}/mes) incluye todos los horarios de la academia.</p>
       </details>
       <details>
         <summary>¿Puedo cambiar mi plan desde aquí?</summary>
-        <p>No. Este comparador es solo de consulta: no modifica tu membresía, tus inscripciones ni tus pagos. Para un cambio real, consulta disponibilidad, condiciones y precios vigentes con la academia.</p>
+        <p>Todavía no. Este comparador es solo de consulta: no modifica tu membresía, tus inscripciones ni tus pagos. El pago desde la app viene pronto; mientras tanto, el cambio de plan y el pago se hacen en recepción.</p>
       </details>
     </section>
   `;
@@ -2912,11 +2861,19 @@ function renderPlans() {
 function openPlanDetail(id) {
   const plan = membershipPlans.find((item) => item.id === id);
   if (!plan) return;
-  openModal({ title: `Plan ${plan.name}`, eyebrow: 'Conoce tu opción · Demo', body: `<p class="plan-price">Q ${escapeHtml(formatAmount(plan.price))}<span>/ mes</span></p><p>${escapeHtml(plan.description)}</p><ul class="plan-detail-list"><li>${escapeHtml(planRhythmText(plan))}, como orientación.</li><li>${escapeHtml(planAllowanceText(plan))}.</li><li>${escapeHtml(planUnitText(plan))}.</li><li>La inscripción y otros cargos deben confirmarse con recepción.</li></ul><p class="plan-disclaimer">Esta comparación no modifica tu membresía ni registra pagos. Los importes son ficticios.</p><button class="button" type="button" data-close-modal>Seguir comparando</button>` });
+  openModal({ title: `Plan ${plan.name}`, eyebrow: 'Conoce tu opción', body: `<p class="plan-price">Q ${escapeHtml(formatAmount(plan.price))}<span>/ mes</span></p><p>${escapeHtml(plan.description)}</p><ul class="plan-detail-list"><li>${escapeHtml(planAllowanceText(plan))}.</li><li>Inscripción Q ${SCHEDULE_FEES.registration} y membership anual Q ${SCHEDULE_FEES.membership} (se cobra en enero).</li></ul><p class="plan-disclaimer">Esta comparación no modifica tu membresía ni registra pagos.</p><button class="button" type="button" data-close-modal>Seguir comparando</button>` });
 }
 
 let studentCalendarDate = startOfDay(TODAY);
 let studentCalendarFilter = 'all';
+
+// Filtros por nivel del horario: el texto de classes.level que buscan.
+const CALENDAR_LEVEL_FILTERS = {
+  initial: { label: 'Principiante', match: 'principiante' },
+  intermediate: { label: 'Intermedio', match: 'intermedio' },
+  advanced: { label: 'Avanzado', match: 'avanzado' },
+  teens: { label: 'Teens', match: 'teens' }
+};
 
 function getClassesForDate(date, filter = 'all') {
   const targetWeekday = date.getDay();
@@ -2927,12 +2884,9 @@ function getClassesForDate(date, filter = 'all') {
 
   if (filter === 'mine') {
     list = list.filter((item) => studentClassIds.includes(item.id));
-  } else if (filter === 'initial') {
-    list = list.filter((item) => item.level.toLowerCase().includes('inicial'));
-  } else if (filter === 'intermediate') {
-    list = list.filter((item) => item.level.toLowerCase().includes('intermedio'));
-  } else if (filter === 'advanced') {
-    list = list.filter((item) => item.level.toLowerCase().includes('avanzado'));
+  } else if (CALENDAR_LEVEL_FILTERS[filter]) {
+    const needle = CALENDAR_LEVEL_FILTERS[filter].match;
+    list = list.filter((item) => String(item.level || '').toLowerCase().includes(needle));
   }
 
   return list.sort((a, b) => timeValue(a.time) - timeValue(b.time));
@@ -3075,9 +3029,7 @@ function studentCalendarMarkup() {
     <div class="filter-row" role="group" aria-label="Filtrar clases">
       <button class="filter-chip ${studentCalendarFilter === 'all' ? 'is-active' : ''}" type="button" aria-pressed="${studentCalendarFilter === 'all'}" data-calendar-filter="all">Todas</button>
       <button class="filter-chip ${studentCalendarFilter === 'mine' ? 'is-active' : ''}" type="button" aria-pressed="${studentCalendarFilter === 'mine'}" data-calendar-filter="mine">Mis clases</button>
-      <button class="filter-chip ${studentCalendarFilter === 'initial' ? 'is-active' : ''}" type="button" aria-pressed="${studentCalendarFilter === 'initial'}" data-calendar-filter="initial">Inicial</button>
-      <button class="filter-chip ${studentCalendarFilter === 'intermediate' ? 'is-active' : ''}" type="button" aria-pressed="${studentCalendarFilter === 'intermediate'}" data-calendar-filter="intermediate">Intermedio</button>
-      <button class="filter-chip ${studentCalendarFilter === 'advanced' ? 'is-active' : ''}" type="button" aria-pressed="${studentCalendarFilter === 'advanced'}" data-calendar-filter="advanced">Avanzado</button>
+      ${Object.entries(CALENDAR_LEVEL_FILTERS).map(([id, item]) => `<button class="filter-chip ${studentCalendarFilter === id ? 'is-active' : ''}" type="button" aria-pressed="${studentCalendarFilter === id}" data-calendar-filter="${id}">${item.label}</button>`).join('')}
     </div>
 
     <div class="calendar-agenda-container" aria-live="polite">
@@ -5108,11 +5060,11 @@ const renderers = {
   'student:carnet': renderStudentCard,
   'teacher:inicio': renderTeacherHome,
   'teacher:agenda': renderTeacherAgenda,
-  'teacher:asistencia': renderTeacherAttendance,
+  'teacher:asistencia': () => (ATTENDANCE_ENABLED ? renderTeacherAttendance() : attendanceComingSoon()),
   'admin:inicio': renderAdminHome,
   'admin:alumnos': renderAdminStudents,
   'admin:pagos': renderAdminPayments,
-  'admin:asistencia': renderAdminAttendance,
+  'admin:asistencia': () => (ATTENDANCE_ENABLED ? renderAdminAttendance() : attendanceComingSoon()),
   'admin:pases': renderAdminPasses,
   'guardian:inicio': renderGuardianHome,
   'guardian:carnet': renderGuardianCard
@@ -5267,6 +5219,10 @@ function scanClasses() {
 }
 
 function openScanModal() {
+  if (!ATTENDANCE_ENABLED) {
+    showToast('Asistencia · Próximamente', 'Muy pronto podrás registrar tu asistencia con el carnet QR.');
+    return;
+  }
   TODAY = new Date();
   const student = currentStudent();
   if (!student) {
@@ -7136,7 +7092,10 @@ function handleContentClick(event) {
   }
 
   const attendance = find('[data-take-attendance]');
-  if (attendance) return openClassAttendance(attendance.dataset.takeAttendance);
+  if (attendance) {
+    if (!ATTENDANCE_ENABLED) return showToast('Asistencia · Próximamente', 'Muy pronto podrás registrar la asistencia desde la app.');
+    return openClassAttendance(attendance.dataset.takeAttendance);
+  }
   const detail = find('[data-class-detail]');
   if (detail) return openClassDetail(detail.dataset.classDetail, detail.dataset.contextDate || null);
   const register = find('[data-register-for]');

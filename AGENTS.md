@@ -78,7 +78,7 @@ Se trabaja **siempre sobre esta misma app**: `academia/`, dentro de
 
 - UI y comentarios en español; nombres de variables y funciones en inglés.
 - HTML, CSS y JS planos. Módulos ES nativos (`<script type="module">`).
-- Todos los nombres, horarios y montos de la app son ficticios, de demostración.
+- Horario y tarifas son los reales de In Motion (oct-dic 2026, `SCHEDULE_CLASSES`, `PASS_PLANS` y `membershipPlans` en `academy.js`, y la tabla `classes` vía `docs/migrations/007`). Los alumnos, maestros y pagos de `?demo` son ficticios.
 
 ## Antes de dar algo por terminado
 
