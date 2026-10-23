@@ -181,6 +181,41 @@ async function fetchProfileByUserId(userId) {
   return null;
 }
 
+// Los alumnos entran con su teléfono. En Supabase Auth cada teléfono es una cuenta con
+// un correo interno que nadie recibe (.invalid es un dominio reservado que nunca entrega).
+// scripts/crear-cuentas.mjs crea las cuentas con este mismo formato.
+export const PHONE_LOGIN_DOMAIN = 'tel.inmotion.invalid';
+
+/**
+ * Convierte lo que escribe la persona (teléfono de Guatemala o correo) en el correo de su cuenta.
+ * Devuelve null si no parece ninguno de los dos.
+ */
+export function loginIdToEmail(loginId) {
+  const value = String(loginId || '').trim();
+  if (value.includes('@')) return value.toLowerCase();
+  let digits = value.replace(/\D/g, '');
+  if (digits.length === 11 && digits.startsWith('502')) digits = digits.slice(3);
+  if (digits.length !== 8) return null;
+  return `502${digits}@${PHONE_LOGIN_DOMAIN}`;
+}
+
+/**
+ * Cambia la contraseña de la sesión activa
+ */
+export async function updatePassword(newPassword) {
+  if (!currentAuthToken) throw new Error('No hay una sesión activa.');
+  const res = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+    method: 'PUT',
+    headers: getHeaders(),
+    body: JSON.stringify({ password: newPassword })
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error_description || err.msg || err.message || `No se pudo cambiar la contraseña (${res.status})`);
+  }
+  return true;
+}
+
 /**
  * Inicio de sesión con correo y contraseña en Supabase Auth
  */

@@ -63,11 +63,11 @@
       <p class="eyebrow" data-login-only>Alumnos, encargados y equipo</p>
       <h1 id="accessTitle">Entra a tu ritmo.</h1>
       <p class="access-copy" data-demo-only>Elige cómo quieres entrar: como alumno, maestro, administrador o encargado. Los cambios se guardan solo en este navegador.</p>
-      <p class="access-copy" data-login-only>Ingresa con tu correo y la app te lleva a tu portal.</p>
+      <p class="access-copy" data-login-only>Ingresa con tu número de teléfono y la app te lleva a tu portal.</p>
       <form class="access-login" id="accessLoginForm" data-login-only novalidate>
         <label class="field">
-          <span>Correo electrónico</span>
-          <input type="email" name="email" required autocomplete="username" inputmode="email" placeholder="tucorreo@ejemplo.com" />
+          <span>Número de teléfono</span>
+          <input type="text" name="login" required autocomplete="username" inputmode="tel" placeholder="5555-1234" />
         </label>
         <label class="field">
           <span>Contraseña</span>
@@ -75,7 +75,7 @@
         </label>
         <p class="access-login-error" id="accessLoginError" role="alert"></p>
         <button class="access-plan-link" type="submit" id="accessLoginSubmit">Ingresar <span aria-hidden="true">↗</span></button>
-        <p class="access-login-help">¿No tienes cuenta u olvidaste tu contraseña? Pídela en recepción.</p>
+        <p class="access-login-help">¿No tienes cuenta u olvidaste tu contraseña? Pídela en recepción. El equipo también puede ingresar con su correo.</p>
       </form>
       <div class="role-options" role="group" aria-label="Elegir acceso de demostración" data-demo-only>
         <button class="role-option is-primary" type="button" data-enter-role="student">
@@ -120,6 +120,7 @@
       <div class="side-bottom">
         <span class="demo-badge" data-demo-only><i aria-hidden="true"></i> Modo demostración</span>
         <a href="../index.html" class="side-link">Videos para practicar <span>↗</span></a>
+        <button class="side-link" type="button" id="accountLink" data-login-only>Mi cuenta y contraseña <span>○</span></button>
         <button class="side-link" type="button" id="exitDemo">Cambiar acceso <span>↙</span></button>
         <button class="side-link" type="button" id="resetDemo" data-demo-only>Reiniciar demo <span>⟲</span></button>
       </div>

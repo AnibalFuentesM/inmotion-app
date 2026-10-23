@@ -66,6 +66,10 @@ Se trabaja **siempre sobre esta misma app**: `academia/`, dentro de
 7. **No hay paso de build.** No agregues bundler, framework ni dependencias sin acordarlo.
 8. **Entrada de la academia: login o demo.** Sin parámetros, `academia/` muestra el login
    (Supabase Auth) y el rol sale de `profiles.role`; una cuenta sin rol válido no entra.
+   Los alumnos ingresan con su teléfono: la cuenta usa el correo interno
+   `502XXXXXXXX@tel.inmotion.invalid` (ver `loginIdToEmail`); el equipo puede usar su correo.
+   Las cuentas se crean con `scripts/crear-cuentas.mjs` (requiere la migración 005).
+   Las listas de alumnos y contraseñas van en `cuentas/`, que está en `.gitignore`.
    El selector de roles con datos ficticios solo aparece en `academia/?demo`. En el HTML,
    `data-demo-only` y `data-login-only` marcan qué se ve en cada modo.
 9. **Nunca commitear** `.env*.local` ni `.vercel/` (ya están en `.gitignore`).

@@ -1,5 +1,7 @@
 import {
   signInWithPassword,
+  loginIdToEmail,
+  updatePassword,
   signOut,
   restoreSession,
   refreshSession,
@@ -1874,7 +1876,7 @@ let activeRoute = 'inicio';
 // Sin ?demo la entrada es el login y el rol sale del perfil en Supabase.
 // Con ?demo se mantiene el selector de roles con datos ficticios.
 const DEMO_MODE = document.documentElement.dataset.mode === 'demo';
-const ACCESS_FOCUS_SELECTOR = DEMO_MODE ? '[data-enter-role="student"]' : '#accessLoginForm input[name="email"]';
+const ACCESS_FOCUS_SELECTOR = DEMO_MODE ? '[data-enter-role="student"]' : '#accessLoginForm input[name="login"]';
 let activeClassId = classData[0].id;
 let lastFocusedElement = null;
 let activeChildId = null;
@@ -5978,6 +5980,35 @@ async function handleEnrollmentSubmit(event) {
   renderAndFocus();
 }
 
+async function handleChangePassword(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const message = document.querySelector('#changePasswordMessage');
+  const submitBtn = document.querySelector('#changePasswordSubmit');
+  const password = String(form.password.value || '');
+  message.style.color = 'var(--red)';
+  if (password.length < 8) {
+    message.textContent = 'Usa al menos 8 caracteres.';
+    return form.password.focus();
+  }
+  if (password !== form.confirm.value) {
+    message.textContent = 'Las dos contraseñas no coinciden.';
+    return form.confirm.focus();
+  }
+  submitBtn.disabled = true;
+  message.textContent = '';
+  try {
+    await updatePassword(password);
+    form.reset();
+    message.style.color = '';
+    message.textContent = 'Listo. Usa tu nueva contraseña la próxima vez que ingreses.';
+  } catch (err) {
+    message.textContent = err.message;
+  } finally {
+    submitBtn.disabled = false;
+  }
+}
+
 function openProfile() {
   if (isSupabaseConnected && authenticatedProfile) {
     const roleLabels = { student: 'Alumno', teacher: 'Maestro', admin: 'Administración', guardian: 'Encargado' };
@@ -6005,16 +6036,29 @@ function openProfile() {
           </div>
           <p class="payment-meta" style="margin-top:22px">${escapeHtml(meta)}</p>
         </article>
-        <p class="modal-note" style="margin-top:16px">Sesión autenticada en Supabase con políticas de seguridad RLS activas.</p>
-        <div class="form-actions" style="margin-top:16px">
-          <button class="button button--red" type="button" id="profileSignOut">Cerrar sesión remota</button>
-        </div>
+        <form id="changePasswordForm" class="modal-form" style="margin-top:18px">
+          <p class="eyebrow">Cambiar contraseña</p>
+          <label class="field">
+            <span>Nueva contraseña</span>
+            <input class="input" type="password" name="password" required minlength="8" autocomplete="new-password" />
+          </label>
+          <label class="field">
+            <span>Repite la nueva contraseña</span>
+            <input class="input" type="password" name="confirm" required minlength="8" autocomplete="new-password" />
+          </label>
+          <p class="payment-meta" id="changePasswordMessage" role="status"></p>
+          <div class="form-actions">
+            <button class="button button--light" type="submit" id="changePasswordSubmit">Guardar contraseña</button>
+            <button class="button button--red" type="button" id="profileSignOut">Cerrar sesión</button>
+          </div>
+        </form>
       `
     });
     document.querySelector('#profileSignOut')?.addEventListener('click', async () => {
       closeModal();
       await handleSignOut();
     });
+    document.querySelector('#changePasswordForm')?.addEventListener('submit', handleChangePassword);
     return;
   }
 
@@ -7241,6 +7285,10 @@ if (window.visualViewport) {
   window.visualViewport.addEventListener('scroll', syncModalWithVisualViewport);
 }
 document.querySelector('#profileButton').addEventListener('click', openProfile);
+document.querySelector('#accountLink')?.addEventListener('click', () => {
+  setMenuOpen(false);
+  openProfile();
+});
 
 elements.roleSwitcher.addEventListener('change', (event) => {
   if (isSupabaseConnected) {
@@ -7368,7 +7416,7 @@ async function applyAuthenticatedSession(res) {
 
 function loginErrorMessage(err) {
   const text = String(err?.message || '');
-  if (/invalid login credentials|invalid_grant/i.test(text)) return 'El correo o la contraseña no coinciden.';
+  if (/invalid login credentials|invalid_grant/i.test(text)) return 'El teléfono o la contraseña no coinciden.';
   if (/email not confirmed/i.test(text)) return 'Tu correo todavía no está confirmado. Revisa tu bandeja de entrada.';
   if (/failed to fetch|network/i.test(text)) return 'No hay conexión. Revisa tu internet e intenta de nuevo.';
   return text || 'No se pudo iniciar sesión. Intenta de nuevo.';
@@ -7379,11 +7427,17 @@ async function handleAccessLogin(event) {
   const form = event.currentTarget;
   const errEl = document.querySelector('#accessLoginError');
   const submitBtn = document.querySelector('#accessLoginSubmit');
-  const email = String(form.email.value || '').trim();
+  const loginId = String(form.login.value || '').trim();
   const password = String(form.password.value || '');
-  if (!email || !password) {
-    errEl.textContent = 'Escribe tu correo y tu contraseña.';
-    (email ? form.password : form.email).focus();
+  if (!loginId || !password) {
+    errEl.textContent = 'Escribe tu número de teléfono y tu contraseña.';
+    (loginId ? form.password : form.login).focus();
+    return;
+  }
+  const email = loginIdToEmail(loginId);
+  if (!email) {
+    errEl.textContent = 'Escribe tu número de 8 dígitos, por ejemplo 5555-1234.';
+    form.login.focus();
     return;
   }
   errEl.textContent = '';
@@ -7394,7 +7448,7 @@ async function handleAccessLogin(event) {
     await applyAuthenticatedSession(res);
     form.reset();
     enterDemo(activeRole, 'inicio');
-    showToast('Sesión iniciada', `Hola, ${res.profile?.first_name || email}.`);
+    showToast('Sesión iniciada', `Hola, ${res.profile?.first_name || loginId}.`);
   } catch (err) {
     errEl.textContent = loginErrorMessage(err);
     form.password.focus();
