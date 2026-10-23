@@ -72,7 +72,13 @@ Se trabaja **siempre sobre esta misma app**: `academia/`, dentro de
    Las listas de alumnos y contraseñas van en `cuentas/`, que está en `.gitignore`.
    El selector de roles con datos ficticios solo aparece en `academia/?demo`. En el HTML,
    `data-demo-only` y `data-login-only` marcan qué se ve en cada modo.
-9. **Nunca commitear** `.env*.local` ni `.vercel/` (ya están en `.gitignore`).
+9. **El plan manda sobre las clases.** Cada alumno tiene su pase en `memberships.plan_name`;
+   qué clases cubre cada pase está en `pass_plans`/`pass_plan_classes` (migración 009) y,
+   para armar la lista en pantalla, en `PLAN_CLASS_RULES` de `academy.js`: si cambia uno,
+   cambia el otro. El alumno marca sus clases con «Elegir mis clases» (`set_my_classes`
+   valida contra su plan) y completa correo, cumpleaños y contacto de emergencia en
+   «Mis datos y contraseña». Nombre, teléfono, nivel y notas solo los cambia administración.
+10. **Nunca commitear** `.env*.local` ni `.vercel/` (ya están en `.gitignore`).
 
 ## Convenciones
 

@@ -16,7 +16,9 @@ import {
   syncRemotePayment,
   createRemoteStudent,
   syncRemoteEnrollments,
-  syncSessionAttendances
+  syncSessionAttendances,
+  updateMyContact,
+  setMyClasses
 } from './supabase.js';
 
 let isSupabaseConnected = false;
@@ -639,6 +641,33 @@ function planForStudent(studentId) {
   const student = studentById(studentId);
   if (!student?.plan) return noPlanDefined();
   return planByName(student.plan) || noPlanDefined();
+}
+
+// Qué clases cubre cada pase y cuántas se eligen. Es la misma regla que valida la base
+// (pass_plans y pass_plan_classes, migración 009); aquí solo arma la lista para elegir.
+// maxGroups: cuántas clases distintas (cada una con sus días) puede marcar el alumno.
+const PLAN_CLASS_RULES = {
+  dancer: { maxGroups: 1, covers: (item) => item.weekday >= 1 && item.weekday <= 4 },
+  night: { maxGroups: null, covers: (item) => item.weekday >= 1 && item.weekday <= 4 },
+  weekend: { maxGroups: 1, covers: (item) => (item.weekday === 0 || item.weekday === 6) && item.level !== 'Teens' },
+  teens: { maxGroups: null, covers: (item) => item.level === 'Teens' },
+  full: { maxGroups: null, covers: () => true }
+};
+
+// Agrupa los días de una misma clase («Principiante 3/4» lunes y miércoles) en una opción.
+function planClassGroups(plan) {
+  const rule = PLAN_CLASS_RULES[plan?.id];
+  if (!rule) return [];
+  const groups = new Map();
+  for (const item of classData) {
+    if (!rule.covers(item)) continue;
+    const key = `${item.name}|${item.time}`;
+    if (!groups.has(key)) groups.set(key, { key, name: item.name, time: item.time, weekdays: [], classIds: [] });
+    const group = groups.get(key);
+    group.weekdays.push(item.weekday);
+    group.classIds.push(item.id);
+  }
+  return [...groups.values()].sort((a, b) => (Math.min(...a.weekdays.map((d) => (d + 6) % 7)) - Math.min(...b.weekdays.map((d) => (d + 6) % 7))) || (timeValue(a.time) - timeValue(b.time)));
 }
 
 function planAmount(studentId) {
@@ -2456,6 +2485,14 @@ function renderStudentHome() {
       </div>
       <span class="student-welcome-mark" aria-hidden="true">IM</span>
     </header>
+    ${isSupabaseConnected && authenticatedProfile && !authenticatedProfile.email ? `
+    <section class="section">
+      <article class="surface-card">
+        <p class="eyebrow">Completa tus datos</p>
+        <p class="payment-meta">Agrega tu correo, tu fecha de nacimiento y un contacto de emergencia. Así la academia puede avisarte de cambios de horario y eventos.</p>
+        <div class="form-actions"><button class="button button--red" type="button" data-open-my-data>Completar mis datos</button></div>
+      </article>
+    </section>` : ''}
 
     <section class="student-hero">
       <div class="student-hero-copy">
@@ -3060,7 +3097,10 @@ function renderStudentClasses() {
         <h1>Tu calendario<br/>de clases.</h1>
         <p>Consulta tus clases y horarios disponibles. Abre los detalles de cualquier sesión para ver salón, profesor y cupos.</p>
       </div>
-      <button class="button" type="button" data-go="carnet">Mostrar mi carné</button>
+      <div class="form-actions">
+        <button class="button button--red" type="button" data-open-my-classes>Elegir mis clases</button>
+        <button class="button" type="button" data-go="carnet">Mostrar mi carné</button>
+      </div>
     </header>
     <div id="studentScheduleContainer">
       ${studentCalendarMarkup()}
@@ -3179,7 +3219,7 @@ function membershipStatusMarkup(student) {
         <p class="eyebrow">${escapeHtml(currentPeriodLabel())}</p>
         <p class="payment-amount">${escapeHtml(payment ? `Q ${formatAmount(payment.amount)}` : priceText(plan.price))}</p>
         <p class="payment-meta">${escapeHtml(status)} · ${escapeHtml(paymentDateText(payment))}<br/>${escapeHtml(plan.planName)}${planReviewTag(plan)} · ${escapeHtml(priceText(plan.price))}${plan.needsReview ? '' : ' al mes'}${payment ? '' : ' · cuota del plan, sin registro para este mes'}</p>
-        ${plan.needsReview ? '<p class="payment-meta">El plan guardado no figura en el catálogo de la demo. Se conserva tal cual y no se le asigna una cuota: corregilo desde administración antes de registrar un pago.</p>' : ''}
+        ${plan.needsReview ? '<p class="payment-meta">El plan guardado no figura en el catálogo de la demo. Se conserva tal cual y no se le asigna una cuota: corrígelo desde administración antes de registrar un pago.</p>' : ''}
       </article>
     </section>`;
 }
@@ -5941,6 +5981,120 @@ async function handleEnrollmentSubmit(event) {
   renderAndFocus();
 }
 
+const WEEKDAY_NAMES = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
+
+function weekdayList(days) {
+  const names = days.map((d) => WEEKDAY_NAMES[d]);
+  return names.length > 1 ? `${names.slice(0, -1).join(', ')} y ${names.at(-1)}` : names[0] || '';
+}
+
+// El alumno marca a qué clases de su plan va de verdad. Con Night o Full tiene acceso a
+// muchas, pero solo aparece en la lista de las que eligió.
+function openMyClassesModal() {
+  const student = currentStudent();
+  if (!student) return;
+  const plan = planForStudent(student.id);
+  const rule = PLAN_CLASS_RULES[plan.id];
+  const groups = planClassGroups(plan);
+  const selected = student.classIds || [];
+  if (!rule || !groups.length) {
+    const current = classData.filter((item) => selected.includes(item.id));
+    openModal({
+      title: 'Elegir mis clases',
+      eyebrow: 'Mis clases',
+      body: `
+        <p class="modal-note">La academia todavía no ha registrado tu plan. Cuando lo haga, aquí vas a poder marcar las clases a las que vas. Si ya pagaste, avisa en recepción.</p>
+        ${current.length ? `<p class="payment-meta">Por ahora estás inscrito en: ${escapeHtml(current.map((item) => `${item.name} (${WEEKDAY_NAMES[item.weekday]})`).join(', '))}.</p>` : ''}
+        <div class="form-actions"><button class="button button--light" type="button" data-close-modal>Cerrar</button></div>
+      `
+    });
+    return;
+  }
+  const single = rule.maxGroups === 1;
+  openModal({
+    title: 'Elegir mis clases',
+    eyebrow: `${plan.planName} · ${priceText(plan.price)}`,
+    body: `
+      <form id="myClassesForm">
+        <p class="modal-note">${escapeHtml(plan.description)} ${single ? 'Elige la clase a la que vas.' : 'Marca las clases a las que vas; así apareces en la lista de asistencia de cada una.'}</p>
+        <div class="attendance-roster" role="group" aria-label="Clases de tu plan">
+          ${groups.map((group) => {
+            const isOn = group.classIds.some((id) => selected.includes(id));
+            return `
+          <label class="student-check">
+            <input type="${single ? 'radio' : 'checkbox'}" name="classGroup" value="${escapeHtml(group.classIds.join(','))}" ${isOn ? 'checked' : ''} />
+            <span class="avatar" aria-hidden="true" style="font-size:.66rem;line-height:1.1;text-align:center">${group.weekdays.map((d) => escapeHtml(WEEKDAY_SHORT[d])).join('<br/>')}</span>
+            <span><strong>${escapeHtml(group.name)}</strong><small>${escapeHtml(weekdayList(group.weekdays))} · ${escapeHtml(group.time)}</small></span>
+            <span>${isOn ? 'Inscrito' : ''}</span>
+          </label>`;
+          }).join('')}
+        </div>
+        <p class="payment-meta" id="myClassesMessage" role="status"></p>
+        <div class="form-actions"><button class="button button--light" type="button" data-close-modal>Cancelar</button><button class="button button--red" type="submit">Guardar mis clases</button></div>
+      </form>
+    `
+  });
+}
+
+async function handleMyClassesSubmit(event) {
+  event.preventDefault();
+  const form = event.target;
+  const message = document.querySelector('#myClassesMessage');
+  const submitBtn = form.querySelector('button[type="submit"]');
+  const student = currentStudent();
+  if (!student) return;
+  const picked = [...new Set([...form.querySelectorAll('input[name="classGroup"]:checked')]
+    .flatMap((input) => input.value.split(',')))];
+  let classIds = picked;
+  submitBtn.disabled = true;
+  submitBtn.textContent = 'Guardando...';
+  try {
+    if (isSupabaseConnected) classIds = await setMyClasses(picked);
+    persistState({
+      ...state,
+      students: state.students.map((item) => (item.id === student.id ? { ...item, classIds } : item))
+    });
+  } catch (err) {
+    submitBtn.disabled = false;
+    submitBtn.textContent = 'Guardar mis clases';
+    if (message) message.textContent = err.message;
+    return;
+  }
+  closeModal();
+  showToast('Clases guardadas', picked.length ? 'Ya apareces en la lista de esas clases.' : 'No quedaste inscrito en ninguna clase.');
+  renderAndFocus();
+}
+
+async function handleMyContactSubmit(event) {
+  event.preventDefault();
+  const form = event.target;
+  const message = document.querySelector('#myContactMessage');
+  const submitBtn = form.querySelector('button[type="submit"]');
+  const email = String(form.email.value || '').trim();
+  message.style.color = 'var(--red)';
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    message.textContent = 'Revisa el correo: parece que le falta algo.';
+    return form.email.focus();
+  }
+  submitBtn.disabled = true;
+  message.textContent = '';
+  try {
+    authenticatedProfile = await updateMyContact({
+      email,
+      birth_date: form.birth_date.value,
+      emergency_contact_name: String(form.emergency_contact_name.value || '').trim(),
+      emergency_contact_phone: String(form.emergency_contact_phone.value || '').trim()
+    });
+    message.style.color = '';
+    message.textContent = 'Listo, tus datos quedaron guardados.';
+    renderApp();
+  } catch (err) {
+    message.textContent = err.message;
+  } finally {
+    submitBtn.disabled = false;
+  }
+}
+
 async function handleChangePassword(event) {
   event.preventDefault();
   const form = event.currentTarget;
@@ -5997,6 +6151,30 @@ function openProfile() {
           </div>
           <p class="payment-meta" style="margin-top:22px">${escapeHtml(meta)}</p>
         </article>
+        <form id="myContactForm" class="modal-form" style="margin-top:18px">
+          <p class="eyebrow">Mis datos</p>
+          <label class="field">
+            <span>Correo electrónico</span>
+            <input class="input" type="email" name="email" autocomplete="email" value="${escapeHtml(authenticatedProfile.email || '')}" placeholder="tucorreo@ejemplo.com" />
+          </label>
+          <label class="field">
+            <span>Fecha de nacimiento</span>
+            <input class="input" type="date" name="birth_date" value="${escapeHtml(authenticatedProfile.birth_date || '')}" />
+          </label>
+          <label class="field">
+            <span>Contacto de emergencia</span>
+            <input class="input" type="text" name="emergency_contact_name" autocomplete="off" value="${escapeHtml(authenticatedProfile.emergency_contact_name || '')}" placeholder="Nombre y parentesco" />
+          </label>
+          <label class="field">
+            <span>Teléfono de emergencia</span>
+            <input class="input" type="tel" name="emergency_contact_phone" autocomplete="off" value="${escapeHtml(authenticatedProfile.emergency_contact_phone || '')}" placeholder="5555-5555" />
+          </label>
+          <p class="payment-meta">Tu nombre y tu teléfono de ingreso los cambia la academia. Si hay un error, avisa en recepción.</p>
+          <p class="payment-meta" id="myContactMessage" role="status"></p>
+          <div class="form-actions">
+            <button class="button button--light" type="submit">Guardar mis datos</button>
+          </div>
+        </form>
         <form id="changePasswordForm" class="modal-form" style="margin-top:18px">
           <p class="eyebrow">Cambiar contraseña</p>
           <label class="field">
@@ -6291,6 +6469,8 @@ function handleModalSubmit(event) {
   if (event.target.id === 'archiveStudentForm') handleArchiveStudentSubmit(event);
   if (event.target.id === 'deleteStudentForm') handleDeleteStudentSubmit(event);
   if (event.target.id === 'enrollmentForm') handleEnrollmentSubmit(event);
+  if (event.target.id === 'myClassesForm') handleMyClassesSubmit(event);
+  if (event.target.id === 'myContactForm') handleMyContactSubmit(event);
   if (event.target.id === 'musicSuggestionForm') handleMusicSuggestionSubmit(event);
   if (event.target.id === 'createPassForm') handleCreatePassSubmit(event);
   if (event.target.id === 'validatePassSearchForm') handleValidatePassSearchSubmit(event);
@@ -6966,6 +7146,9 @@ function updateStudentTableView() {
 function handleContentClick(event) {
   TODAY = new Date();
   const find = (selector) => event.target.closest(selector);
+
+  if (find('[data-open-my-classes]')) return openMyClassesModal();
+  if (find('[data-open-my-data]')) return openProfile();
 
   const scheduleClassBtn = find('[data-toggle-schedule-class]');
   if (scheduleClassBtn) {

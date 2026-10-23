@@ -216,6 +216,43 @@ export async function updatePassword(newPassword) {
   return true;
 }
 
+// Datos que cada persona completa de sí misma (migración 009). Nombre, teléfono, nivel y
+// notas no van aquí: los cambia administración y la base rechaza que los cambie otro.
+const SELF_CONTACT_FIELDS = ['email', 'birth_date', 'emergency_contact_name', 'emergency_contact_phone'];
+
+/**
+ * Guarda correo, cumpleaños y contacto de emergencia del perfil con sesión activa
+ */
+export async function updateMyContact(fields) {
+  if (!authenticatedProfile?.id) throw new Error('No hay una sesión activa.');
+  const data = {};
+  for (const key of SELF_CONTACT_FIELDS) {
+    if (key in fields) data[key] = fields[key] === '' ? null : fields[key];
+  }
+  const rows = await db.update('profiles', `id=eq.${authenticatedProfile.id}`, data);
+  const row = Array.isArray(rows) ? rows[0] : rows;
+  if (!row) throw new Error('No se pudieron guardar tus datos. Intenta de nuevo.');
+  authenticatedProfile = { ...authenticatedProfile, ...row };
+  return authenticatedProfile;
+}
+
+/**
+ * El alumno guarda las clases a las que va; la base las valida contra su plan
+ * (set_my_classes, migración 009). Devuelve los ids de clase que quedaron activos.
+ */
+export async function setMyClasses(classIds) {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/set_my_classes`, {
+    method: 'POST',
+    headers: getHeaders(),
+    body: JSON.stringify({ p_class_ids: classIds })
+  });
+  const body = await res.json().catch(() => null);
+  if (!res.ok) {
+    throw new Error(body?.message || 'No se pudieron guardar tus clases. Intenta de nuevo.');
+  }
+  return (Array.isArray(body) ? body : []).map((row) => (typeof row === 'string' ? row : row.set_my_classes));
+}
+
 /**
  * Inicio de sesión con correo y contraseña en Supabase Auth
  */
