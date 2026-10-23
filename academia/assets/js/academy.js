@@ -71,6 +71,7 @@ const icons = {
   users: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>',
   money: '<rect x="3" y="6" width="18" height="12" rx="2"/><path d="M7 14h.01M17 10h.01"/><circle cx="12" cy="12" r="2.3"/>',
   list: '<path d="M8 6h13M8 12h13M8 18h13"/><path d="M3 6h.01M3 12h.01M3 18h.01"/>',
+  play: '<circle cx="12" cy="12" r="9"/><path d="m10 8.5 5.5 3.5-5.5 3.5z"/>',
   music: '<path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>',
   ticket: '<path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z"/><path d="M13 5v2M13 17v2M13 11v2"/>'
 };
@@ -1932,21 +1933,34 @@ function icon(name) {
   return `<svg viewBox="0 0 24 24" aria-hidden="true">${icons[name] || icons.home}</svg>`;
 }
 
-function navMarkup(config) {
-  return config.routes.map(([route, label, iconName], index) => `
+// El catalogo de videos vive fuera de la app (raiz del sitio), pero es de lo que
+// mas se usa: va como pestaña mas en la navegacion. En la barra inferior solo
+// entra si quedan 5 pestañas o menos (admin ya tiene 5).
+function navMarkup(config, { mobile = false } = {}) {
+  const items = config.routes.map(([route, label, iconName], index) => `
     <a class="nav-item ${activeRoute === route ? 'is-active' : ''}" href="#/${escapeHtml(route)}" ${activeRoute === route ? 'aria-current="page"' : ''} data-route="${escapeHtml(route)}">
       <span class="nav-icon">${icon(iconName)}</span>
       <span>${escapeHtml(label)}</span>
       <span class="nav-index">0${index + 1}</span>
     </a>
-  `).join('');
+  `);
+  if (!mobile || config.routes.length < 5) {
+    items.push(`
+    <a class="nav-item nav-item--videos" href="../index.html">
+      <span class="nav-icon">${icon('play')}</span>
+      <span>Videos</span>
+      <span class="nav-index" aria-hidden="true">↗</span>
+    </a>
+  `);
+  }
+  return items.join('');
 }
 
 function updateShell() {
   const config = roleConfig[activeRole];
   if (!config.routes.some(([route]) => route === activeRoute)) activeRoute = 'inicio';
   elements.sideNav.innerHTML = navMarkup(config);
-  elements.bottomNav.innerHTML = navMarkup(config);
+  elements.bottomNav.innerHTML = navMarkup(config, { mobile: true });
   elements.roleSwitcher.value = activeRole;
   if (isSupabaseConnected) {
     elements.roleSwitcher.disabled = true;
@@ -2534,8 +2548,8 @@ function renderStudentHome() {
     </section>
 
     <div class="journey-actions" role="group" aria-label="Explora la academia">
+      <a class="journey-featured" href="../index.html"><span class="journey-icon">${icon('play')}</span><span><strong>Videos para practicar</strong><small>Repasa en casa los pasos de tus clases</small></span><span aria-hidden="true">→</span></a>
       <button type="button" data-go="planes"><span class="journey-icon">${icon('money')}</span><span><strong>Encuentra tu plan</strong><small>Compara opciones a tu ritmo</small></span><span aria-hidden="true">↗</span></button>
-      <a href="../index.html"><span class="journey-icon">▷</span><span><strong>Videos para practicar</strong><small>Repasa las clases y los movimientos</small></span><span aria-hidden="true">↗</span></a>
       <button type="button" class="is-coming-soon" disabled aria-disabled="true"><span class="journey-icon">${icon('ticket')}</span><span><strong>Ticket de parqueo</strong><small>Próximamente: pídelo desde la app, si aplica</small></span><span class="tag">Pronto</span></button>
     </div>
     <section class="section">

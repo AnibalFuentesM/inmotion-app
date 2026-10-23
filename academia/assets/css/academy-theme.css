@@ -4016,3 +4016,21 @@ html[data-mode="demo"] [data-login-only] { display: none !important; }
 /* Ticket de parqueo: aviso de «Próximamente» en la fila de accesos del alumno. */
 .journey-actions > .is-coming-soon { grid-column: 1 / -1; cursor: default; opacity: .7; }
 .journey-actions > .is-coming-soon:hover { border-color: var(--line); box-shadow: none; transform: none; }
+
+/* Acceso destacado al catálogo de videos: pestaña en la navegación y tarjeta
+   principal en el inicio del alumno. */
+.nav-item--videos .nav-icon { color: var(--red); }
+.journey-actions > .journey-featured {
+  grid-column: 1 / -1;
+  border-color: var(--ink);
+  background: var(--ink);
+  color: #fff;
+}
+.journey-actions > .journey-featured small { color: rgba(255, 255, 255, 0.72); }
+.journey-actions > .journey-featured .journey-icon {
+  display: grid;
+  background: var(--red);
+  color: #fff;
+}
+.journey-actions > .journey-featured > span:last-child { color: var(--red); font-size: 1.2rem; }
+.journey-actions > .journey-featured:hover { border-color: var(--red); }
