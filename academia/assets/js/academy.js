@@ -1853,9 +1853,19 @@ let activeRoute = 'inicio';
 const DEMO_MODE = document.documentElement.dataset.mode === 'demo';
 // La asistencia todavía no está activa en la app real: solo la demo la simula.
 const ATTENDANCE_ENABLED = DEMO_MODE;
+// Los pases individuales viven solo en el navegador (localStorage): en la app real no se
+// comparten entre equipos, así que solo la demo los muestra.
+const PASSES_ENABLED = DEMO_MODE;
 
 function comingSoonCard(title, detail) {
   return `<article class="surface-card coming-soon-card"><p class="eyebrow">${escapeHtml(title)}</p><h2>Próximamente</h2><p class="payment-meta">${escapeHtml(detail)}</p></article>`;
+}
+
+function passesComingSoon() {
+  return `
+    <header class="page-heading"><div><p class="eyebrow">Pases individuales</p><h1>Próximamente.</h1><p>Muy pronto podrás emitir y validar pases de prueba y clases particulares desde la app.</p></div></header>
+    ${comingSoonCard('Pases', 'Mientras tanto, los pases se manejan como siempre en recepción.')}
+  `;
 }
 
 function attendanceComingSoon() {
@@ -3184,7 +3194,7 @@ function memberCardMarkup(student) {
   const isArchived = studentLifecycleStatus(student) === 'archived';
   const badgeLabel = isSuspended ? 'Suspendido' : (isArchived ? 'Archivado' : 'Permanente');
   const badgeClass = isSuspended ? 'member-validity-badge is-suspended' : (isArchived ? 'member-validity-badge is-archived' : 'member-validity-badge');
-  const qrNote = isSuspended ? 'Carné suspendido' : (isArchived ? 'Carné inactivo' : 'QR de demostración');
+  const qrNote = isSuspended ? 'Carné suspendido' : (isArchived ? 'Carné inactivo' : (DEMO_MODE ? 'QR de demostración' : 'Escaneo · Próximamente'));
   return `
     <article class="member-card ${isSuspended ? 'is-card-suspended' : ''}">
       <div class="member-card-header">
@@ -3649,7 +3659,7 @@ function renderAdminStudents() {
 
   return `
     <header class="page-heading">
-      <div><p class="eyebrow">Base de alumnos</p><h1>Personas,<br/>no expedientes.</h1><p>Datos ficticios para validar la experiencia de gestión.</p></div>
+      <div><p class="eyebrow">Base de alumnos</p><h1>Personas,<br/>no expedientes.</h1><p>${DEMO_MODE ? 'Datos ficticios para validar la experiencia de gestión.' : 'Alumnos registrados en la academia.'}</p></div>
       <div class="heading-actions">
         <button class="button button--light" type="button" data-admin-export="students">Exportar CSV ⤓</button>
         <button class="button button--red" type="button" data-open-student>+ Nuevo alumno</button>
@@ -5124,7 +5134,7 @@ const renderers = {
   'admin:alumnos': renderAdminStudents,
   'admin:pagos': renderAdminPayments,
   'admin:asistencia': () => (ATTENDANCE_ENABLED ? renderAdminAttendance() : attendanceComingSoon()),
-  'admin:pases': renderAdminPasses,
+  'admin:pases': () => (PASSES_ENABLED ? renderAdminPasses() : passesComingSoon()),
   'guardian:inicio': renderGuardianHome,
   'guardian:carnet': renderGuardianCard
 };
@@ -6171,7 +6181,7 @@ function openProfile() {
     let meta = `Cuenta: ${authenticatedUser?.email || ''}`;
     if (activeRole === 'student') {
       const student = currentStudent();
-      meta = student ? `Carné: ${student.id} · Plan: ${student.plan}` : 'Ficha de alumno sin vincular';
+      meta = student ? `Carné: ${student.id} · Plan: ${student.plan || 'sin registrar'}` : 'Ficha de alumno sin vincular';
     } else if (activeRole === 'teacher') {
       const classes = teacherClasses();
       meta = `${classes.length} clase${classes.length === 1 ? '' : 's'} asignada${classes.length === 1 ? '' : 's'}`;
@@ -7354,6 +7364,9 @@ function handleContentClick(event) {
   const studentFilter = find('[data-student-filter]');
   if (studentFilter) return applyStudentFilter(studentFilter);
 
+  if (!PASSES_ENABLED && find('[data-open-create-pass], [data-open-validate-pass]')) {
+    return showToast('Pases · Próximamente', 'Muy pronto podrás emitir y validar pases desde la app.');
+  }
   if (find('[data-open-create-pass]')) return openCreatePassModal();
   const openVal = find('[data-open-validate-pass]');
   if (openVal) return openValidatePassModal(openVal.dataset.openValidatePass || null);

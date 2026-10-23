@@ -976,7 +976,7 @@ begin
     raise exception 'Permiso denegado: solo administración puede registrar nuevos alumnos.' using errcode = '42501';
   end if;
 
-  if exists (select 1 from public.cards where card_number = p_card_number) then
+  if exists (select 1 from public.cards c where c.card_number = p_card_number) then
     raise exception 'El número de carné % ya está asignado.', p_card_number using errcode = '23505';
   end if;
 

@@ -1,3 +1,10 @@
 Academia-ElBaileDelRobot
 Claude outputs
 .git
+# Solo se publican las dos superficies (raíz y academia/). Documentación, migraciones,
+# scripts de administración y la fuente de Apps Script no deben quedar en el sitio.
+docs
+scripts
+apps-script
+cuentas
+*.md

@@ -53,6 +53,36 @@ function getStoredAuthSession() {
   }
 }
 
+// Supabase entrega tokens que vencen en una hora. Si la app quedó abierta (o en segundo
+// plano en el teléfono) más tiempo, se renueva la sesión antes de pedir datos y, si el
+// servidor igual responde 401, se renueva y se reintenta una sola vez.
+let refreshInFlight = null;
+
+function renewSession() {
+  if (!refreshInFlight) {
+    refreshInFlight = refreshSession().finally(() => { refreshInFlight = null; });
+  }
+  return refreshInFlight;
+}
+
+async function authFetch(url, options = {}, extraHeaders = {}) {
+  const stored = getStoredAuthSession();
+  const canRenew = Boolean(currentAuthToken && stored?.refresh_token);
+  if (canRenew && stored.expires_at && stored.expires_at - Math.floor(Date.now() / 1000) < 60) {
+    await renewSession().catch(() => {});
+  }
+  let res = await fetch(url, { ...options, headers: getHeaders(extraHeaders) });
+  if (res.status === 401 && canRenew) {
+    try {
+      await renewSession();
+    } catch {
+      throw new Error('Tu sesión venció. Cierra sesión y vuelve a ingresar.');
+    }
+    res = await fetch(url, { ...options, headers: getHeaders(extraHeaders) });
+  }
+  return res;
+}
+
 /**
  * Limpia todas las memorias intermedias y cachés de usuario al cambiar de sesión
  */
@@ -78,9 +108,7 @@ export const db = {
    */
   async get(table, query = 'select=*') {
     const url = `${SUPABASE_URL}/rest/v1/${table}?${query}`;
-    const res = await fetch(url, {
-      headers: getHeaders()
-    });
+    const res = await authFetch(url);
     if (!res.ok) {
       const err = await res.text();
       console.error(`[Supabase GET Error ${res.status}] ${table}:`, err);
@@ -94,11 +122,10 @@ export const db = {
    */
   async insert(table, data) {
     const url = `${SUPABASE_URL}/rest/v1/${table}`;
-    const res = await fetch(url, {
+    const res = await authFetch(url, {
       method: 'POST',
-      headers: getHeaders({ 'Prefer': 'return=representation' }),
       body: JSON.stringify(data)
-    });
+    }, { 'Prefer': 'return=representation' });
     if (!res.ok) {
       const err = await res.text();
       console.error(`[Supabase POST Error ${res.status}] ${table}:`, err);
@@ -112,11 +139,10 @@ export const db = {
    */
   async update(table, matchQuery, data) {
     const url = `${SUPABASE_URL}/rest/v1/${table}?${matchQuery}`;
-    const res = await fetch(url, {
+    const res = await authFetch(url, {
       method: 'PATCH',
-      headers: getHeaders({ 'Prefer': 'return=representation' }),
       body: JSON.stringify(data)
-    });
+    }, { 'Prefer': 'return=representation' });
     if (!res.ok) {
       const err = await res.text();
       console.error(`[Supabase PATCH Error ${res.status}] ${table}:`, err);
@@ -130,10 +156,7 @@ export const db = {
    */
   async delete(table, matchQuery) {
     const url = `${SUPABASE_URL}/rest/v1/${table}?${matchQuery}`;
-    const res = await fetch(url, {
-      method: 'DELETE',
-      headers: getHeaders()
-    });
+    const res = await authFetch(url, { method: 'DELETE' });
     if (!res.ok) {
       const err = await res.text();
       console.error(`[Supabase DELETE Error ${res.status}] ${table}:`, err);
@@ -147,9 +170,8 @@ export const db = {
    */
   async rpc(functionName, params = {}) {
     const url = `${SUPABASE_URL}/rest/v1/rpc/${functionName}`;
-    const res = await fetch(url, {
+    const res = await authFetch(url, {
       method: 'POST',
-      headers: getHeaders(),
       body: JSON.stringify(params)
     });
     if (!res.ok) {
@@ -174,7 +196,12 @@ export const db = {
  * Consulta el perfil del usuario autenticado en la tabla public.profiles
  */
 async function fetchProfileByUserId(userId) {
-  const rows = await db.get('profiles', `user_id=eq.${userId}&select=*`);
+  // fetch directo, sin authFetch: refreshSession lo llama y se esperaría a sí mismo.
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/profiles?user_id=eq.${userId}&select=*`, {
+    headers: getHeaders()
+  });
+  if (!res.ok) throw new Error(`Error al consultar profiles: ${await res.text() || res.statusText}`);
+  const rows = await res.json();
   if (Array.isArray(rows) && rows.length > 0) {
     return rows[0];
   }
@@ -204,9 +231,8 @@ export function loginIdToEmail(loginId) {
  */
 export async function updatePassword(newPassword) {
   if (!currentAuthToken) throw new Error('No hay una sesión activa.');
-  const res = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+  const res = await authFetch(`${SUPABASE_URL}/auth/v1/user`, {
     method: 'PUT',
-    headers: getHeaders(),
     body: JSON.stringify({ password: newPassword })
   });
   if (!res.ok) {
@@ -241,9 +267,8 @@ export async function updateMyContact(fields) {
  * (set_my_classes, migración 009). Devuelve los ids de clase que quedaron activos.
  */
 export async function setMyClasses(classIds) {
-  const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/set_my_classes`, {
+  const res = await authFetch(`${SUPABASE_URL}/rest/v1/rpc/set_my_classes`, {
     method: 'POST',
-    headers: getHeaders(),
     body: JSON.stringify({ p_class_ids: classIds })
   });
   const body = await res.json().catch(() => null);

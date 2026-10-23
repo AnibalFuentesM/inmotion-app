@@ -2721,6 +2721,9 @@
 }
 
 .next-class-empty-box {
+  /* En móvil .next-class es una grilla de 2 columnas (hora | clase): sin clase, el
+     aviso ocupa todo el ancho en vez de quedar apretado en la columna de la hora. */
+  grid-column: 1 / -1;
   display: flex;
   flex-direction: column;
   gap: 10px;
