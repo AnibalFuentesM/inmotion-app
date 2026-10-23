@@ -91,6 +91,43 @@ async function api(path, { method = 'GET', body, prefer } = {}) {
   return data;
 }
 
+// La base real puede ir atrasada respecto a docs/supabase-schema.sql. Si a profiles le falta
+// una columna opcional, se quita del insert y su valor se guarda en notes para no perderlo.
+const OPTIONAL_PROFILE_COLUMNS = ['level', 'phone', 'notes'];
+const missingProfileColumns = new Set();
+
+async function insertProfile(row) {
+  for (;;) {
+    const body = { ...row };
+    const extra = [];
+    for (const col of missingProfileColumns) {
+      if (body[col]) extra.push(`${col === 'level' ? 'Nivel' : col === 'phone' ? 'Teléfono' : 'Nota'}: ${body[col]}`);
+      delete body[col];
+    }
+    if (extra.length && !missingProfileColumns.has('notes')) body.notes = [row.notes, ...extra.filter((e) => !e.startsWith('Nota'))].filter(Boolean).join(' · ');
+    try {
+      const [profile] = await api('/rest/v1/profiles', { method: 'POST', prefer: 'return=representation', body });
+      return profile;
+    } catch (err) {
+      const col = /Could not find the '(\w+)' column of 'profiles'/.exec(err.message)?.[1];
+      if (!col || !OPTIONAL_PROFILE_COLUMNS.includes(col) || missingProfileColumns.has(col)) throw err;
+      missingProfileColumns.add(col);
+      console.log(`Aviso: la tabla profiles no tiene la columna «${col}»; se guarda en notas.`);
+    }
+  }
+}
+
+// Una corrida anterior pudo dejar el usuario de Auth creado sin perfil: se reutiliza.
+async function findAuthUserByEmail(email) {
+  for (let page = 1; page < 50; page++) {
+    const data = await api(`/auth/v1/admin/users?page=${page}&per_page=1000`);
+    const users = data?.users || [];
+    const found = users.find((u) => u.email === email);
+    if (found || users.length < 1000) return found || null;
+  }
+  return null;
+}
+
 const students = parseCsv(readFileSync(inputPath, 'utf8'));
 const existingProfiles = await api('/rest/v1/profiles?select=id,user_id,phone,role');
 const takenPhones = new Set(existingProfiles.filter((p) => p.user_id).map((p) => phoneDigits(p.phone)).filter(Boolean));
@@ -116,22 +153,19 @@ for (const s of students) {
   if (!CREATE) { results.push({ ...base, carne: cardNumber, estado: 'Se crearía' }); continue; }
 
   let userId = null;
+  const email = `502${digits}@${PHONE_LOGIN_DOMAIN}`;
   try {
-    const user = await api('/auth/v1/admin/users', {
-      method: 'POST',
-      body: {
-        email: `502${digits}@${PHONE_LOGIN_DOMAIN}`,
-        password,
-        email_confirm: true,
-        user_metadata: { first_name: s.nombre, last_name: s.apellido, phone: s.telefono }
-      }
-    });
-    userId = user.id;
-    const [profile] = await api('/rest/v1/profiles', {
-      method: 'POST',
-      prefer: 'return=representation',
-      body: { user_id: userId, role: 'student', first_name: s.nombre, last_name: s.apellido || '', phone: s.telefono, level: s.nivel || null, notes: s.notas || null }
-    });
+    const userBody = { email, password, email_confirm: true, user_metadata: { first_name: s.nombre, last_name: s.apellido, phone: s.telefono } };
+    try {
+      userId = (await api('/auth/v1/admin/users', { method: 'POST', body: userBody })).id;
+    } catch (err) {
+      if (!/already (been )?registered|already exists/i.test(err.message)) throw err;
+      const existing = await findAuthUserByEmail(email);
+      if (!existing) throw err;
+      await api(`/auth/v1/admin/users/${existing.id}`, { method: 'PUT', body: { password } });
+      userId = existing.id;
+    }
+    const profile = await insertProfile({ user_id: userId, role: 'student', first_name: s.nombre, last_name: s.apellido || '', phone: s.telefono, level: s.nivel || null, notes: s.notas || null });
     await api('/rest/v1/cards', {
       method: 'POST',
       body: { student_id: profile.id, card_number: cardNumber, qr_code: cardNumber, is_active: true }
