@@ -5138,13 +5138,37 @@ function setBackgroundInert(active) {
   });
 }
 
+// En iPhone el teclado no achica la pantalla: tapa la parte de abajo, que es justo donde
+// vive la hoja del modal. Por eso la capa del modal se ajusta al área visible (visualViewport)
+// y el campo con el foco se vuelve a centrar cuando el teclado termina de abrir.
 function syncModalWithVisualViewport() {
   if (!elements.modalLayer || elements.modalLayer.classList.contains('is-hidden')) return;
   if (window.visualViewport) {
     const vv = window.visualViewport;
     const maxH = Math.max(220, Math.floor(vv.height - 16));
     elements.modal.style.setProperty('--modal-max-height', `${maxH}px`);
+    elements.modalLayer.style.top = `${Math.round(vv.offsetTop)}px`;
+    elements.modalLayer.style.height = `${Math.round(vv.height)}px`;
+    elements.modalLayer.style.bottom = 'auto';
   }
+  keepFocusedFieldVisible();
+}
+
+function keepFocusedFieldVisible() {
+  const field = document.activeElement;
+  if (!field || !elements.modal.contains(field) || !['INPUT', 'TEXTAREA', 'SELECT'].includes(field.tagName)) return;
+  const box = field.getBoundingClientRect();
+  const area = elements.modal.getBoundingClientRect();
+  if (box.top < area.top + 70 || box.bottom > area.bottom - 20) {
+    field.scrollIntoView({ block: 'center' });
+  }
+}
+
+function resetModalViewport() {
+  elements.modalLayer.style.top = '';
+  elements.modalLayer.style.height = '';
+  elements.modalLayer.style.bottom = '';
+  elements.modal.style.removeProperty('--modal-max-height');
 }
 
 function openModal({ title, eyebrow = 'Acción demo', body }) {
@@ -5188,6 +5212,7 @@ function closeModal() {
   webMcpResolver = null;
   elements.modalLayer.classList.add('is-hidden');
   elements.modalLayer.setAttribute('aria-hidden', 'true');
+  resetModalViewport();
   elements.modal.style.removeProperty('--modal-max-height');
   setBackgroundInert(false);
   document.body.classList.remove('modal-open');
@@ -7420,10 +7445,9 @@ elements.modalLayer.addEventListener('change', (event) => {
 elements.modalLayer.addEventListener('focusin', (event) => {
   const target = event.target;
   if (target && ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName)) {
-    setTimeout(() => {
-      syncModalWithVisualViewport();
-      target.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    }, 120);
+    // Dos pasadas: el teclado de iPhone tarda unos 300 ms en terminar de abrir.
+    setTimeout(syncModalWithVisualViewport, 120);
+    setTimeout(syncModalWithVisualViewport, 450);
   }
 });
 
