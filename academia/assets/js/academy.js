@@ -3578,12 +3578,12 @@ function adminPaymentRows(payments = state.payments, empty = null) {
 
     return `
     <tr data-payment-row="${escapeHtml(item.id)}">
-      <td><div class="person-cell"><span class="avatar" aria-hidden="true">${escapeHtml(initials(item.student))}</span><span><strong>${escapeHtml(item.student)}</strong><small>${escapeHtml(item.studentId)}</small></span></div></td>
-      <td>${escapeHtml(item.month)}</td>
-      <td><strong>Q ${escapeHtml(formatAmount(item.amount))}</strong></td>
-      <td>${escapeHtml(item.method)}</td>
-      <td><span class="status-pill ${item.status === 'Pagado' ? 'is-paid' : (paymentStatus(item) === 'En mora' ? 'is-mora' : 'is-due')}">${escapeHtml(paymentStatus(item))}</span></td>
-      <td>${actionMarkup}</td>
+      <td data-label="Alumno"><div class="person-cell"><span class="avatar" aria-hidden="true">${escapeHtml(initials(item.student))}</span><span><strong>${escapeHtml(item.student)}</strong><small>${escapeHtml(item.studentId)}</small></span></div></td>
+      <td data-label="Mes">${escapeHtml(item.month)}</td>
+      <td data-label="Monto"><strong>Q ${escapeHtml(formatAmount(item.amount))}</strong></td>
+      <td data-label="Método">${escapeHtml(item.method)}</td>
+      <td data-label="Estado"><span class="status-pill ${item.status === 'Pagado' ? 'is-paid' : (paymentStatus(item) === 'En mora' ? 'is-mora' : 'is-due')}">${escapeHtml(paymentStatus(item))}</span></td>
+      <td data-label="Acción">${actionMarkup}</td>
     </tr>
   `;
   }).join('');
@@ -3599,7 +3599,7 @@ function filteredAdminStudents(students = state.students, statusFilter = student
     if (statusFilter === 'active' && itemStatus !== 'active') return false;
     if (statusFilter === 'suspended' && itemStatus !== 'suspended') return false;
     if (statusFilter === 'archived' && itemStatus !== 'archived') return false;
-    if (normQuery && !`${item.name} ${item.id}`.toLowerCase().includes(normQuery)) return false;
+    if (normQuery && !`${item.name} ${item.id} ${item.phone || ''}`.toLowerCase().includes(normQuery)) return false;
     return true;
   });
 }
@@ -3615,7 +3615,9 @@ function studentRows(students = null) {
     } else if (studentSt === 'archived') {
       statusMarkup = '<span class="status-pill is-archived">Archivado</span>';
     } else {
-      const status = student.paymentStatus || studentPaymentStatus(student.id);
+      // En modo conectado el estado sale de los mismos pagos que ve la pestaña Pagos
+      // (antes una membresía activa salía «Al día» aquí y «Pendiente» allá).
+      const status = isSupabaseConnected ? (student.plan ? studentPaymentStatus(student.id) : 'Sin plan') : (student.paymentStatus || studentPaymentStatus(student.id));
       const pillClass = (status === 'Al día' || status === 'Pagado')
         ? 'is-paid'
         : (status === 'En mora')
@@ -3627,11 +3629,11 @@ function studentRows(students = null) {
     }
     return `
     <tr class="${studentSt === 'archived' ? 'is-row-archived' : (studentSt === 'suspended' ? 'is-row-suspended' : '')}">
-      <td><div class="person-cell"><span class="avatar" aria-hidden="true">${escapeHtml(initials(student.name))}</span><span><strong>${escapeHtml(student.name)}</strong><small>${escapeHtml(student.id)}${studentSt === 'suspended' ? ' · Suspendido' : (studentSt === 'archived' ? ' · Archivado' : '')}</small></span></div></td>
-      <td>${escapeHtml(planForStudent(student.id).planName)}${planReviewTag(planForStudent(student.id))}</td>
-      <td>${escapeHtml(student.phone)}</td>
-      <td>${statusMarkup}</td>
-      <td><button class="table-action" type="button" data-student-detail="${escapeHtml(student.id)}" aria-label="Ver ficha de ${escapeHtml(student.name)}">Ver ficha</button></td>
+      <td data-label="Alumno"><div class="person-cell"><span class="avatar" aria-hidden="true">${escapeHtml(initials(student.name))}</span><span><strong>${escapeHtml(student.name)}</strong><small>${escapeHtml(student.id)}${student.level && student.level !== 'Sin nivel' ? ` · ${escapeHtml(student.level)}` : ''}${studentSt === 'suspended' ? ' · Suspendido' : (studentSt === 'archived' ? ' · Archivado' : '')}</small></span></div></td>
+      <td data-label="Plan">${student.plan || !isSupabaseConnected ? `${escapeHtml(planForStudent(student.id).planName)}${planReviewTag(planForStudent(student.id))}` : '<span class="payment-meta">—</span>'}</td>
+      <td data-label="Teléfono">${escapeHtml(student.phone)}</td>
+      <td data-label="Estado">${statusMarkup}</td>
+      <td data-label="Acción"><button class="table-action" type="button" data-student-detail="${escapeHtml(student.id)}" aria-label="Ver ficha de ${escapeHtml(student.name)}">Ver ficha</button></td>
     </tr>
   `;
   }).join('');
@@ -3689,21 +3691,69 @@ function renderAttendanceAlertCards(alerts) {
   `;
 }
 
+// Clases de la semana con cuántos alumnos activos tiene inscritos cada una.
+function hasAssignedTeachers() {
+  return classData.some((item) => item.teacherId || (item.teacher && item.teacher !== 'Staff In Motion'));
+}
+
+function adminClassRows() {
+  const showTeacher = hasAssignedTeachers();
+  const classes = [...classData].sort((a, b) => (((a.weekday + 6) % 7) - ((b.weekday + 6) % 7)) || (timeValue(a.time) - timeValue(b.time)));
+  return classes.map((item) => {
+    const count = rosterFor(item.id).length;
+    const teacher = item.teacherId || (item.teacher && item.teacher !== 'Staff In Motion') ? item.teacher : 'Por asignar';
+    return `
+    <tr>
+      <td data-label="Clase"><div class="person-cell"><span class="avatar" aria-hidden="true">${escapeHtml(WEEKDAY_SHORT[item.weekday])}</span><span><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(item.time)}</small></span></div></td>
+      ${showTeacher ? `<td data-label="Maestro">${escapeHtml(teacher)}</td>` : ''}
+      <td data-label="Inscritos"><strong>${escapeHtml(count)}</strong></td>
+      <td data-label="Acción"><button class="table-action" type="button" data-class-roster="${escapeHtml(item.id)}" ${count ? '' : 'disabled'} aria-label="Ver alumnos de ${escapeHtml(item.name)}, ${escapeHtml(WEEKDAY_SHORT[item.weekday])}">Ver alumnos</button></td>
+    </tr>`;
+  }).join('');
+}
+
+function openClassRosterModal(classId) {
+  const item = classData.find((entry) => entry.id === classId);
+  if (!item) return;
+  const roster = [...rosterFor(item.id)].sort((a, b) => a.name.localeCompare(b.name, 'es'));
+  openModal({
+    title: item.name,
+    eyebrow: `${WEEKDAY_SHORT[item.weekday]} ${item.time} · ${roster.length} inscrito${roster.length === 1 ? '' : 's'}`,
+    body: roster.length
+      ? `<div class="attendance-roster">${roster.map((student) => `
+          <button class="student-check" type="button" data-student-detail="${escapeHtml(student.id)}">
+            <span class="avatar" aria-hidden="true">${escapeHtml(initials(student.name))}</span>
+            <span><strong>${escapeHtml(student.name)}</strong><small>${escapeHtml(student.id)} · ${escapeHtml(student.plan || 'Sin plan cargado')}</small></span>
+            <span>Ver ficha</span>
+          </button>`).join('')}</div>`
+      : '<div class="empty-state"><strong>Sin alumnos inscritos</strong>Nadie tiene esta clase asignada todavía.</div>'
+  });
+}
+
 function renderAdminHome() {
   const due = pendingPayments();
-  // Antes decia 50 alumnos y 6 maestros mientras la pantalla de al lado listaba
-  // 7 registros: ahora las dos cifras salen de los mismos datos.
-  const teachers = new Set(classData.map((item) => item.teacher)).size;
-  const attendanceAlerts = detectConsecutiveAbsences();
+  const withPlan = state.students.filter((item) => item.plan).length;
+  const withoutPlan = state.students.length - withPlan;
+  const attendanceAlerts = ATTENDANCE_ENABLED ? detectConsecutiveAbsences() : [];
   return `
     <section class="admin-intro">
       <div><p class="eyebrow">Administración · ${escapeHtml(shortDayLabel(TODAY))}</p><h1>La academia,<br/>en orden.</h1></div>
-      <div class="admin-intro-meta"><div><strong>${escapeHtml(state.students.length)}</strong><span>alumnos registrados</span></div><div><strong>${escapeHtml(teachers)}</strong><span>maestros en agenda</span></div></div>
+      <div class="admin-intro-meta"><div><strong>${escapeHtml(state.students.length)}</strong><span>alumnos registrados</span></div><div><strong>${escapeHtml(withPlan)}</strong><span>con plan cargado</span></div></div>
     </section>
+    ${withoutPlan > 0 ? `
     <section class="section">
-      <div class="section-head"><div><h2>Acciones de hoy</h2><p>Operaciones frecuentes del equipo administrativo.</p></div></div>
-      <div class="filter-row" role="group" aria-label="Acciones administrativas"><button class="button button--red" type="button" data-open-payment>+ Registrar pago</button><button class="button button--light" type="button" data-open-student>+ Nuevo alumno</button><button class="button button--light" type="button" data-go="asistencia">Revisar asistencia</button></div>
+      <article class="surface-card admin-notice">
+        <p class="eyebrow">Pendiente</p>
+        <h2>${withoutPlan === 1 ? 'Falta el plan de 1 alumno' : `Faltan los planes de ${escapeHtml(withoutPlan)} alumnos`}</h2>
+        <p class="payment-meta">Mientras un alumno no tenga su plan cargado no se puede registrar su pago en la app ni elegir sus clases. Cuando completen la hoja de datos de la academia, los planes se cargan de una vez.</p>
+        <div class="form-actions"><button class="button button--light button--small" type="button" data-go="alumnos">Ver alumnos</button></div>
+      </article>
+    </section>` : ''}
+    <section class="section">
+      <div class="section-head"><div><h2>Acciones rápidas</h2><p>Lo que más se usa en recepción.</p></div></div>
+      <div class="filter-row" role="group" aria-label="Acciones administrativas"><button class="button button--red" type="button" data-open-payment>+ Registrar pago</button><button class="button button--light" type="button" data-open-student>+ Nuevo alumno</button>${ATTENDANCE_ENABLED ? '<button class="button button--light" type="button" data-go="asistencia">Revisar asistencia</button>' : ''}</div>
     </section>
+    ${ATTENDANCE_ENABLED ? `
     <section class="section">
       <div class="section-head">
         <div>
@@ -3712,10 +3762,14 @@ function renderAdminHome() {
         </div>
       </div>
       ${renderAttendanceAlertCards(attendanceAlerts)}
-    </section>
+    </section>` : ''}
     <section class="section">
       <div class="section-head"><div><h2>Pagos por resolver</h2><p>${due.length === 1 ? '1 registro necesita' : `${due.length} registros necesitan`} seguimiento.</p></div><button class="text-button" type="button" data-go="pagos">Ver todos →</button></div>
-      <div class="table-wrap"><table class="data-table"><thead><tr><th scope="col">Alumno</th><th scope="col">Mes</th><th scope="col">Monto</th><th scope="col">Método</th><th scope="col">Estado</th><th scope="col">Acción</th></tr></thead><tbody>${adminPaymentRows(due, { title: 'Nada por resolver', detail: 'No hay mensualidades pendientes ni en mora en los datos demo.' })}</tbody></table></div>
+      <div class="table-wrap table-wrap--stack"><table class="data-table"><thead><tr><th scope="col">Alumno</th><th scope="col">Mes</th><th scope="col">Monto</th><th scope="col">Método</th><th scope="col">Estado</th><th scope="col">Acción</th></tr></thead><tbody>${adminPaymentRows(due, { title: 'Nada por resolver', detail: DEMO_MODE ? 'No hay mensualidades pendientes ni en mora en los datos demo.' : 'No hay mensualidades pendientes ni en mora.' })}</tbody></table></div>
+    </section>
+    <section class="section">
+      <div class="section-head"><div><h2>Clases de la semana</h2><p>Cuántos alumnos tiene inscritos cada clase.${hasAssignedTeachers() ? '' : ' Los maestros de cada clase están por asignar.'}</p></div></div>
+      <div class="table-wrap table-wrap--stack table-wrap--classes"><table class="data-table"><thead><tr><th scope="col">Clase</th>${hasAssignedTeachers() ? '<th scope="col">Maestro</th>' : ''}<th scope="col">Inscritos</th><th scope="col">Acción</th></tr></thead><tbody>${adminClassRows()}</tbody></table></div>
     </section>
   `;
 }
@@ -3751,13 +3805,13 @@ function renderAdminStudents() {
     <div class="section-head">
       <label class="search-box">
         <span aria-hidden="true">⌕</span>
-        <span class="sr-only">Buscar alumno por nombre o carnet</span>
-        <input id="studentSearch" type="search" placeholder="Buscar por nombre o carnet" autocomplete="off" value="${escapeHtml(studentSearchQuery)}" />
+        <span class="sr-only">Buscar alumno por nombre, carné o teléfono</span>
+        <input id="studentSearch" type="search" placeholder="Buscar alumno" autocomplete="off" value="${escapeHtml(studentSearchQuery)}" />
       </label>
       <span class="tag" id="studentCountTag">${escapeHtml(state.students.length)} registros totales</span>
     </div>
     <p class="payment-meta" id="studentSearchStatus" role="status">${escapeHtml(filterCountText)}</p>
-    <div class="table-wrap">
+    <div class="table-wrap table-wrap--stack">
       <table class="data-table">
         <thead>
           <tr>
@@ -3786,11 +3840,11 @@ function renderAdminPayments() {
       </div>
     </header>
     <section class="split-grid" style="margin-bottom:28px">
-      <article class="surface-card"><p class="eyebrow">Registrado en ${escapeHtml(monthName(TODAY))}</p><p class="payment-amount">Q ${escapeHtml(paid.toLocaleString('es-GT'))}</p><p class="payment-meta">Monto visible en esta demo local.</p></article>
-      <article class="surface-card"><p class="eyebrow">Pendiente / mora</p><p class="payment-amount">Q ${escapeHtml(due.toLocaleString('es-GT'))}</p><p class="payment-meta">Requiere seguimiento administrativo.</p></article>
+      <article class="surface-card"><p class="eyebrow">Registrado en ${escapeHtml(monthName(TODAY))}</p><p class="payment-amount">Q ${escapeHtml(paid.toLocaleString('es-GT'))}</p><p class="payment-meta">${DEMO_MODE ? 'Monto visible en esta demo local.' : 'Pagos registrados en la app este mes.'}</p></article>
+      <article class="surface-card"><p class="eyebrow">Pendiente / mora</p><p class="payment-amount">Q ${escapeHtml(due.toLocaleString('es-GT'))}</p><p class="payment-meta">Mensualidades de planes cargados sin pago registrado.</p></article>
     </section>
     <div class="filter-row" id="paymentFilters" role="group" aria-label="Filtrar pagos por estado"><button class="filter-chip is-active" type="button" aria-pressed="true" data-payment-filter="all">Todos</button><button class="filter-chip" type="button" aria-pressed="false" data-payment-filter="Pagado">Pagados</button><button class="filter-chip" type="button" aria-pressed="false" data-payment-filter="Pendiente">Pendientes</button><button class="filter-chip" type="button" aria-pressed="false" data-payment-filter="En mora">En mora</button></div>
-    <div class="table-wrap"><table class="data-table"><thead><tr><th scope="col">Alumno</th><th scope="col">Mes</th><th scope="col">Monto</th><th scope="col">Método</th><th scope="col">Estado</th><th scope="col">Acción</th></tr></thead><tbody id="paymentTableBody">${adminPaymentRows()}</tbody></table></div>
+    <div class="table-wrap table-wrap--stack"><table class="data-table"><thead><tr><th scope="col">Alumno</th><th scope="col">Mes</th><th scope="col">Monto</th><th scope="col">Método</th><th scope="col">Estado</th><th scope="col">Acción</th></tr></thead><tbody id="paymentTableBody">${adminPaymentRows()}</tbody></table></div>
   `;
 }
 
@@ -5459,7 +5513,7 @@ function openPaymentModal(studentId = null, period = monthKey(TODAY)) {
     body: `
       <form id="paymentForm">
         <div class="form-grid">
-          <label class="field field--wide"><span>Alumno</span><select name="studentId" required>${state.students.map((item) => `<option value="${escapeHtml(item.id)}" ${item.id === student.id ? 'selected' : ''}>${escapeHtml(item.name)} · ${escapeHtml(item.id)}</option>`).join('')}</select></label>
+          <label class="field field--wide"><span>Alumno</span><select name="studentId" required>${[...state.students].sort((a, b) => a.name.localeCompare(b.name, 'es')).map((item) => `<option value="${escapeHtml(item.id)}" ${item.id === student.id ? 'selected' : ''}>${escapeHtml(item.name)} · ${escapeHtml(item.id)}</option>`).join('')}</select></label>
           <label class="field"><span>Monto (Q) · liquidación completa</span><input name="amount" type="number" min="0.01" step="0.01" required readonly /></label>
           <label class="field"><span>Método</span><select name="method" required>${PAYMENT_METHODS.map((value) => `<option>${escapeHtml(value)}</option>`).join('')}</select></label>
           <label class="field"><span>Mes aplicado</span><select name="period">${periods.map((value) => `<option value="${escapeHtml(value)}" ${value === period ? 'selected' : ''}>${escapeHtml(monthLabel(parseDayKey(`${value}-01`)))}</option>`).join('')}</select></label>
@@ -5492,17 +5546,19 @@ function updatePaymentForm() {
     ? 'Este mes ya está pagado. El registro existente se conserva y no se puede reemplazar desde este formulario.'
     : required.amount === null
     ? (required.source === 'sin_cuota'
-        ? `No existe una cuota registrada para el período ${period}. No se puede registrar el pago sin información suficiente de la cuota correspondiente.`
+        ? (isSupabaseConnected && !studentById(studentId)?.plan
+            ? 'Este alumno todavía no tiene su plan cargado, así que no hay mensualidad que registrar. Se habilita en cuanto se cargue su plan.'
+            : `Este alumno no tiene mensualidad registrada para ${monthLabel(parseDayKey(`${period}-01`))}. Elige otro mes o revisa su plan.`)
         : `El plan guardado de este alumno (${required.plan.planName}) no figura en el catálogo de la demo. No se le asigna una cuota: corrige el plan del alumno antes de registrar el pago.`)
     : existing
-      ? `Se registrará la liquidación completa de la mensualidad del período ${period}: Q ${formatAmount(required.amount)}.`
-      : `Cuota correspondiente al período ${period}: Q ${formatAmount(required.amount)}. No cancela deudas de otros meses.`;
+      ? `Se registrará la mensualidad completa de ${monthLabel(parseDayKey(`${period}-01`))}: Q ${formatAmount(required.amount)}.`
+      : `Mensualidad de ${monthLabel(parseDayKey(`${period}-01`))}: Q ${formatAmount(required.amount)}. No cancela deudas de otros meses.`;
 }
 
 function openNewStudentModal() {
   openModal({
     title: 'Nuevo alumno',
-    eyebrow: 'Administración · Datos demo',
+    eyebrow: DEMO_MODE ? 'Administración · Datos demo' : 'Administración',
     body: `
       <form id="studentForm">
         <div class="form-grid">
@@ -5511,7 +5567,7 @@ function openNewStudentModal() {
           <label class="field"><span>Teléfono</span><input name="phone" inputmode="tel" placeholder="5555-0000" /></label>
           <label class="field field--wide"><span>Notas internas</span><textarea name="notes" placeholder="Opcional"></textarea></label>
         </div>
-        <p class="modal-note">Los datos se guardan únicamente en este navegador para demostrar el flujo.</p>
+        <p class="modal-note">${DEMO_MODE ? 'Los datos se guardan únicamente en este navegador para demostrar el flujo.' : 'Se le asigna su carné al guardar. Su usuario para entrar a la app se crea aparte.'}</p>
         <p class="payment-meta" id="studentFormMessage" role="status"></p>
         <div class="form-actions"><button class="button button--light" type="button" data-close-modal>Cancelar</button><button class="button button--red" type="submit">Crear alumno</button></div>
       </form>
@@ -5660,6 +5716,30 @@ function openReceipt(paymentId) {
   });
 }
 
+// Datos de contacto de la ficha. Correo, cumpleaños y emergencia los llena el
+// alumno en «Mis datos»; mientras no lo haga se muestra como pendiente.
+function studentDetailLines(student) {
+  const pending = 'Sin registrar';
+  let birth = pending;
+  if (student.birthDate) {
+    try {
+      birth = new Intl.DateTimeFormat('es-GT', { day: 'numeric', month: 'long', year: 'numeric' }).format(parseDayKey(student.birthDate));
+    } catch {
+      birth = student.birthDate;
+    }
+  }
+  const emergency = [student.emergencyName, student.emergencyPhone].filter(Boolean).join(' · ') || pending;
+  const lines = [
+    ['Teléfono', student.phone || pending],
+    ['Nivel', student.level && student.level !== 'Sin nivel' ? student.level : pending],
+    ['Estado de pago', isSupabaseConnected && !student.plan ? 'Sin plan cargado' : studentPaymentStatus(student.id)]
+  ];
+  if (isSupabaseConnected) {
+    lines.push(['Correo', student.email || pending], ['Cumpleaños', birth], ['Contacto de emergencia', emergency]);
+  }
+  return lines;
+}
+
 function openStudentDetail(studentId) {
   const student = state.students.find((item) => item.id === studentId);
   if (!student) return;
@@ -5736,9 +5816,9 @@ function openStudentDetail(studentId) {
         </div>
         ${statusBannerMarkup}
         <p class="payment-meta" style="margin-top:16px">
-          Teléfono · ${escapeHtml(student.phone || 'Sin registrar')}<br/>
-          Estado de pago · ${escapeHtml(studentPaymentStatus(student.id))}
+          ${studentDetailLines(student).map(([label, value]) => `${escapeHtml(label)} · ${escapeHtml(value)}`).join('<br/>')}
         </p>
+        ${student.notes ? `<p class="payment-meta" style="margin-top:10px">Notas internas · ${escapeHtml(student.notes)}</p>` : ''}
       </article>
 
       <article class="surface-card" style="margin-top:16px">
@@ -5760,7 +5840,7 @@ function openStudentDetail(studentId) {
         </div>
       </article>` : ''}
 
-      <article class="surface-card" style="margin-top:16px">
+      ${isSupabaseConnected ? '' : `<article class="surface-card" style="margin-top:16px">
         <div class="section-head" style="margin-bottom:0">
           <div>
             <p class="eyebrow">Gestión de ficha</p>
@@ -5773,9 +5853,9 @@ function openStudentDetail(studentId) {
             </div>
           </details>
         </div>
-      </article>
+      </article>`}
 
-      <p class="modal-note" style="margin-top:16px">Ficha demo sin información sensible real.</p>
+      ${DEMO_MODE ? '<p class="modal-note" style="margin-top:16px">Ficha demo sin información sensible real.</p>' : ''}
     `
   });
 }
@@ -6041,7 +6121,7 @@ function openStudentClassesModal(studentId) {
     eyebrow: `Inscripciones · ${student.id}`,
     body: `
       <form id="enrollmentForm" data-student-id="${escapeHtml(student.id)}">
-        <p class="modal-note">Marca las clases en las que queda inscrito. Se guarda en este navegador, no reserva sesiones ni crea lista de espera y no modifica pagos.</p>
+        <p class="modal-note">Marca las clases en las que queda inscrito. ${DEMO_MODE ? 'Se guarda en este navegador, no' : 'No'} reserva sesiones ni crea lista de espera y no modifica pagos.</p>
         <div class="attendance-roster" role="group" aria-label="Clases de la semana">
           ${scheduledClasses().map((item) => {
             const isOn = selected.includes(item.id);
@@ -6054,7 +6134,7 @@ function openStudentClassesModal(studentId) {
           </label>`;
           }).join('')}
         </div>
-        <p class="modal-note">Los cupos que muestra el calendario son cifras de referencia de la demo (una academia de 50 alumnos): no se calculan con estas inscripciones y no representan disponibilidad real.</p>
+        ${DEMO_MODE ? '<p class="modal-note">Los cupos que muestra el calendario son cifras de referencia de la demo (una academia de 50 alumnos): no se calculan con estas inscripciones y no representan disponibilidad real.</p>' : ''}
         <p class="payment-meta" id="enrollmentFormMessage" role="status"></p>
         <div class="form-actions"><button class="button button--light" type="button" data-close-modal>Cancelar</button><button class="button button--red" type="submit">Guardar inscripciones</button></div>
       </form>
@@ -6069,7 +6149,7 @@ async function handleEnrollmentSubmit(event) {
   const submitBtn = form.querySelector('button[type="submit"]');
   const student = studentById(form.dataset.studentId);
   if (!student) {
-    if (message) message.textContent = 'El alumno ya no existe en esta demo. Cierra y vuelve a abrir la ficha.';
+    if (message) message.textContent = (DEMO_MODE ? 'El alumno ya no existe en esta demo. Cierra y vuelve a abrir la ficha.' : 'No se encontró al alumno. Cierra y vuelve a abrir la ficha.');
     return;
   }
   const knownClassIds = classData.map((item) => item.id);
@@ -6267,7 +6347,10 @@ function openProfile() {
     const roleLabels = { student: 'Alumno', teacher: 'Maestro', admin: 'Administración', guardian: 'Encargado' };
     const fullName = `${authenticatedProfile.first_name || ''} ${authenticatedProfile.last_name || ''}`.trim() || authenticatedUser?.email || 'Usuario';
     const roleTitle = roleLabels[authenticatedProfile.role] || activeRole;
-    let meta = `Cuenta: ${authenticatedUser?.email || ''}`;
+    const loginEmail = authenticatedUser?.email || '';
+    let meta = loginEmail.endsWith('@tel.inmotion.invalid')
+      ? `Ingresas con tu teléfono ${authenticatedProfile.phone || loginEmail.slice(3, 7) + '-' + loginEmail.slice(7, 11)}`
+      : `Cuenta: ${loginEmail}`;
     if (activeRole === 'student') {
       const student = currentStudent();
       meta = student ? `Carné: ${student.id} · Plan: ${student.plan || 'sin registrar'}` : 'Ficha de alumno sin vincular';
@@ -6307,7 +6390,7 @@ function openProfile() {
             <span>Teléfono de emergencia</span>
             <input class="input" type="tel" name="emergency_contact_phone" autocomplete="off" value="${escapeHtml(authenticatedProfile.emergency_contact_phone || '')}" placeholder="5555-5555" />
           </label>
-          <p class="payment-meta">Tu nombre y tu teléfono de ingreso los cambia la academia. Si hay un error, avisa en recepción.</p>
+          <p class="payment-meta">${activeRole === 'student' || activeRole === 'guardian' ? 'Tu nombre y tu teléfono de ingreso los cambia la academia. Si hay un error, avisa en recepción.' : 'Tu nombre y tu teléfono de ingreso se cambian desde la base de la academia.'}</p>
           <p class="payment-meta" id="myContactMessage" role="status"></p>
           <div class="form-actions">
             <button class="button button--light" type="submit">Guardar mis datos</button>
@@ -7443,6 +7526,8 @@ function handleContentClick(event) {
   if (receipt) return openReceipt(receipt.dataset.receipt);
   const studentDetail = find('[data-student-detail]');
   if (studentDetail) return openStudentDetail(studentDetail.dataset.studentDetail);
+  const classRoster = find('[data-class-roster]');
+  if (classRoster) return openClassRosterModal(classRoster.dataset.classRoster);
 
   const childCarnet = find('[data-child-carnet]');
   if (childCarnet) {

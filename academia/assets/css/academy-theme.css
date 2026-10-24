@@ -4063,3 +4063,63 @@ html[data-mode="demo"] [data-login-only] { display: none !important; }
 }
 .journey-actions > .journey-featured > span:last-child { color: var(--red); font-size: 1.2rem; }
 .journey-actions > .journey-featured:hover { border-color: var(--red); }
+
+/* Fechas: longDate() ya pone la mayúscula inicial; capitalize dejaba «24 De Octubre». */
+.topbar-date,
+.student-welcome > div > p:last-child { text-transform: none; }
+
+/* Panel de administración: aviso de datos pendientes y lista de alumnos de una clase. */
+.admin-notice { border-color: var(--red); }
+.admin-notice h2 { margin: 4px 0 8px; font-size: 1.15rem; }
+button.student-check { grid-template-columns: 42px 1fr auto; width: 100%; margin-bottom: 8px; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+button.student-check > span:last-child { color: var(--red); font-size: .74rem; font-weight: 600; }
+
+/* Tablas de administración en el teléfono: cada fila pasa a ser una tarjeta para que
+   la acción (Ver ficha, Registrar) no quede escondida a la derecha de la tabla. */
+@media (max-width: 640px) {
+  .table-wrap--stack { overflow: visible; border: 0; background: transparent; box-shadow: none; }
+  .table-wrap--stack .data-table { min-width: 0; }
+  .table-wrap--stack .data-table thead { display: none; }
+  .table-wrap--stack .data-table,
+  .table-wrap--stack .data-table tbody,
+  .table-wrap--stack .data-table tr,
+  .table-wrap--stack .data-table td { display: block; width: 100%; }
+  .table-wrap--stack .data-table tr {
+    margin-bottom: 10px;
+    padding: 12px 16px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    background: var(--white);
+  }
+  .table-wrap--stack .data-table td {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    padding: 6px 0;
+    border: 0;
+    text-align: right;
+  }
+  .table-wrap--stack .data-table td[data-label]::before {
+    content: attr(data-label);
+    color: var(--muted);
+    font-size: .65rem;
+    font-weight: 700;
+    letter-spacing: .09em;
+    text-transform: uppercase;
+    text-align: left;
+  }
+  .table-wrap--stack .data-table td[data-label="Alumno"]::before,
+  .table-wrap--stack .data-table td[data-label="Clase"]::before,
+  .table-wrap--stack .data-table td[data-label="Acción"]::before { content: none; }
+  .table-wrap--stack .data-table td[data-label="Alumno"],
+  .table-wrap--stack .data-table td[data-label="Clase"] { text-align: left; padding-bottom: 10px; }
+  /* Clases: una fila compacta (clase · inscritos · botón) en lugar de una tarjeta alta. */
+  .table-wrap--classes .data-table tr { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 4px 12px; padding: 10px 14px; }
+  .table-wrap--classes .data-table td { padding: 0; }
+  .table-wrap--classes .data-table td[data-label="Clase"] { grid-column: 1 / -1; padding-bottom: 4px; }
+  .table-wrap--stack .data-table td[data-label="Acción"] { justify-content: flex-end; flex-wrap: wrap; padding-top: 10px; }
+  .table-wrap--stack .table-actions-cell { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+  .table-wrap--stack .data-table td[colspan] { display: block; text-align: center; }
+  .table-wrap--stack .data-table tbody tr:hover td { background: transparent; }
+}

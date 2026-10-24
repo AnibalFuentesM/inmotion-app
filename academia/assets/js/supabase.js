@@ -547,6 +547,10 @@ export async function fetchRemoteStudents() {
       level: p.level || 'Sin nivel',
       classIds: enrollmentsMap.get(c.student_id) || [],
       notes: p.notes || '',
+      email: p.email || '',
+      birthDate: p.birth_date || null,
+      emergencyName: p.emergency_contact_name || '',
+      emergencyPhone: p.emergency_contact_phone || '',
       guardianId: p.guardian_id ? (profileUuidToCard.get(p.guardian_id) || p.guardian_id) : null,
       rawGuardianUuid: p.guardian_id || null
     });
