@@ -18,13 +18,17 @@ import {
   syncRemoteEnrollments,
   syncSessionAttendances,
   updateMyContact,
-  setMyClasses
+  setMyClasses,
+  mustChangePassword,
+  setReadOnlyPreview
 } from './supabase.js';
 
 let isSupabaseConnected = false;
 let supabaseSyncError = null;
 let authenticatedUser = null;
 let authenticatedProfile = null;
+// Administración puede mirar la app como la ve un alumno real (solo lectura).
+let studentPreviewId = null;
 const pendingLocalStudentEdits = new Set();
 
 const STORAGE_KEY = 'inmotion-academy-demo-v1';
@@ -569,6 +573,7 @@ function studentById(studentId) {
 }
 
 function currentStudent() {
+  if (studentPreviewId) return studentById(studentPreviewId);
   if (isSupabaseConnected) {
     if (!authenticatedProfile && !authenticatedUser) return null;
     return state.students.find((s) =>
@@ -1990,8 +1995,15 @@ function updateShell() {
     elements.roleSwitcher.removeAttribute('aria-disabled');
     elements.roleSwitcher.title = 'Cambiar rol en modo demostración';
   }
-  elements.kicker.textContent = config.label;
-  const userInitials = (isSupabaseConnected && authenticatedProfile)
+  elements.kicker.textContent = studentPreviewId ? 'Vista de alumno' : config.label;
+  const previewLink = document.querySelector('#studentPreviewLink');
+  if (previewLink) {
+    previewLink.hidden = !(isSupabaseConnected && (activeRole === 'admin' || studentPreviewId));
+    previewLink.innerHTML = studentPreviewId ? 'Volver a administración <span>↩</span>' : 'Ver como alumno <span>◐</span>';
+  }
+  const userInitials = studentPreviewId
+    ? (initials(currentStudent()?.name || '') || config.initials)
+    : (isSupabaseConnected && authenticatedProfile)
     ? (initials(`${authenticatedProfile.first_name || ''} ${authenticatedProfile.last_name || ''}`) || config.initials)
     : config.initials;
   elements.initials.textContent = userInitials;
@@ -2006,6 +2018,55 @@ function updateShell() {
       elements.demoBadge.innerHTML = '<i aria-hidden="true"></i> Modo demostración';
     }
   }
+}
+
+function openStudentPreviewPicker() {
+  const students = state.students
+    .filter((s) => studentLifecycleStatus(s) !== 'archived')
+    .sort((a, b) => a.name.localeCompare(b.name, 'es'));
+  if (!students.length) return showToast('Sin alumnos', 'Todavía no hay alumnos cargados para ver su portal.');
+  openModal({
+    title: 'Ver como alumno',
+    eyebrow: 'Administración',
+    body: `
+      <form id="studentPreviewForm" class="modal-form">
+        <p class="modal-note">Elige un alumno y verás su portal tal como él lo ve: sus clases, su plan y su carné. Es solo para mirar; nada de lo que toques se guarda.</p>
+        <label class="field">
+          <span>Alumno</span>
+          <select class="input" name="student">${students.map((s) => `<option value="${escapeHtml(s.id)}">${escapeHtml(s.name)}</option>`).join('')}</select>
+        </label>
+        <div class="form-actions">
+          <button class="button button--light" type="button" data-close-modal>Cancelar</button>
+          <button class="button button--red" type="submit">Ver su portal</button>
+        </div>
+      </form>
+    `
+  });
+  document.querySelector('#studentPreviewForm')?.addEventListener('submit', (event) => {
+    event.preventDefault();
+    startStudentPreview(event.currentTarget.student.value);
+  });
+}
+
+function startStudentPreview(studentId) {
+  if (activeRole !== 'admin' || !studentById(studentId)) return;
+  studentPreviewId = studentId;
+  setReadOnlyPreview(true);
+  closeModal();
+  activeRole = 'student';
+  activeRoute = 'inicio';
+  history.replaceState(null, '', '#/inicio');
+  renderAndFocus();
+}
+
+function endStudentPreview(route = 'alumnos') {
+  if (!studentPreviewId) return;
+  studentPreviewId = null;
+  setReadOnlyPreview(false);
+  activeRole = 'admin';
+  activeRoute = route;
+  history.replaceState(null, '', `#/${route}`);
+  renderAndFocus();
 }
 
 function enterDemo(role, route = 'inicio') {
@@ -2059,7 +2120,14 @@ function renderApp() {
       <button class="button button--red button--small" type="button" id="retrySupabaseSync">Reintentar conexión</button>
     </div>
   ` : '';
-  elements.content.innerHTML = `<div class="page-enter">${errorBanner}${renderer()}</div>`;
+  const previewStudent = studentPreviewId ? currentStudent() : null;
+  const previewBanner = previewStudent ? `
+    <div class="preview-banner" role="status">
+      <span>Estás viendo la app como la ve <strong>${escapeHtml(previewStudent.name)}</strong>. Puedes recorrerla; nada de lo que toques aquí se guarda.</span>
+      <button class="button button--light button--small" type="button" data-end-preview>Volver a administración</button>
+    </div>
+  ` : '';
+  elements.content.innerHTML = `<div class="page-enter">${previewBanner}${errorBanner}${renderer()}</div>`;
   document.querySelector('#retrySupabaseSync')?.addEventListener('click', async () => {
     const btn = document.querySelector('#retrySupabaseSync');
     if (btn) {
@@ -2518,7 +2586,7 @@ function renderStudentHome() {
       </div>
       <span class="student-welcome-mark" aria-hidden="true">IM</span>
     </header>
-    ${isSupabaseConnected && authenticatedProfile && !authenticatedProfile.email ? `
+    ${isSupabaseConnected && !studentPreviewId && authenticatedProfile && !authenticatedProfile.email ? `
     <section class="section">
       <article class="surface-card">
         <p class="eyebrow">Completa tus datos</p>
@@ -5683,6 +5751,15 @@ function openStudentDetail(studentId) {
         </div>
       </article>
 
+      ${isSupabaseConnected ? `
+      <article class="surface-card" style="margin-top:16px">
+        <p class="eyebrow">Su portal</p>
+        <p class="payment-meta">Mira la app tal como la ve ${escapeHtml(student.name.split(' ')[0])}. Es solo para mirar; nada se guarda.</p>
+        <div class="form-actions" style="margin-top:12px">
+          <button class="button button--light button--small" type="button" data-preview-student="${escapeHtml(student.id)}">Ver como este alumno</button>
+        </div>
+      </article>` : ''}
+
       <article class="surface-card" style="margin-top:16px">
         <div class="section-head" style="margin-bottom:0">
           <div>
@@ -6171,7 +6248,7 @@ async function handleChangePassword(event) {
   submitBtn.disabled = true;
   message.textContent = '';
   try {
-    await updatePassword(password);
+    authenticatedUser = await updatePassword(password) || authenticatedUser;
     form.reset();
     message.style.color = '';
     message.textContent = 'Listo. Usa tu nueva contraseña la próxima vez que ingreses.';
@@ -6183,6 +6260,9 @@ async function handleChangePassword(event) {
 }
 
 function openProfile() {
+  if (studentPreviewId) {
+    return showToast('Vista de alumno', 'Aquí el alumno ve y cambia sus datos y su contraseña. En la vista previa no se abre para no mezclarlo con tu cuenta.');
+  }
   if (isSupabaseConnected && authenticatedProfile) {
     const roleLabels = { student: 'Alumno', teacher: 'Maestro', admin: 'Administración', guardian: 'Encargado' };
     const fullName = `${authenticatedProfile.first_name || ''} ${authenticatedProfile.last_name || ''}`.trim() || authenticatedUser?.email || 'Usuario';
@@ -6477,6 +6557,8 @@ function handleModalClick(event) {
   if (openMusicFromModal) {
     return openMusicSuggestionModal(openMusicFromModal.dataset.openMusicModal || null);
   }
+  const previewStudentBtn = event.target.closest('[data-preview-student]');
+  if (previewStudentBtn) return startStudentPreview(previewStudentBtn.dataset.previewStudent);
   const studentClasses = event.target.closest('[data-student-classes]');
   if (studentClasses) return openStudentClassesModal(studentClasses.dataset.studentClasses);
   if (event.target.closest('[data-print-pass]')) {
@@ -7205,6 +7287,13 @@ function handleContentClick(event) {
   TODAY = new Date();
   const find = (selector) => event.target.closest(selector);
 
+  if (find('[data-end-preview]')) return endStudentPreview();
+  const previewBtn = find('[data-preview-student]');
+  if (previewBtn) return startStudentPreview(previewBtn.dataset.previewStudent);
+  if (studentPreviewId && find('[data-open-my-data], [data-open-scan], [data-student-payment], [data-register-for], [data-open-payment], [data-open-music-modal], [data-toggle-music-status], [data-toggle-music-like]')) {
+    return showToast('Vista de alumno', 'Aquí el alumno podría usar este botón. En la vista previa no se abre para no tocar datos reales.');
+  }
+
   if (find('[data-open-my-classes]')) return openMyClassesModal();
   if (find('[data-open-my-data]')) return openProfile();
 
@@ -7496,6 +7585,11 @@ document.querySelector('#accountLink')?.addEventListener('click', () => {
   setMenuOpen(false);
   openProfile();
 });
+document.querySelector('#studentPreviewLink')?.addEventListener('click', () => {
+  setMenuOpen(false);
+  if (studentPreviewId) return endStudentPreview();
+  openStudentPreviewPicker();
+});
 
 elements.roleSwitcher.addEventListener('change', (event) => {
   if (isSupabaseConnected) {
@@ -7583,6 +7677,9 @@ if (recoveryReport) {
 }
 
 async function handleSignOut() {
+  studentPreviewId = null;
+  setReadOnlyPreview(false);
+  hideNewPasswordStep();
   await signOut();
   clearCurrentSessionState();
   isSupabaseConnected = false;
@@ -7654,6 +7751,10 @@ async function handleAccessLogin(event) {
     const res = await signInWithPassword(email, password);
     await applyAuthenticatedSession(res);
     form.reset();
+    if (mustChangePassword(res.user, res.profile)) {
+      showNewPasswordStep(res.profile?.first_name, password);
+      return;
+    }
     enterDemo(activeRole, 'inicio');
     showToast('Sesión iniciada', `Hola, ${res.profile?.first_name || loginId}.`);
   } catch (err) {
@@ -7666,6 +7767,69 @@ async function handleAccessLogin(event) {
 }
 
 document.querySelector('#accessLoginForm')?.addEventListener('submit', handleAccessLogin);
+
+// Primer ingreso: la contraseña que llegó por WhatsApp sirve una sola vez para entrar
+// y la persona pone una propia antes de ver la app (mustChangePassword en supabase.js).
+let initialPassword = '';
+
+function showNewPasswordStep(firstName, typedPassword = '') {
+  initialPassword = typedPassword;
+  const form = document.querySelector('#accessNewPasswordForm');
+  if (!form) return enterDemo(activeRole, 'inicio');
+  document.querySelector('#accessLoginForm').hidden = true;
+  document.querySelectorAll('[data-first-login-hide]').forEach((el) => { el.hidden = true; });
+  document.querySelector('#accessNewPasswordGreeting').textContent = firstName ? `Hola, ${firstName}.` : 'Hola.';
+  form.hidden = false;
+  elements.access.classList.remove('is-hidden');
+  elements.app.classList.add('is-hidden');
+  form.password.focus();
+}
+
+function hideNewPasswordStep() {
+  initialPassword = '';
+  const form = document.querySelector('#accessNewPasswordForm');
+  if (!form || form.hidden) return;
+  form.reset();
+  form.hidden = true;
+  document.querySelector('#accessNewPasswordError').textContent = '';
+  document.querySelector('#accessLoginForm').hidden = false;
+  document.querySelectorAll('[data-first-login-hide]').forEach((el) => { el.hidden = false; });
+}
+
+async function handleNewPassword(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const errEl = document.querySelector('#accessNewPasswordError');
+  const submitBtn = document.querySelector('#accessNewPasswordSubmit');
+  const password = String(form.password.value || '');
+  if (password.length < 8) {
+    errEl.textContent = 'Usa al menos 8 caracteres.';
+    return form.password.focus();
+  }
+  if (initialPassword && password === initialPassword) {
+    errEl.textContent = 'Escribe una contraseña distinta a la que te enviamos.';
+    return form.password.focus();
+  }
+  if (password !== form.confirm.value) {
+    errEl.textContent = 'Las dos contraseñas no coinciden.';
+    return form.confirm.focus();
+  }
+  errEl.textContent = '';
+  submitBtn.disabled = true;
+  try {
+    authenticatedUser = await updatePassword(password) || authenticatedUser;
+    hideNewPasswordStep();
+    enterDemo(activeRole, 'inicio');
+    showToast('Contraseña guardada', 'Desde ahora ingresa con tu teléfono y esta contraseña.');
+  } catch (err) {
+    errEl.textContent = loginErrorMessage(err);
+  } finally {
+    submitBtn.disabled = false;
+  }
+}
+
+document.querySelector('#accessNewPasswordForm')?.addEventListener('submit', handleNewPassword);
+document.querySelector('#accessNewPasswordExit')?.addEventListener('click', () => handleSignOut());
 if (!DEMO_MODE) {
   const exitButton = document.querySelector('#exitDemo');
   if (exitButton) exitButton.innerHTML = 'Cerrar sesión <span>↙</span>';
@@ -7806,7 +7970,9 @@ async function initSessionAndBoot() {
     const authSession = await restoreSession();
     if (authSession && authSession.profile) {
       await applyAuthenticatedSession(authSession);
-      if (!DEMO_MODE) enterAuthenticatedApp();
+      if (!DEMO_MODE && mustChangePassword(authSession.user, authSession.profile)) {
+        window.setTimeout(() => showNewPasswordStep(authSession.profile?.first_name), Math.max(0, INTRO_DONE_AT - performance.now()));
+      } else if (!DEMO_MODE) enterAuthenticatedApp();
     } else {
       isSupabaseConnected = false;
       state = loadState();

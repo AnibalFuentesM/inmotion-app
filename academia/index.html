@@ -63,7 +63,7 @@
       <p class="eyebrow" data-login-only>Alumnos, encargados y equipo</p>
       <h1 id="accessTitle">Entra a tu ritmo.</h1>
       <p class="access-copy" data-demo-only>Elige cómo quieres entrar: como alumno, maestro, administrador o encargado. Los cambios se guardan solo en este navegador.</p>
-      <p class="access-copy" data-login-only>Ingresa con tu número de teléfono y la app te lleva a tu portal.</p>
+      <p class="access-copy" data-login-only data-first-login-hide>Ingresa con tu número de teléfono y la app te lleva a tu portal.</p>
       <form class="access-login" id="accessLoginForm" data-login-only novalidate>
         <label class="field">
           <span>Número de teléfono</span>
@@ -76,6 +76,20 @@
         <p class="access-login-error" id="accessLoginError" role="alert"></p>
         <button class="access-plan-link" type="submit" id="accessLoginSubmit">Ingresar <span aria-hidden="true">↗</span></button>
         <p class="access-login-help">¿No tienes cuenta u olvidaste tu contraseña? Pídela en recepción. El equipo también puede ingresar con su correo.</p>
+      </form>
+      <form class="access-login" id="accessNewPasswordForm" data-login-only hidden novalidate>
+        <p class="access-copy"><strong id="accessNewPasswordGreeting">Hola.</strong> Es tu primer ingreso: crea una contraseña que solo tú conozcas. La que te enviamos por WhatsApp deja de funcionar.</p>
+        <label class="field">
+          <span>Nueva contraseña</span>
+          <input type="password" name="password" required minlength="8" autocomplete="new-password" />
+        </label>
+        <label class="field">
+          <span>Repite la nueva contraseña</span>
+          <input type="password" name="confirm" required minlength="8" autocomplete="new-password" />
+        </label>
+        <p class="access-login-error" id="accessNewPasswordError" role="alert"></p>
+        <button class="access-plan-link" type="submit" id="accessNewPasswordSubmit">Guardar y entrar <span aria-hidden="true">↗</span></button>
+        <p class="access-login-help">Usa al menos 8 caracteres. <button class="access-link-button" type="button" id="accessNewPasswordExit">Salir</button></p>
       </form>
       <div class="role-options" role="group" aria-label="Elegir acceso de demostración" data-demo-only>
         <button class="role-option is-primary" type="button" data-enter-role="student">
@@ -118,6 +132,7 @@
       <nav class="side-nav" id="sideNav" aria-label="Navegación principal"></nav>
       <div class="side-bottom">
         <span class="demo-badge" data-demo-only><i aria-hidden="true"></i> Modo demostración</span>
+        <button class="side-link" type="button" id="studentPreviewLink" data-login-only hidden>Ver como alumno <span>◐</span></button>
         <button class="side-link" type="button" id="accountLink" data-login-only>Mis datos y contraseña <span>○</span></button>
         <button class="side-link" type="button" id="exitDemo">Cambiar acceso <span>↙</span></button>
         <button class="side-link" type="button" id="resetDemo" data-demo-only>Reiniciar demo <span>⟲</span></button>

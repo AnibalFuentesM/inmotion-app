@@ -72,6 +72,10 @@ Se trabaja **siempre sobre esta misma app**: `academia/`, dentro de
    Las listas de alumnos y contraseñas van en `cuentas/`, que está en `.gitignore`.
    El selector de roles con datos ficticios solo aparece en `academia/?demo`. En el HTML,
    `data-demo-only` y `data-login-only` marcan qué se ve en cada modo.
+   Alumnos y encargados deben crear su propia contraseña en el primer ingreso
+   (`mustChangePassword`: falta `user_metadata.password_changed_at`, que `updatePassword` marca).
+   Administración tiene «Ver como alumno»: muestra el portal de un alumno real en solo lectura
+   (`studentPreviewId` en `academy.js`; `setReadOnlyPreview` corta toda escritura en `authFetch`).
 9. **El plan manda sobre las clases.** Cada alumno tiene su pase en `memberships.plan_name`;
    qué clases cubre cada pase está en `pass_plans`/`pass_plan_classes` (migración 009) y,
    para armar la lista en pantalla, en `PLAN_CLASS_RULES` de `academy.js`: si cambia uno,

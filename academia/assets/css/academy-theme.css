@@ -3976,6 +3976,32 @@ html[data-mode="demo"] [data-login-only] { display: none !important; }
   color: var(--muted);
   font-size: .8rem;
 }
+/* Primer ingreso y vista de alumno: el atributo hidden manda sobre el display del componente */
+.access-login[hidden],
+.side-link[hidden],
+[data-first-login-hide][hidden] { display: none !important; }
+.access-link-button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.preview-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 20px;
+  padding: 12px 16px;
+  border: 1px solid var(--brand-red);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--brand-red) 10%, transparent);
+  font-size: .9rem;
+}
 
 /* ---------------------------------------------------------------------------
    Tarifas reales y avisos de "Próximamente" (oct 2026)

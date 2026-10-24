@@ -65,7 +65,18 @@ function renewSession() {
   return refreshInFlight;
 }
 
+// En la vista de alumno de administración (ver academy.js) solo se lee: cualquier
+// escritura se corta aquí, antes de llegar a la base.
+let readOnlyPreview = false;
+
+export function setReadOnlyPreview(on) {
+  readOnlyPreview = Boolean(on);
+}
+
 async function authFetch(url, options = {}, extraHeaders = {}) {
+  if (readOnlyPreview && options.method && options.method !== 'GET') {
+    throw new Error('Estás en la vista de alumno: aquí no se guarda ningún cambio.');
+  }
   const stored = getStoredAuthSession();
   const canRenew = Boolean(currentAuthToken && stored?.refresh_token);
   if (canRenew && stored.expires_at && stored.expires_at - Math.floor(Date.now() / 1000) < 60) {
@@ -226,20 +237,38 @@ export function loginIdToEmail(loginId) {
   return `502${digits}@${PHONE_LOGIN_DOMAIN}`;
 }
 
+// Las cuentas de alumnos y encargados se crean con una contraseña que viaja por
+// WhatsApp. Hasta que la persona pone una propia, la app le pide cambiarla al entrar.
+// La marca vive en user_metadata, que cada quien puede escribir de su propia cuenta.
+const ACCOUNTS_WITH_INITIAL_PASSWORD = ['student', 'guardian'];
+
+export function mustChangePassword(user, profile) {
+  if (!ACCOUNTS_WITH_INITIAL_PASSWORD.includes(profile?.role)) return false;
+  return !user?.user_metadata?.password_changed_at;
+}
+
 /**
- * Cambia la contraseña de la sesión activa
+ * Cambia la contraseña de la sesión activa y deja la marca de que ya no es la inicial.
+ * Devuelve el usuario actualizado.
  */
 export async function updatePassword(newPassword) {
   if (!currentAuthToken) throw new Error('No hay una sesión activa.');
   const res = await authFetch(`${SUPABASE_URL}/auth/v1/user`, {
     method: 'PUT',
-    body: JSON.stringify({ password: newPassword })
+    body: JSON.stringify({ password: newPassword, data: { password_changed_at: new Date().toISOString() } })
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
+    if (err.error_code === 'same_password' || /different from the old/i.test(err.msg || err.message || '')) {
+      throw new Error('Escribe una contraseña distinta a la que te enviamos.');
+    }
+    if (err.error_code === 'weak_password') throw new Error('Esa contraseña es muy fácil de adivinar. Prueba con otra.');
     throw new Error(err.error_description || err.msg || err.message || `No se pudo cambiar la contraseña (${res.status})`);
   }
-  return true;
+  const user = await res.json().catch(() => null);
+  const stored = getStoredAuthSession();
+  if (user?.id && stored) saveAuthSession({ ...stored, user });
+  return user;
 }
 
 // Datos que cada persona completa de sí misma (migración 009). Nombre, teléfono, nivel y
