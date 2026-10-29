@@ -82,6 +82,9 @@ Se trabaja **siempre sobre esta misma app**: `academia/`, dentro de
    cambia el otro. El alumno marca sus clases con «Elegir mis clases» (`set_my_classes`
    valida contra su plan) y completa correo, cumpleaños y contacto de emergencia en
    «Mis datos y contraseña». Nombre, teléfono, nivel y notas solo los cambia administración.
+   Administración carga plan, clase del Dancer/Weekend, pago del mes, apellido y maestros
+   en «Completar datos» (ruta `#/datos`, solo en el menú lateral): reemplaza al Excel
+   «datos para la academia». Un «Pagó …» ahí registra el pago con método «Antes de la app».
 10. **Nunca commitear** `.env*.local` ni `.vercel/` (ya están en `.gitignore`).
 
 ## Convenciones

@@ -20,7 +20,11 @@ import {
   updateMyContact,
   setMyClasses,
   mustChangePassword,
-  setReadOnlyPreview
+  setReadOnlyPreview,
+  saveStudentAcademyData,
+  fetchRemoteStaff,
+  createRemoteStaff,
+  assignRemoteTeacher
 } from './supabase.js';
 
 let isSupabaseConnected = false;
@@ -77,6 +81,7 @@ const icons = {
   list: '<path d="M8 6h13M8 12h13M8 18h13"/><path d="M3 6h.01M3 12h.01M3 18h.01"/>',
   play: '<circle cx="12" cy="12" r="9"/><path d="m10 8.5 5.5 3.5-5.5 3.5z"/>',
   music: '<path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>',
+  edit: '<path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/>',
   ticket: '<path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z"/><path d="M13 5v2M13 17v2M13 11v2"/>'
 };
 
@@ -108,7 +113,9 @@ const roleConfig = {
       ['alumnos', 'Alumnos', 'users'],
       ['pagos', 'Pagos', 'money'],
       ['asistencia', 'Asistencia', 'list'],
-      ['pases', 'Pases', 'ticket']
+      ['pases', 'Pases', 'ticket'],
+      // Solo en el menú lateral: la barra inferior ya va llena con las cinco de arriba.
+      ['datos', 'Completar datos', 'edit', { sidebarOnly: true }]
     ]
   },
   guardian: {
@@ -1961,14 +1968,15 @@ function icon(name) {
 // mas se usa: va como pestaña mas en la navegacion. En la barra inferior solo
 // entra si quedan 5 pestañas o menos (admin ya tiene 5).
 function navMarkup(config, { mobile = false } = {}) {
-  const items = config.routes.map(([route, label, iconName], index) => `
+  const routes = mobile ? config.routes.filter((route) => !route[3]?.sidebarOnly) : config.routes;
+  const items = routes.map(([route, label, iconName], index) => `
     <a class="nav-item ${activeRoute === route ? 'is-active' : ''}" href="#/${escapeHtml(route)}" ${activeRoute === route ? 'aria-current="page"' : ''} data-route="${escapeHtml(route)}">
       <span class="nav-icon">${icon(iconName)}</span>
       <span>${escapeHtml(label)}</span>
       <span class="nav-index">0${index + 1}</span>
     </a>
   `);
-  if (!mobile || config.routes.length < 5) {
+  if (!mobile || routes.length < 5) {
     items.push(`
     <a class="nav-item nav-item--videos" href="../index.html">
       <span class="nav-icon">${icon('play')}</span>
@@ -3745,8 +3753,8 @@ function renderAdminHome() {
       <article class="surface-card admin-notice">
         <p class="eyebrow">Pendiente</p>
         <h2>${withoutPlan === 1 ? 'Falta el plan de 1 alumno' : `Faltan los planes de ${escapeHtml(withoutPlan)} alumnos`}</h2>
-        <p class="payment-meta">Mientras un alumno no tenga su plan cargado no se puede registrar su pago en la app ni elegir sus clases. Cuando completen la hoja de datos de la academia, los planes se cargan de una vez.</p>
-        <div class="form-actions"><button class="button button--light button--small" type="button" data-go="alumnos">Ver alumnos</button></div>
+        <p class="payment-meta">Mientras un alumno no tenga su plan cargado no se puede registrar su pago en la app ni elegir sus clases. Puedes cargarlos aquí mismo, alumno por alumno.</p>
+        <div class="form-actions"><button class="button button--red button--small" type="button" data-go="datos">Completar datos</button></div>
       </article>
     </section>` : ''}
     <section class="section">
@@ -3793,6 +3801,7 @@ function renderAdminStudents() {
       <div><p class="eyebrow">Base de alumnos</p><h1>Personas,<br/>no expedientes.</h1><p>${DEMO_MODE ? 'Datos ficticios para validar la experiencia de gestión.' : 'Alumnos registrados en la academia.'}</p></div>
       <div class="heading-actions">
         <button class="button button--light" type="button" data-admin-export="students">Exportar CSV ⤓</button>
+        <button class="button button--light" type="button" data-go="datos">Completar datos</button>
         <button class="button button--red" type="button" data-open-student>+ Nuevo alumno</button>
       </div>
     </header>
@@ -3826,6 +3835,407 @@ function renderAdminStudents() {
       </table>
     </div>
   `;
+}
+
+// ---------------------------------------------------------------------------
+// Completar datos: lo que antes pedíamos en el Excel «datos para la academia»
+// (plan, clase del Dancer/Weekend, pago del mes, apellido, maestros y staff), lleno
+// desde la app. Cada fila guarda sola; lo que no se toca no se escribe.
+// ---------------------------------------------------------------------------
+
+let academyDataTab = 'alumnos';
+let academyDataFilter = 'missing';
+let academyDataQuery = '';
+const academyDataDrafts = new Map();
+const academyDataSaved = new Set();
+const academyDataSaving = new Set();
+let staffProfiles = [];
+
+function addMonths(period, count) {
+  const [year, month] = period.split('-').map(Number);
+  const date = new Date(year, month - 1 + count, 1);
+  return monthKey(date);
+}
+
+function periodName(period) {
+  const [year, month] = period.split('-').map(Number);
+  const name = monthName(new Date(year, month - 1, 1));
+  return name.charAt(0).toUpperCase() + name.slice(1);
+}
+
+function singleClassPlan(planId) {
+  return PLAN_CLASS_RULES[planId]?.maxGroups === 1;
+}
+
+function classGroupLabel(group) {
+  const days = [...new Set(group.weekdays)].map((day) => WEEKDAY_SHORT[day].toLowerCase()).join(' y ');
+  return `${group.name.replace(' Salsa y Bachata', '')} · ${days} ${group.time}`;
+}
+
+function academyDataInitial(student) {
+  const gone = studentLifecycleStatus(student) !== 'active';
+  const plan = membershipPlans.find((item) => item.planName === student.plan);
+  const planId = gone ? 'gone' : (plan?.id || '');
+  const group = plan && singleClassPlan(plan.id)
+    ? planClassGroups(plan).find((item) => item.classIds.every((id) => (student.classIds || []).includes(id)))
+    : null;
+  const current = monthKey(TODAY);
+  const paidThrough = state.payments
+    .filter((item) => item.studentId === student.id && item.status === 'Pagado' && item.period >= current)
+    .map((item) => item.period)
+    .sort()
+    .pop() || '';
+  return { lastName: student.lastName || '', planId, groupKey: group?.key || '', paidThrough };
+}
+
+function academyDataDraft(student) {
+  return academyDataDrafts.get(student.id) || academyDataInitial(student);
+}
+
+function academyDataDirty(student) {
+  const draft = academyDataDrafts.get(student.id);
+  if (!draft) return false;
+  const initial = academyDataInitial(student);
+  return draft.lastName.trim() !== initial.lastName
+    || draft.planId !== initial.planId
+    || (singleClassPlan(draft.planId) && draft.groupKey !== initial.groupKey)
+    || draft.paidThrough !== initial.paidThrough;
+}
+
+function academyDataMissing(student) {
+  return studentLifecycleStatus(student) === 'active' && !student.plan;
+}
+
+function academyDataList() {
+  const query = academyDataQuery.trim().toLowerCase();
+  return state.students
+    .filter((student) => {
+      if (academyDataFilter === 'missing' && !academyDataMissing(student) && !academyDataSaved.has(student.id) && !academyDataDrafts.has(student.id)) return false;
+      if (query && !`${student.name} ${student.id} ${student.phone || ''}`.toLowerCase().includes(query)) return false;
+      return true;
+    })
+    .sort((a, b) => a.name.localeCompare(b.name, 'es'));
+}
+
+function academyDataRow(student) {
+  const draft = academyDataDraft(student);
+  const id = escapeHtml(student.id);
+  const firstName = student.firstName || student.name;
+  const current = monthKey(TODAY);
+  const plan = membershipPlans.find((item) => item.id === draft.planId);
+  const minPaid = academyDataInitial(student).paidThrough;
+  const payOptions = [['', `Debe ${periodName(current)}`], [current, `Pagó ${periodName(current)}`], [addMonths(current, 1), `Pagó hasta ${periodName(addMonths(current, 1)).slice(0, 3).toLowerCase()}.`], [addMonths(current, 2), `Pagó hasta ${periodName(addMonths(current, 2)).slice(0, 3).toLowerCase()}.`]];
+  let classCell = '<span class="payment-meta">—</span>';
+  if (plan && singleClassPlan(plan.id)) {
+    classCell = `<select class="data-entry-select" data-dd-field="groupKey" data-dd-id="${id}" aria-label="Clase de ${escapeHtml(firstName)}">
+      <option value="">${plan.id === 'weekend' ? 'Elige el día' : 'Elige su clase'}</option>
+      ${planClassGroups(plan).map((group) => `<option value="${escapeHtml(group.key)}" ${draft.groupKey === group.key ? 'selected' : ''}>${escapeHtml(classGroupLabel(group))}</option>`).join('')}
+    </select>`;
+  } else if (plan) {
+    classCell = '<span class="payment-meta">Las elige el alumno en la app</span>';
+  }
+  const saving = academyDataSaving.has(student.id);
+  const dirty = academyDataDirty(student);
+  const action = saving
+    ? '<span class="payment-meta">Guardando…</span>'
+    : (dirty
+      ? `<button class="button button--red button--small" type="button" data-dd-save="${id}">Guardar</button>`
+      : (academyDataSaved.has(student.id) ? '<span class="status-pill is-paid">Guardado</span>' : '<span class="payment-meta">Sin cambios</span>'));
+  return `
+    <tr data-dd-row="${id}" class="${dirty ? 'is-row-dirty' : ''}">
+      <td data-label="Alumno">
+        <div class="person-cell"><span class="avatar" aria-hidden="true">${escapeHtml(initials(student.name))}</span><span><strong>${escapeHtml(firstName)}</strong><small>${escapeHtml(student.phone)}${student.level && student.level !== 'Sin nivel' ? ` · ${escapeHtml(student.level)}` : ''}</small></span></div>
+        <input class="data-entry-input" data-dd-field="lastName" data-dd-id="${id}" value="${escapeHtml(draft.lastName)}" placeholder="Apellido" autocomplete="off" aria-label="Apellido de ${escapeHtml(firstName)}" />
+      </td>
+      <td data-label="Plan">
+        <select class="data-entry-select" data-dd-field="planId" data-dd-id="${id}" aria-label="Plan de ${escapeHtml(firstName)}">
+          <option value="">Elige plan</option>
+          ${membershipPlans.map((item) => `<option value="${escapeHtml(item.id)}" ${draft.planId === item.id ? 'selected' : ''}>${escapeHtml(item.planName)} · Q${escapeHtml(item.price)}</option>`).join('')}
+          <option value="gone" ${draft.planId === 'gone' ? 'selected' : ''}>Ya no viene</option>
+        </select>
+      </td>
+      <td data-label="Clase">${classCell}</td>
+      <td data-label="Pago">
+        <select class="data-entry-select" data-dd-field="paidThrough" data-dd-id="${id}" aria-label="Pago de ${escapeHtml(firstName)}" ${plan ? '' : 'disabled'}>
+          ${payOptions.map(([value, label]) => `<option value="${value}" ${draft.paidThrough === value ? 'selected' : ''} ${value < minPaid ? 'disabled' : ''}>${escapeHtml(label)}</option>`).join('')}
+        </select>
+      </td>
+      <td data-label="Guardar">${action}</td>
+    </tr>
+  `;
+}
+
+function academyDataRows() {
+  const list = academyDataList();
+  if (!list.length) {
+    return academyDataFilter === 'missing' && !academyDataQuery.trim()
+      ? '<tr><td colspan="5"><div class="empty-state"><strong>Todos tienen plan</strong>No queda ningún alumno activo sin plan. Mira «Todos» para cambiar otro dato.</div></td></tr>'
+      : '<tr><td colspan="5"><div class="empty-state"><strong>Sin coincidencias</strong>Revisa el filtro o el nombre que buscaste.</div></td></tr>';
+  }
+  return list.map(academyDataRow).join('');
+}
+
+function academyDataSummary() {
+  const active = state.students.filter((student) => studentLifecycleStatus(student) === 'active');
+  const withPlan = active.filter((student) => student.plan).length;
+  const dirty = state.students.filter(academyDataDirty).length;
+  return { active: active.length, withPlan, dirty };
+}
+
+function academyDataProgressText(withPlan, active) {
+  return `${withPlan} de ${active} alumnos activos tienen plan. El pago se marca de este mes en adelante; los meses anteriores no se cargan.`;
+}
+
+function academyDataBar() {
+  const { dirty } = academyDataSummary();
+  if (!dirty) return '';
+  return `<div class="data-entry-bar" role="status"><span>${dirty === 1 ? '1 alumno con cambios sin guardar' : `${escapeHtml(dirty)} alumnos con cambios sin guardar`}</span><button class="button button--red button--small" type="button" data-dd-save-all ${academyDataSaving.size ? 'disabled' : ''}>Guardar todo</button></div>`;
+}
+
+function renderAcademyDataStudents() {
+  const { active, withPlan } = academyDataSummary();
+  return `
+    <p class="payment-meta" id="academyDataProgress">${escapeHtml(academyDataProgressText(withPlan, active))}</p>
+    <div class="filter-row data-entry-filters" role="group" aria-label="Qué alumnos mostrar">
+      <button class="filter-chip ${academyDataFilter === 'missing' ? 'is-active' : ''}" type="button" aria-pressed="${academyDataFilter === 'missing'}" data-dd-filter="missing">Sin plan</button>
+      <button class="filter-chip ${academyDataFilter === 'all' ? 'is-active' : ''}" type="button" aria-pressed="${academyDataFilter === 'all'}" data-dd-filter="all">Todos</button>
+    </div>
+    <div class="section-head">
+      <label class="search-box">
+        <span aria-hidden="true">⌕</span>
+        <span class="sr-only">Buscar alumno por nombre o teléfono</span>
+        <input id="academyDataSearch" type="search" placeholder="Buscar alumno" autocomplete="off" value="${escapeHtml(academyDataQuery)}" />
+      </label>
+    </div>
+    <div class="table-wrap table-wrap--stack data-entry-table">
+      <table class="data-table">
+        <thead><tr><th scope="col">Alumno y apellido</th><th scope="col">Plan</th><th scope="col">Clase (Dancer y Weekend)</th><th scope="col">Pago</th><th scope="col"><span class="sr-only">Guardar</span></th></tr></thead>
+        <tbody id="academyDataBody">${academyDataRows()}</tbody>
+      </table>
+    </div>
+    <div id="academyDataBar">${academyDataBar()}</div>
+  `;
+}
+
+function staffRoleLabel(role) {
+  return role === 'admin' ? 'Administración' : 'Maestro';
+}
+
+function renderAcademyDataStaff() {
+  const groups = planClassGroups({ id: 'full' });
+  const teacherOptions = (selectedId) => `<option value="">Por asignar</option>${staffProfiles.map((person) => `<option value="${escapeHtml(person.id)}" ${person.id === selectedId ? 'selected' : ''}>${escapeHtml(person.name)}</option>`).join('')}`;
+  return `
+    <section class="section">
+      <div class="section-head"><div><h2>Equipo</h2><p>Maestros y personal de la academia. Su usuario para entrar a la app se crea aparte.</p></div><button class="button button--red button--small" type="button" data-open-staff>+ Agregar maestro o staff</button></div>
+      <div class="table-wrap table-wrap--stack">
+        <table class="data-table">
+          <thead><tr><th scope="col">Nombre</th><th scope="col">Rol</th><th scope="col">Teléfono</th><th scope="col">Correo</th><th scope="col">Acceso a la app</th></tr></thead>
+          <tbody>${staffProfiles.length ? staffProfiles.map((person) => `
+            <tr>
+              <td data-label="Nombre"><div class="person-cell"><span class="avatar" aria-hidden="true">${escapeHtml(initials(person.name))}</span><strong>${escapeHtml(person.name)}</strong></div></td>
+              <td data-label="Rol">${escapeHtml(staffRoleLabel(person.role))}</td>
+              <td data-label="Teléfono">${escapeHtml(person.phone || '—')}</td>
+              <td data-label="Correo">${escapeHtml(person.email || '—')}</td>
+              <td data-label="Acceso a la app">${person.hasLogin ? '<span class="status-pill is-paid">Tiene usuario</span>' : '<span class="status-pill is-undefined">Falta crear usuario</span>'}</td>
+            </tr>`).join('') : '<tr><td colspan="5"><div class="empty-state"><strong>Sin equipo cargado</strong>Agrega a los maestros para poder asignarles sus clases.</div></td></tr>'}</tbody>
+        </table>
+      </div>
+    </section>
+    <section class="section">
+      <div class="section-head"><div><h2>Maestro de cada clase</h2><p>Se guarda al elegirlo y aparece en el horario de los alumnos.</p></div></div>
+      <div class="table-wrap table-wrap--stack">
+        <table class="data-table">
+          <thead><tr><th scope="col">Clase</th><th scope="col">Días y hora</th><th scope="col">Maestro</th></tr></thead>
+          <tbody>${groups.map((group) => {
+            const first = classData.find((item) => item.id === group.classIds[0]);
+            return `
+            <tr>
+              <td data-label="Clase"><strong>${escapeHtml(group.name)}</strong></td>
+              <td data-label="Días y hora">${escapeHtml(classGroupLabel(group).split(' · ').pop())}</td>
+              <td data-label="Maestro"><select class="data-entry-select" data-assign-teacher="${escapeHtml(group.classIds.join(','))}" aria-label="Maestro de ${escapeHtml(group.name)}" ${isSupabaseConnected ? '' : 'disabled'}>${teacherOptions(first?.teacherId || '')}</select></td>
+            </tr>`;
+          }).join('')}</tbody>
+        </table>
+      </div>
+    </section>
+  `;
+}
+
+function renderAdminAcademyData() {
+  return `
+    <header class="page-heading">
+      <div><p class="eyebrow">Datos de la academia</p><h1>Completar<br/>datos.</h1><p>Lo que antes pedíamos en el Excel, directo aquí: plan, clase, pago, apellido y maestros. Cada fila se guarda sola.</p></div>
+    </header>
+    <div class="filter-row" role="tablist" aria-label="Qué datos completar">
+      <button class="filter-chip ${academyDataTab === 'alumnos' ? 'is-active' : ''}" type="button" role="tab" aria-selected="${academyDataTab === 'alumnos'}" data-dd-tab="alumnos">Alumnos</button>
+      <button class="filter-chip ${academyDataTab === 'equipo' ? 'is-active' : ''}" type="button" role="tab" aria-selected="${academyDataTab === 'equipo'}" data-dd-tab="equipo">Maestros y staff</button>
+    </div>
+    ${DEMO_MODE || !isSupabaseConnected ? '<p class="modal-note">En la demo los cambios no se guardan.</p>' : ''}
+    <div id="academyDataPanel">${academyDataTab === 'alumnos' ? renderAcademyDataStudents() : renderAcademyDataStaff()}</div>
+  `;
+}
+
+function refreshAcademyDataView() {
+  const body = elements.content.querySelector('#academyDataBody');
+  if (!body) return;
+  body.innerHTML = academyDataRows();
+  const { active, withPlan } = academyDataSummary();
+  const progress = elements.content.querySelector('#academyDataProgress');
+  if (progress) progress.textContent = academyDataProgressText(withPlan, active);
+  elements.content.querySelector('#academyDataBar').innerHTML = academyDataBar();
+}
+
+function refreshAcademyDataRow(studentId) {
+  const row = elements.content.querySelector(`[data-dd-row="${CSS.escape(studentId)}"]`);
+  const student = studentById(studentId);
+  if (row && student) row.outerHTML = academyDataRow(student);
+  const bar = elements.content.querySelector('#academyDataBar');
+  if (bar) bar.innerHTML = academyDataBar();
+}
+
+function handleAcademyDataChange(field) {
+  const student = studentById(field.dataset.ddId);
+  if (!student) return;
+  const draft = { ...academyDataDraft(student), [field.dataset.ddField]: field.value };
+  if (field.dataset.ddField === 'planId') {
+    if (!singleClassPlan(draft.planId)) draft.groupKey = academyDataInitial(student).groupKey;
+    if (draft.planId === 'gone' || !draft.planId) draft.paidThrough = academyDataInitial(student).paidThrough;
+  }
+  academyDataDrafts.set(student.id, draft);
+  academyDataSaved.delete(student.id);
+  if (field.dataset.ddField !== 'lastName') {
+    refreshAcademyDataRow(student.id);
+    elements.content.querySelector(`[data-dd-row="${CSS.escape(student.id)}"] [data-dd-field="${field.dataset.ddField}"]`)?.focus();
+  } else {
+    // Al escribir el apellido no se redibuja la fila: se perdería el cursor.
+    const row = field.closest('[data-dd-row]');
+    const cell = row?.querySelector('td[data-label="Guardar"]');
+    if (cell && academyDataDirty(student) && !cell.querySelector('[data-dd-save]')) cell.innerHTML = `<button class="button button--red button--small" type="button" data-dd-save="${escapeHtml(student.id)}">Guardar</button>`;
+    row?.classList.toggle('is-row-dirty', academyDataDirty(student));
+    const bar = elements.content.querySelector('#academyDataBar');
+    if (bar) bar.innerHTML = academyDataBar();
+  }
+}
+
+function academyDataPayload(student) {
+  const initial = academyDataInitial(student);
+  const draft = academyDataDraft(student);
+  const payload = { studentCardId: student.id };
+  const current = monthKey(TODAY);
+  if (draft.lastName.trim() !== initial.lastName) payload.lastName = draft.lastName.trim();
+  if (draft.planId === 'gone') {
+    if (initial.planId !== 'gone') payload.active = false;
+    return payload;
+  }
+  if (initial.planId === 'gone') payload.active = true;
+  const plan = membershipPlans.find((item) => item.id === draft.planId);
+  if (!plan) return payload;
+  payload.planName = plan.planName;
+  payload.planPrice = plan.price;
+  if (draft.planId !== initial.planId) payload.planPeriod = current;
+  if (singleClassPlan(plan.id) && draft.groupKey && draft.groupKey !== initial.groupKey) {
+    payload.classIds = planClassGroups(plan).find((group) => group.key === draft.groupKey)?.classIds;
+  }
+  if (draft.paidThrough && draft.paidThrough > initial.paidThrough) {
+    payload.paidPeriods = [];
+    for (let period = current; period <= draft.paidThrough; period = addMonths(period, 1)) payload.paidPeriods.push(period);
+  }
+  return payload;
+}
+
+async function saveAcademyDataRow(studentId, { reload = true } = {}) {
+  const student = studentById(studentId);
+  if (!student || !academyDataDirty(student) || academyDataSaving.has(studentId)) return true;
+  if (!isSupabaseConnected) {
+    showToast('Modo demostración', 'En la demo los cambios no se guardan.');
+    return false;
+  }
+  academyDataSaving.add(studentId);
+  refreshAcademyDataRow(studentId);
+  try {
+    await saveStudentAcademyData(academyDataPayload(student));
+    academyDataDrafts.delete(studentId);
+    academyDataSaved.add(studentId);
+    return true;
+  } catch (err) {
+    showToast(`No se guardó ${student.firstName || student.name}`, err.message);
+    return false;
+  } finally {
+    academyDataSaving.delete(studentId);
+    if (reload) {
+      await loadRemoteData().catch((err) => showToast('No se pudo actualizar la lista', err.message));
+      refreshAcademyDataView();
+    }
+  }
+}
+
+async function saveAllAcademyData() {
+  const pending = state.students.filter(academyDataDirty).map((student) => student.id);
+  let saved = 0;
+  for (const id of pending) {
+    if (await saveAcademyDataRow(id, { reload: false })) saved += 1;
+  }
+  await loadRemoteData().catch((err) => showToast('No se pudo actualizar la lista', err.message));
+  refreshAcademyDataView();
+  if (saved) showToast('Datos guardados', saved === 1 ? 'Se guardó 1 alumno.' : `Se guardaron ${saved} alumnos.`);
+}
+
+async function handleAssignTeacher(select) {
+  const person = staffProfiles.find((item) => item.id === select.value);
+  select.disabled = true;
+  try {
+    await assignRemoteTeacher({ classIds: select.dataset.assignTeacher.split(','), teacherId: person?.id || null, teacherName: person?.name || null });
+    await loadRemoteData();
+    showToast('Maestro asignado', person ? `${person.name} queda a cargo de la clase.` : 'La clase queda por asignar.');
+  } catch (err) {
+    showToast('No se guardó el maestro', err.message);
+  } finally {
+    select.disabled = false;
+  }
+}
+
+function openStaffModal() {
+  openModal({
+    title: 'Agregar maestro o staff',
+    eyebrow: 'Completar datos',
+    body: `
+      <form id="staffForm">
+        <div class="form-grid">
+          <label class="field"><span>Nombre</span><input name="firstName" required autocomplete="off" /></label>
+          <label class="field"><span>Apellido</span><input name="lastName" autocomplete="off" /></label>
+          <label class="field"><span>Teléfono</span><input name="phone" inputmode="tel" placeholder="5555-0000" /></label>
+          <label class="field"><span>Correo</span><input name="email" type="email" placeholder="Opcional" /></label>
+          <label class="field field--wide"><span>Rol</span><select name="role"><option value="teacher">Maestro</option><option value="admin">Administración o recepción</option></select></label>
+        </div>
+        <p class="modal-note">Queda en la lista para asignarle clases. Su usuario para entrar a la app se crea aparte.</p>
+        <p class="payment-meta" id="staffFormMessage" role="status"></p>
+        <div class="form-actions"><button class="button button--light" type="button" data-close-modal>Cancelar</button><button class="button button--red" type="submit">Agregar</button></div>
+      </form>
+    `
+  });
+}
+
+async function handleStaffSubmit(event) {
+  event.preventDefault();
+  const form = event.target;
+  const data = Object.fromEntries(new FormData(form));
+  const message = form.querySelector('#staffFormMessage');
+  if (!isSupabaseConnected) {
+    message.textContent = 'En la demo los cambios no se guardan.';
+    return;
+  }
+  const submit = form.querySelector('[type="submit"]');
+  submit.disabled = true;
+  try {
+    await createRemoteStaff({ firstName: data.firstName.trim(), lastName: data.lastName.trim(), phone: data.phone.trim(), email: data.email.trim(), role: data.role });
+    await loadRemoteData();
+    closeModal();
+    showToast('Agregado al equipo', `${data.firstName.trim()} ya se puede asignar a sus clases.`);
+    renderApp();
+  } catch (err) {
+    message.textContent = err.message;
+    submit.disabled = false;
+  }
 }
 
 function renderAdminPayments() {
@@ -5264,6 +5674,7 @@ const renderers = {
   'admin:inicio': renderAdminHome,
   'admin:alumnos': renderAdminStudents,
   'admin:pagos': renderAdminPayments,
+  'admin:datos': renderAdminAcademyData,
   'admin:asistencia': () => (ATTENDANCE_ENABLED ? renderAdminAttendance() : attendanceComingSoon()),
   'admin:pases': () => (PASSES_ENABLED ? renderAdminPasses() : passesComingSoon()),
   'guardian:inicio': renderGuardianHome,
@@ -6751,6 +7162,7 @@ function handleModalClick(event) {
 function handleModalSubmit(event) {
   if (event.target.id === 'paymentForm') handlePaymentSubmit(event);
   if (event.target.id === 'studentForm') handleStudentSubmit(event);
+  if (event.target.id === 'staffForm') handleStaffSubmit(event);
   if (event.target.id === 'suspendStudentForm') handleSuspendStudentSubmit(event);
   if (event.target.id === 'reactivateStudentForm') handleReactivateStudentSubmit(event);
   if (event.target.id === 'archiveStudentForm') handleArchiveStudentSubmit(event);
@@ -7485,6 +7897,25 @@ function handleContentClick(event) {
   const adminExport = find('[data-admin-export]');
   if (adminExport) return exportTableToCsv(adminExport.dataset.adminExport);
 
+  const ddTab = find('[data-dd-tab]');
+  if (ddTab) {
+    academyDataTab = ddTab.dataset.ddTab;
+    return renderApp();
+  }
+  const ddFilter = find('[data-dd-filter]');
+  if (ddFilter) {
+    academyDataFilter = ddFilter.dataset.ddFilter;
+    elements.content.querySelectorAll('[data-dd-filter]').forEach((chip) => {
+      chip.classList.toggle('is-active', chip === ddFilter);
+      chip.setAttribute('aria-pressed', String(chip === ddFilter));
+    });
+    return refreshAcademyDataView();
+  }
+  const ddSave = find('[data-dd-save]');
+  if (ddSave) return saveAcademyDataRow(ddSave.dataset.ddSave);
+  if (find('[data-dd-save-all]')) return saveAllAcademyData();
+  if (find('[data-open-staff]')) return openStaffModal();
+
   const planDetail = find('[data-plan-detail]');
   if (planDetail) return openPlanDetail(planDetail.dataset.planDetail);
   const go = find('[data-go]');
@@ -7669,6 +8100,12 @@ function handleContentInput(event) {
     updateStudentTableView();
     return;
   }
+  if (event.target.id === 'academyDataSearch') {
+    academyDataQuery = event.target.value;
+    refreshAcademyDataView();
+    return;
+  }
+  if (event.target.matches('input[data-dd-field]')) handleAcademyDataChange(event.target);
 }
 
 function handleContentSubmit(event) {
@@ -7702,6 +8139,8 @@ elements.content.addEventListener('change', (event) => {
     updatePassViews();
     return;
   }
+  if (event.target.matches('select[data-dd-field]')) return handleAcademyDataChange(event.target);
+  if (event.target.matches('[data-assign-teacher]')) return handleAssignTeacher(event.target);
   if (event.target.matches('input[name="attendance"]')) {
     const label = event.target.closest('.student-check')?.querySelector('span:last-child');
     if (label) label.textContent = event.target.checked ? 'Presente' : 'Sin registro';
@@ -8065,36 +8504,42 @@ function openAuthModal() {
   }
 }
 
+// Trae de nuevo todo lo remoto sin redibujar (Completar datos lo usa tras cada fila).
+async function loadRemoteData() {
+  // 1. Clases remotas
+  const remoteClasses = await fetchRemoteClasses();
+  if (Array.isArray(remoteClasses)) {
+    classData = remoteClasses;
+  }
+
+  // 2. Alumnos remotos (las respuestas remotas vacías reemplazan el ámbito, sin mezclar datos demo)
+  const remoteStudents = await fetchRemoteStudents();
+  if (Array.isArray(remoteStudents)) {
+    state.students = remoteStudents;
+    persistState(state);
+  }
+
+  // 3. Pagos remotos (las respuestas remotas vacías reemplazan el ámbito, sin mezclar datos demo)
+  const remotePayments = await fetchRemotePayments(state.students);
+  if (Array.isArray(remotePayments)) {
+    state.payments = remotePayments;
+    persistState(state);
+  }
+
+  // 4. Asistencias remotas (reemplaza sin preservar marcas viejas ni demo)
+  const remoteAttendance = await fetchRemoteAttendance();
+  if (Array.isArray(remoteAttendance)) {
+    state.attendanceLog = remoteAttendance;
+    persistState(state);
+  }
+
+  if (activeRole === 'admin') staffProfiles = await fetchRemoteStaff();
+}
+
 async function syncWithSupabase() {
   if (!isSupabaseConnected) return;
   try {
-    // 1. Clases remotas
-    const remoteClasses = await fetchRemoteClasses();
-    if (Array.isArray(remoteClasses)) {
-      classData = remoteClasses;
-    }
-
-    // 2. Alumnos remotos (las respuestas remotas vacías reemplazan el ámbito, sin mezclar datos demo)
-    const remoteStudents = await fetchRemoteStudents();
-    if (Array.isArray(remoteStudents)) {
-      state.students = remoteStudents;
-      persistState(state);
-    }
-
-    // 3. Pagos remotos (las respuestas remotas vacías reemplazan el ámbito, sin mezclar datos demo)
-    const remotePayments = await fetchRemotePayments(state.students);
-    if (Array.isArray(remotePayments)) {
-      state.payments = remotePayments;
-      persistState(state);
-    }
-
-    // 4. Asistencias remotas (reemplaza sin preservar marcas viejas ni demo)
-    const remoteAttendance = await fetchRemoteAttendance();
-    if (Array.isArray(remoteAttendance)) {
-      state.attendanceLog = remoteAttendance;
-      persistState(state);
-    }
-
+    await loadRemoteData();
     supabaseSyncError = null;
 
     if (!elements.app.classList.contains('is-hidden')) {

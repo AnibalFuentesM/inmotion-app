@@ -537,6 +537,8 @@ export async function fetchRemoteStudents() {
       profileId: p.id,
       userId: p.user_id || null,
       name: fullName,
+      firstName: p.first_name || '',
+      lastName: p.last_name || '',
       initials: initials || 'IM',
       memberships: studentMems,
       plan: planName,
@@ -832,7 +834,7 @@ export async function fetchRemotePayments(students = []) {
 
   if (Array.isArray(membershipRows)) {
     for (const m of membershipRows) {
-      if (m.status === 'canceled') continue;
+      if (m.status === 'cancelled') continue;
       const period = m.period || (m.start_date ? m.start_date.slice(0, 7) : null);
       if (!period) continue;
 
@@ -876,4 +878,93 @@ export async function fetchRemotePayments(students = []) {
   }
 
   return payments;
+}
+
+// ------------------------------------------------------------------------------
+// «Completar datos» (administración): lo que antes se pedía en el Excel de la academia.
+// Escribe directo en las tablas con las políticas de administración (migración 001).
+// ------------------------------------------------------------------------------
+
+function periodBounds(period) {
+  const [year, month] = period.split('-').map(Number);
+  const last = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  return { start: `${period}-01`, end: `${period}-${String(last).padStart(2, '0')}` };
+}
+
+async function membershipForPeriod(studentUuid, period, planName, planPrice) {
+  const rows = await db.get('memberships', `student_id=eq.${studentUuid}&period=eq.${period}&status=neq.cancelled&select=*&order=created_at.desc`);
+  const current = rows[0];
+  if (!current) {
+    const { start, end } = periodBounds(period);
+    const [created] = await db.insert('memberships', {
+      student_id: studentUuid, plan_name: planName, price: planPrice, status: 'past_due', start_date: start, end_date: end, period
+    });
+    return created;
+  }
+  if (current.plan_name === planName && Number(current.price) === Number(planPrice)) return current;
+  const paid = await db.get('payments', `student_id=eq.${studentUuid}&period=eq.${period}&select=id`);
+  if (paid.length) {
+    throw new Error(`Ya tiene registrado el pago de ${formatPeriodMonth(period)} con ${current.plan_name}. El cambio de plan se aplica desde el mes siguiente.`);
+  }
+  const [updated] = await db.update('memberships', `id=eq.${current.id}`, { plan_name: planName, price: planPrice });
+  return updated;
+}
+
+/**
+ * Guarda una fila de «Completar datos». Solo toca lo que viene definido:
+ * lastName, active (carné), plan del mes, clases y meses pagados.
+ */
+export async function saveStudentAcademyData({ studentCardId, lastName, active, planName, planPrice, planPeriod, classIds, paidPeriods = [] }) {
+  const studentUuid = await getProfileUuidByCard(studentCardId);
+  if (!studentUuid) throw new Error(`No se encontró el alumno ${studentCardId}.`);
+
+  if (lastName !== undefined) await db.update('profiles', `id=eq.${studentUuid}`, { last_name: lastName });
+  if (active !== undefined) await db.update('cards', `student_id=eq.${studentUuid}`, { is_active: active });
+  if (planName && planPeriod) await membershipForPeriod(studentUuid, planPeriod, planName, planPrice);
+  if (classIds !== undefined) await syncRemoteEnrollments({ studentCardId, classIds });
+
+  for (const period of paidPeriods) {
+    const existing = await db.get('payments', `student_id=eq.${studentUuid}&period=eq.${period}&select=id`);
+    if (existing.length) continue;
+    const membership = await membershipForPeriod(studentUuid, period, planName, planPrice);
+    await db.rpc('register_payment_idempotent', {
+      p_student_id: studentUuid,
+      p_period: period,
+      p_amount: Number(membership.price),
+      p_payment_method: 'Antes de la app',
+      p_receipt_number: null,
+      p_notes: 'Al día según la academia (Completar datos)',
+      p_idempotency_key: `carga-${studentUuid}-${period}`
+    });
+  }
+  return true;
+}
+
+export async function fetchRemoteStaff() {
+  const rows = await db.get('profiles', 'role=in.(teacher,admin)&select=id,user_id,role,first_name,last_name,phone,email&order=first_name.asc');
+  return (rows || []).map((p) => ({
+    id: p.id,
+    role: p.role,
+    name: `${p.first_name || ''} ${p.last_name || ''}`.trim(),
+    phone: p.phone || '',
+    email: p.email || '',
+    hasLogin: Boolean(p.user_id)
+  }));
+}
+
+export async function createRemoteStaff({ firstName, lastName, phone, email, role }) {
+  const [row] = await db.insert('profiles', {
+    role: role === 'admin' ? 'admin' : 'teacher',
+    first_name: firstName,
+    last_name: lastName || '',
+    phone: phone || null,
+    email: email || null
+  });
+  return row;
+}
+
+export async function assignRemoteTeacher({ classIds, teacherId, teacherName }) {
+  const ids = classIds.map((id) => `"${id}"`).join(',');
+  await db.update('classes', `id=in.(${ids})`, { teacher_id: teacherId || null, teacher_name: teacherName || null });
+  return true;
 }
