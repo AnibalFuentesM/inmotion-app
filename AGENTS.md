@@ -69,6 +69,9 @@ Se trabaja **siempre sobre esta misma app**: `academia/`, dentro de
    Los alumnos ingresan con su teléfono: la cuenta usa el correo interno
    `502XXXXXXXX@tel.inmotion.invalid` (ver `loginIdToEmail`); el equipo puede usar su correo.
    Las cuentas se crean con `scripts/crear-cuentas.mjs` (requiere la migración 005).
+   Si alguien olvida su contraseña, administración la reinicia con «Reiniciar contraseña» en la
+   ficha del alumno (`admin_reset_password`, migración 011) o con `scripts/reiniciar-contrasena.mjs`
+   (también sirve para el equipo, por correo). No hay recuperación por correo.
    Las listas de alumnos y contraseñas van en `cuentas/`, que está en `.gitignore`.
    El selector de roles con datos ficticios solo aparece en `academia/?demo`. En el HTML,
    `data-demo-only` y `data-login-only` marcan qué se ve en cada modo.

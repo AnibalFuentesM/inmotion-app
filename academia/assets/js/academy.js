@@ -24,7 +24,8 @@ import {
   saveStudentAcademyData,
   fetchRemoteStaff,
   createRemoteStaff,
-  assignRemoteTeacher
+  assignRemoteTeacher,
+  resetStudentPassword
 } from './supabase.js';
 
 let isSupabaseConnected = false;
@@ -5807,6 +5808,26 @@ function trapModalTab(event) {
   }
 }
 
+async function handleResetPassword(button) {
+  const student = state.students.find((item) => item.id === button.dataset.resetPassword);
+  if (!student) return;
+  if (!window.confirm(`¿Reiniciar la contraseña de ${student.name}? La actual deja de funcionar.`)) return;
+  const result = button.closest('.surface-card').querySelector('[data-reset-password-result]');
+  button.disabled = true;
+  button.textContent = 'Reiniciando…';
+  try {
+    const password = await resetStudentPassword(student.id);
+    result.innerHTML = `Contraseña temporal: <strong style="font-size:1.1rem;letter-spacing:0.08em">${escapeHtml(password)}</strong><br/>Díctasela o envíasela por WhatsApp. Entra con su teléfono y esta contraseña.`;
+    result.hidden = false;
+    button.textContent = 'Generar otra';
+  } catch (err) {
+    showToast('No se pudo reiniciar', err.message);
+    button.textContent = 'Reiniciar contraseña';
+  } finally {
+    button.disabled = false;
+  }
+}
+
 function showToast(title, detail) {
   const toast = document.createElement('div');
   toast.className = 'toast';
@@ -6313,6 +6334,16 @@ function openStudentDetail(studentId) {
         <div class="form-actions" style="margin-top:12px">
           <button class="button button--light button--small" type="button" data-preview-student="${escapeHtml(student.id)}">Ver como este alumno</button>
         </div>
+      </article>` : ''}
+
+      ${isSupabaseConnected && authenticatedProfile?.role === 'admin' ? `
+      <article class="surface-card" style="margin-top:16px">
+        <p class="eyebrow">Contraseña</p>
+        <p class="payment-meta">Si ${escapeHtml(student.name.split(' ')[0])} olvidó su contraseña, genera una temporal y díctasela. Al entrar con ella, la app le pide crear una nueva.</p>
+        <div class="form-actions" style="margin-top:12px">
+          <button class="button button--light button--small" type="button" data-reset-password="${escapeHtml(student.id)}">Reiniciar contraseña</button>
+        </div>
+        <p class="payment-meta" data-reset-password-result hidden style="margin-top:12px"></p>
       </article>` : ''}
 
       ${isSupabaseConnected ? '' : `<article class="surface-card" style="margin-top:16px">
@@ -7117,6 +7148,8 @@ function handleModalClick(event) {
   }
   const previewStudentBtn = event.target.closest('[data-preview-student]');
   if (previewStudentBtn) return startStudentPreview(previewStudentBtn.dataset.previewStudent);
+  const resetPasswordBtn = event.target.closest('[data-reset-password]');
+  if (resetPasswordBtn) return handleResetPassword(resetPasswordBtn);
   const studentClasses = event.target.closest('[data-student-classes]');
   if (studentClasses) return openStudentClassesModal(studentClasses.dataset.studentClasses);
   if (event.target.closest('[data-print-pass]')) {

@@ -591,6 +591,25 @@ export async function createRemoteStudent({ id, name, phone, plan, planPrice, le
 }
 
 /**
+ * Administración reinicia la contraseña de un alumno (migración 011).
+ * Devuelve la contraseña temporal para dictársela; al entrar, la app le pide crear una nueva.
+ */
+export async function resetStudentPassword(studentCardId) {
+  const studentUuid = await getProfileUuidByCard(studentCardId);
+  if (!studentUuid) {
+    throw new Error(`No se encontró registro remoto para el alumno ${studentCardId}`);
+  }
+  try {
+    return await db.rpc('admin_reset_password', { p_profile_id: studentUuid });
+  } catch (err) {
+    if (/admin_reset_password/.test(err.message) && /Could not find|404/.test(err.message)) {
+      throw new Error('Falta ejecutar en Supabase la migración 011_reiniciar_contrasena.sql.');
+    }
+    throw new Error(err.message.replace(/^Error en RPC admin_reset_password: /, ''));
+  }
+}
+
+/**
  * Sincroniza los cambios de inscripciones de un alumno en Supabase.
  */
 export async function syncRemoteEnrollments({ studentCardId, classIds = [] }) {
