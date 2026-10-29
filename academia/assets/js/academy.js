@@ -2033,7 +2033,7 @@ function openStudentPreviewPicker() {
         <p class="modal-note">Elige un alumno y verás su portal tal como él lo ve: sus clases, su plan y su carné. Es solo para mirar; nada de lo que toques se guarda.</p>
         <label class="field">
           <span>Alumno</span>
-          <select class="input" name="student">${students.map((s) => `<option value="${escapeHtml(s.id)}">${escapeHtml(s.name)}</option>`).join('')}</select>
+          <select class="input" name="student" data-student-search>${students.map((s) => `<option value="${escapeHtml(s.id)}" data-search="${studentSearchText(s)}">${escapeHtml(s.name)}</option>`).join('')}</select>
         </label>
         <div class="form-actions">
           <button class="button button--light" type="button" data-close-modal>Cancelar</button>
@@ -4333,8 +4333,8 @@ function openCreatePassModal() {
           <div id="studentFields" class="form-subfields is-hidden" style="margin-top:12px">
             <label class="field">
               <span>Seleccionar alumno *</span>
-              <select name="studentId" id="createPassStudentSelect">
-                ${state.students.map((s) => `<option value="${escapeHtml(s.id)}">${escapeHtml(s.name)} (${escapeHtml(s.id)}) · ${escapeHtml(s.plan)}</option>`).join('')}
+              <select name="studentId" id="createPassStudentSelect" data-student-search>
+                ${[...state.students].sort((a, b) => a.name.localeCompare(b.name, 'es')).map((s) => `<option value="${escapeHtml(s.id)}" data-search="${studentSearchText(s)}">${escapeHtml(s.name)} (${escapeHtml(s.id)}) · ${escapeHtml(s.plan)}</option>`).join('')}
               </select>
             </label>
             <p class="modal-note">Este pase no consume clases del plan regular ni modifica su saldo.</p>
@@ -5331,6 +5331,7 @@ function openModal({ title, eyebrow = 'Acción demo', body }) {
   elements.modalTitle.textContent = title;
   elements.modalEyebrow.textContent = eyebrow;
   elements.modalBody.innerHTML = body;
+  elements.modalBody.querySelectorAll('select[data-student-search]').forEach(attachStudentSearch);
   elements.modalLayer.classList.remove('is-hidden');
   elements.modalLayer.setAttribute('aria-hidden', 'false');
   document.body.classList.add('modal-open');
@@ -5499,6 +5500,69 @@ function openScanModal() {
   });
 }
 
+// ---------------------------------------------------------------------------
+// Buscador de alumno para los selectores largos (pago, pase, ver como alumno).
+// Con 80+ alumnos, deslizar el <select> es lento: se antepone un campo donde se
+// escribe parte del nombre, el carné o el teléfono y el <select> se reduce a
+// los que coinciden, sin perder el orden. El <select> sigue siendo el que
+// guarda el valor, así que los formularios no cambian.
+function normalizeSearchText(value) {
+  return String(value ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+}
+
+function studentSearchText(student) {
+  const phone = student.phone || '';
+  return escapeHtml(normalizeSearchText(`${student.name} ${student.id} ${phone} ${phone.replace(/\D/g, '')}`));
+}
+
+function attachStudentSearch(select) {
+  if (select.dataset.searchReady) return;
+  select.dataset.searchReady = 'true';
+  const allOptions = [...select.options];
+  if (allOptions.length < 6) return;
+  const label = select.closest('label');
+  const labelText = label?.querySelector('span')?.textContent?.replace(/\s*\*$/, '') || 'Alumno';
+  select.setAttribute('aria-label', labelText);
+  const input = document.createElement('input');
+  input.type = 'search';
+  input.className = 'student-search-input';
+  input.placeholder = 'Escribe nombre o teléfono para buscar';
+  input.autocomplete = 'off';
+  input.setAttribute('autocapitalize', 'off');
+  input.setAttribute('enterkeyhint', 'done');
+  input.setAttribute('aria-label', `Buscar ${labelText.toLowerCase()}`);
+  const hint = document.createElement('small');
+  hint.className = 'student-search-hint';
+  hint.setAttribute('role', 'status');
+  select.before(input);
+  select.after(hint);
+
+  input.addEventListener('keydown', (event) => {
+    // Enter no envía el formulario: solo cierra el teclado y deja elegido el alumno.
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      input.blur();
+    }
+  });
+  input.addEventListener('input', () => {
+    const terms = normalizeSearchText(input.value).split(/\s+/).filter(Boolean);
+    const matches = terms.length
+      ? allOptions.filter((option) => terms.every((term) => (option.dataset.search || normalizeSearchText(option.text)).includes(term)))
+      : allOptions;
+    if (!matches.length) {
+      hint.textContent = 'Ningún alumno coincide. Revisa cómo está escrito.';
+      return;
+    }
+    const previous = select.value;
+    select.replaceChildren(...matches);
+    if (!matches.some((option) => option.value === previous)) select.value = matches[0].value;
+    hint.textContent = terms.length
+      ? (matches.length === 1 ? `Elegido: ${matches[0].text}` : `${matches.length} alumnos coinciden. Elige uno en la lista.`)
+      : '';
+    if (select.value !== previous) select.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+}
+
 function openPaymentModal(studentId = null, period = monthKey(TODAY)) {
   const defaultStudent = studentId ? studentById(studentId) : (currentStudent() || state.students[0]);
   if (!defaultStudent) {
@@ -5513,7 +5577,7 @@ function openPaymentModal(studentId = null, period = monthKey(TODAY)) {
     body: `
       <form id="paymentForm">
         <div class="form-grid">
-          <label class="field field--wide"><span>Alumno</span><select name="studentId" required>${[...state.students].sort((a, b) => a.name.localeCompare(b.name, 'es')).map((item) => `<option value="${escapeHtml(item.id)}" ${item.id === student.id ? 'selected' : ''}>${escapeHtml(item.name)} · ${escapeHtml(item.id)}</option>`).join('')}</select></label>
+          <label class="field field--wide"><span>Alumno</span><select name="studentId" required data-student-search>${[...state.students].sort((a, b) => a.name.localeCompare(b.name, 'es')).map((item) => `<option value="${escapeHtml(item.id)}" data-search="${studentSearchText(item)}" ${item.id === student.id ? 'selected' : ''}>${escapeHtml(item.name)} · ${escapeHtml(item.id)}</option>`).join('')}</select></label>
           <label class="field"><span>Monto (Q) · liquidación completa</span><input name="amount" type="number" min="0.01" step="0.01" required readonly /></label>
           <label class="field"><span>Método</span><select name="method" required>${PAYMENT_METHODS.map((value) => `<option>${escapeHtml(value)}</option>`).join('')}</select></label>
           <label class="field"><span>Mes aplicado</span><select name="period">${periods.map((value) => `<option value="${escapeHtml(value)}" ${value === period ? 'selected' : ''}>${escapeHtml(monthLabel(parseDayKey(`${value}-01`)))}</option>`).join('')}</select></label>

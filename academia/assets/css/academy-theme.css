@@ -4123,3 +4123,17 @@ button.student-check > span:last-child { color: var(--red); font-size: .74rem; f
   .table-wrap--stack .data-table td[colspan] { display: block; text-align: center; }
   .table-wrap--stack .data-table tbody tr:hover td { background: transparent; }
 }
+
+/* ---- Buscador dentro de los selectores de alumno ----
+   Va pegado al <select> que filtra; la pista solo aparece cuando hay texto. */
+.field .student-search-input {
+  margin-bottom: 2px;
+}
+.student-search-hint {
+  color: var(--muted);
+  font-size: .78rem;
+  line-height: 1.35;
+}
+.student-search-hint:empty {
+  display: none;
+}
