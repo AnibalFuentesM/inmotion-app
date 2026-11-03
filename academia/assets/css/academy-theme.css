@@ -4136,6 +4136,7 @@ button.student-check > span:last-child { color: var(--red); font-size: .74rem; f
 }
 .student-search-hint:empty {
   display: none;
+}
 /* ---- Completar datos (administración) ---- */
 .data-entry-select,
 .data-entry-input {
@@ -4194,3 +4195,30 @@ button.student-check > span:last-child { color: var(--red); font-size: .74rem; f
   .data-entry-table .data-table tr.is-row-dirty { border-color: var(--red); }
   .data-entry-table .data-table tr.is-row-dirty td { background: transparent; }
 }
+
+/* Crédito de Sagepoint Analytics: discreto, al pie del login y del menú lateral */
+.made-by {
+  margin: 18px 0 0;
+  color: var(--muted);
+  font-size: .68rem;
+  letter-spacing: .04em;
+  opacity: .75;
+}
+.made-by a {
+  color: inherit;
+  font-weight: 600;
+  text-decoration: none;
+}
+.made-by a:hover,
+.made-by a:focus-visible {
+  color: var(--red);
+  text-decoration: underline;
+}
+.made-by--side {
+  margin: 10px 0 0;
+  padding: 0 12px;
+  color: rgba(255,255,255,.34);
+  opacity: 1;
+}
+.made-by--side a:hover,
+.made-by--side a:focus-visible { color: var(--white, #fff); }
