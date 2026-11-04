@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="es">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#0B0B0C" />
+  <meta name="robots" content="noindex" />
+  <title>Página no encontrada | In Motion</title>
+  <link rel="icon" type="image/png" sizes="192x192" href="/assets/icons/icon-192.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    /* Página 404 que Vercel sirve en cualquier ruta inexistente: por eso todas
+       las rutas son absolutas (/assets/...), no relativas. */
+    :root {
+      --bg: #0B0B0C;
+      --text: #f5f5f5;
+      --muted: #a3a3a3;
+      --brand-red: #e20c14;
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body { height: 100%; }
+
+    body {
+      margin: 0;
+      min-height: 100%;
+      display: grid;
+      place-items: center;
+      padding: 32px 16px;
+      background:
+        radial-gradient(60% 50% at 50% 35%, rgba(226, 12, 20, 0.18), transparent 70%),
+        var(--bg);
+      color: var(--text);
+      font-family: 'Space Grotesk', system-ui, sans-serif;
+      text-align: center;
+    }
+
+    main {
+      width: 100%;
+      max-width: 420px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 20px;
+    }
+
+    .logo { width: 132px; height: auto; opacity: 0.95; }
+
+    .dance {
+      position: relative;
+      width: min(100%, 320px);
+      aspect-ratio: 1;
+      border-radius: 28px;
+      overflow: hidden;
+      background: #260a32 url('/assets/404/baile-poster.webp') center / cover no-repeat;
+      box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.06);
+    }
+
+    .dance video {
+      display: block;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .code {
+      margin: 0;
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 0.24em;
+      color: var(--brand-red);
+    }
+
+    h1 {
+      margin: -8px 0 0;
+      font-size: clamp(24px, 6vw, 30px);
+      line-height: 1.15;
+      font-weight: 700;
+    }
+
+    p.lead {
+      margin: -6px 0 0;
+      font-size: 16px;
+      line-height: 1.5;
+      color: var(--muted);
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 48px;
+      padding: 0 28px;
+      border-radius: 999px;
+      background: var(--brand-red);
+      color: #fff;
+      font-weight: 600;
+      font-size: 16px;
+      text-decoration: none;
+      transition: transform 0.15s ease, filter 0.15s ease;
+    }
+
+    .btn:hover { filter: brightness(1.1); }
+    .btn:active { transform: scale(0.97); }
+    .btn:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
+  </style>
+</head>
+
+<body>
+  <main>
+    <img class="logo" src="/assets/inmotion-logo.svg" alt="In Motion" />
+
+    <div class="dance">
+      <video id="dance" muted loop playsinline preload="auto" poster="/assets/404/baile-poster.webp"
+        aria-hidden="true">
+        <source src="/assets/404/baile.mp4" type="video/mp4" />
+      </video>
+    </div>
+
+    <p class="code">ERROR 404</p>
+    <h1>Este paso no está en la coreografía</h1>
+    <p class="lead">La página que buscas no existe o cambió de lugar. Vuelve a la pista y sigue bailando.</p>
+    <a class="btn" href="/academia/">Volver a la app</a>
+  </main>
+
+  <script>
+    // Sin autoplay si la persona pidió reducir el movimiento: queda el póster quieto.
+    (function () {
+      var v = document.getElementById('dance');
+      var still = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      if (!v || still) return;
+      var p = v.play();
+      if (p && p.catch) p.catch(function () {});
+    })();
+  </script>
+</body>
+
+</html>
