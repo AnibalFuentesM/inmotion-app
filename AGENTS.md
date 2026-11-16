@@ -88,7 +88,21 @@ Se trabaja **siempre sobre esta misma app**: `academia/`, dentro de
    Administración carga plan, clase del Dancer/Weekend, pago del mes, apellido y maestros
    en «Completar datos» (ruta `#/datos`, solo en el menú lateral): reemplaza al Excel
    «datos para la academia». Un «Pagó …» ahí registra el pago con método «Antes de la app».
-10. **Nunca commitear** `.env*.local` ni `.vercel/` (ya están en `.gitignore`).
+10. **Cobro mes a mes (migración 012).** La mensualidad de cada mes la crea «Abrir cobros
+   de <mes>» (aviso en Inicio y Pagos de administración, RPC `open_month_memberships`) con
+   el último plan de cada alumno activo y vencimiento el día `PAYMENT_DUE_DAY` (5, decidido
+   por Mariano el 16/11/2026); pasada esa fecha sale «En mora». «Registrar pago» también
+   registra la inscripción (Q150, `register_extra_payment`, `payments.concept`) y la promo
+   de primer mes Q250 para quien nunca pagó (`apply_new_student_promo`). El membership
+   anual (Q125) por ahora no se cobra. Las inscripciones van en `extraPayments`, aparte de
+   `state.payments`, para no marcar el mes como pagado.
+11. **Lo que no funciona con datos reales no se muestra como si funcionara.** Fuera de `?demo`
+   no hay cupos (`capacityTag`), ni Rockola (`MUSIC_ENABLED`), y Asistencia y Pases salen de
+   la barra inferior y quedan en el menú lateral con la marca «Pronto» (`routeFeatureEnabled`).
+   En el inicio del alumno lo pendiente va en una sola línea (`comingSoonStrip`).
+   El catálogo muestra «Gestión del catálogo» solo si la academia guardó un rol de equipo en
+   `localStorage['inmotion_catalog_role']`.
+12. **Nunca commitear** `.env*.local` ni `.vercel/` (ya están en `.gitignore`).
 
 ## Convenciones
 

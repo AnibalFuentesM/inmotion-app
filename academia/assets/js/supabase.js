@@ -772,6 +772,92 @@ export async function syncRemotePayment({ studentCardId, amount, method, period,
   };
 }
 
+// ------------------------------------------------------------------------------
+// Cobro mes a mes (migración 012)
+// ------------------------------------------------------------------------------
+
+function missingMigration012(err) {
+  return /could not find the function|schema cache|column [\w."]*concept[\w"]* does not exist/i.test(String(err?.message || ''));
+}
+
+function withMigrationHint(err) {
+  if (missingMigration012(err)) {
+    return new Error('Falta correr la migración 012 (docs/migrations/012_cobro_mes_a_mes.sql) en Supabase.');
+  }
+  return err;
+}
+
+/** Inscripción y otros cobros que no son la mensualidad. */
+export async function fetchRemoteExtraPayments(students = []) {
+  let rows;
+  try {
+    rows = await db.get('payments', 'concept=neq.mensualidad&select=*&order=recorded_at.desc');
+  } catch {
+    return []; // Sin la migración 012 la columna no existe: no hay otros cobros.
+  }
+  if (!Array.isArray(rows)) return [];
+  return rows.map((r) => {
+    const cardNumber = profileUuidToCard.get(r.student_id) || students.find((s) => s.profileId === r.student_id)?.id;
+    if (!cardNumber) return null;
+    const student = students.find((s) => s.id === cardNumber || s.profileId === r.student_id);
+    return {
+      id: r.receipt_number || `REC-${r.id.slice(0, 8)}`,
+      studentId: cardNumber,
+      student: student?.name || cardNumber,
+      concept: r.concept,
+      period: r.period,
+      amount: Number(r.amount) || 0,
+      method: r.payment_method || 'efectivo',
+      paidAt: r.recorded_at?.slice(0, 10) || '',
+      date: r.recorded_at ? formatShortDate(r.recorded_at) : ''
+    };
+  }).filter(Boolean);
+}
+
+export async function registerExtraPayment({ studentCardId, concept, period, amount, method, receiptNumber, notes, idempotencyKey }) {
+  const studentUuid = await getProfileUuidByCard(studentCardId);
+  if (!studentUuid) throw new Error(`No se encontró perfil para el alumno ${studentCardId}`);
+  try {
+    const res = await db.rpc('register_extra_payment', {
+      p_student_id: studentUuid,
+      p_concept: concept,
+      p_period: String(period),
+      p_amount: Number(amount) || 0,
+      p_payment_method: method || 'efectivo',
+      p_receipt_number: receiptNumber || null,
+      p_notes: notes || null,
+      p_idempotency_key: idempotencyKey || null
+    });
+    const row = Array.isArray(res) ? res[0] : res;
+    if (!row) throw new Error('No se recibió respuesta del servidor para el pago registrado.');
+    return { remoteId: row.id, recordedAt: row.recorded_at, amount: Number(row.amount), isDuplicate: Boolean(row.is_duplicate) };
+  } catch (err) {
+    throw withMigrationHint(err);
+  }
+}
+
+/** Crea la mensualidad del mes a cada alumno activo con su último plan. Devuelve cuántas creó. */
+export async function openMonthMemberships(period, dueDay) {
+  try {
+    const res = await db.rpc('open_month_memberships', { p_period: period, p_due_day: dueDay });
+    return Number(Array.isArray(res) ? res[0] : res) || 0;
+  } catch (err) {
+    throw withMigrationHint(err);
+  }
+}
+
+/** Primer mes con precio de alumno nuevo (solo si nunca pagó una mensualidad). */
+export async function applyNewStudentPromo(studentCardId, period, price) {
+  const studentUuid = await getProfileUuidByCard(studentCardId);
+  if (!studentUuid) throw new Error(`No se encontró perfil para el alumno ${studentCardId}`);
+  try {
+    const res = await db.rpc('apply_new_student_promo', { p_student_id: studentUuid, p_period: period, p_price: price });
+    return Number(Array.isArray(res) ? res[0] : res);
+  } catch (err) {
+    throw withMigrationHint(err);
+  }
+}
+
 export function formatPeriodMonth(periodStr) {
   if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(periodStr)) return periodStr || 'Período actual';
   try {
@@ -824,6 +910,9 @@ export async function fetchRemotePayments(students = []) {
     for (const r of rows) {
       const cardNumber = profileUuidToCard.get(r.student_id) || students.find((s) => s.profileId === r.student_id)?.id;
       if (!cardNumber) continue;
+      // Inscripción y otros conceptos (migración 012) no son la mensualidad del mes:
+      // van aparte para no marcar el mes como pagado.
+      if (r.concept && r.concept !== 'mensualidad') continue;
 
       const student = students.find((s) => s.id === cardNumber || s.profileId === r.student_id);
       const studentName = student?.name || cardNumber;

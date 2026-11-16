@@ -4222,3 +4222,48 @@ button.student-check > span:last-child { color: var(--red); font-size: .74rem; f
 }
 .made-by--side a:hover,
 .made-by--side a:focus-visible { color: var(--white, #fff); }
+
+/* ---------------------------------------------------------------------------
+   Revisión de producto (nov 2026)
+   --------------------------------------------------------------------------- */
+/* Secciones que todavía son «Próximamente»: quedan en el menú lateral con esta marca. */
+.nav-soon {
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+  font-size: .62rem;
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  opacity: .6;
+}
+/* Una sola línea con lo que viene pronto, al pie del inicio del alumno. */
+.coming-soon-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0 32px;
+  color: var(--muted);
+  font-size: .86rem;
+  line-height: 1.5;
+}
+/* En el teléfono lo primero es la próxima clase; el cartel de bienvenida va después
+   y más bajo, para no ocupar toda la primera pantalla. */
+@media (max-width: 780px) {
+  .student-hero .next-class { order: -1; min-height: auto; }
+  .student-hero-copy { min-height: auto; padding: 18px; }
+  .student-hero .hero-title { font-size: 1.6rem; }
+}
+/* Casilla de la promoción de alumno nuevo en «Registrar pago». */
+.field-check { display: flex; align-items: center; gap: 10px; cursor: pointer; }
+.field-check input { width: 18px; height: 18px; accent-color: var(--red); }
+.field-check[hidden] { display: none; }
+.field-check input[type="checkbox"] { flex: none; padding: 0; min-height: 0; border: 0; box-shadow: none; background: none; }
+/* Tarjetas de clase en el teléfono: con nombres largos («Intermedio 1/2 Salsa y
+   Bachata») el pie fijo al fondo tapaba la línea del maestro. Va al flujo normal. */
+@media (max-width: 780px) {
+  .class-card { min-height: auto; }
+  .class-card-foot { position: static; margin-top: 16px; align-items: center; gap: 12px; }
+}

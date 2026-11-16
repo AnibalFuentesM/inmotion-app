@@ -25,7 +25,11 @@ import {
   fetchRemoteStaff,
   createRemoteStaff,
   assignRemoteTeacher,
-  resetStudentPassword
+  resetStudentPassword,
+  fetchRemoteExtraPayments,
+  registerExtraPayment,
+  openMonthMemberships,
+  applyNewStudentPromo
 } from './supabase.js';
 
 let isSupabaseConnected = false;
@@ -103,7 +107,7 @@ const roleConfig = {
     routes: [
       ['inicio', 'Inicio', 'home'],
       ['agenda', 'Agenda', 'calendar'],
-      ['asistencia', 'Asistencia', 'scan']
+      ['asistencia', 'Asistencia', 'scan', { feature: 'attendance' }]
     ]
   },
   admin: {
@@ -113,10 +117,11 @@ const roleConfig = {
       ['inicio', 'Inicio', 'home'],
       ['alumnos', 'Alumnos', 'users'],
       ['pagos', 'Pagos', 'money'],
-      ['asistencia', 'Asistencia', 'list'],
-      ['pases', 'Pases', 'ticket'],
-      // Solo en el menú lateral: la barra inferior ya va llena con las cinco de arriba.
-      ['datos', 'Completar datos', 'edit', { sidebarOnly: true }]
+      ['asistencia', 'Asistencia', 'list', { feature: 'attendance' }],
+      ['pases', 'Pases', 'ticket', { feature: 'passes' }],
+      // En la demo va solo en el menú lateral (la barra inferior ya lleva cinco). Con
+      // datos reales Asistencia y Pases salen de la barra y «Datos» ocupa su lugar.
+      ['datos', 'Completar datos', 'edit', { sidebarOnly: 'demo', shortLabel: 'Datos' }]
     ]
   },
   guardian: {
@@ -547,6 +552,17 @@ function capacityText(item) {
   return `${item.enrolled} / ${item.capacity}`;
 }
 
+// Los cupos solo son cifras de referencia de la demo. Con datos reales no hay un
+// conteo confiable para el alumno (solo ve sus propias inscripciones), así que no se
+// muestran: un «10 / 20» inventado se lee como disponibilidad real.
+function capacityTag(item) {
+  return document.documentElement.dataset.mode === 'demo' ? `<span class="capacity">${escapeHtml(capacityText(item))} cupos</span>` : '';
+}
+
+function capacitySuffix(item) {
+  return document.documentElement.dataset.mode === 'demo' ? ` · ${escapeHtml(capacityText(item))} cupos` : '';
+}
+
 // Clave local YYYY-MM-DD: toISOString daria el dia en UTC y en Guatemala (UTC-6)
 // una clase de la noche quedaria registrada al dia siguiente.
 function dayKey(date) {
@@ -632,7 +648,7 @@ function paymentStatus(payment) {
 // registrado no ve «Pendiente» (podría haber pagado en recepción). Admin ve el real.
 function studentPaymentLabel(studentId, payment) {
   const status = paymentStatus(payment);
-  if (DEMO_MODE || status !== 'Pendiente') return status;
+  if (DEMO_MODE || !['Pendiente', 'En mora'].includes(status)) return status;
   const hasAnyPayment = state.payments.some((item) => item.studentId === studentId && item.status === 'Pagado');
   return hasAnyPayment ? status : 'Por confirmar en recepción';
 }
@@ -1611,6 +1627,16 @@ function migratePayment(payment) {
 const DAY_KEY_PATTERN = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
 const PERIOD_PATTERN = /^\d{4}-(0[1-9]|1[0-2])$/;
 const PAYMENT_METHODS = ['Transferencia', 'Efectivo', 'Tarjeta'];
+// La mensualidad vence el día 5 de cada mes (Mariano, 16/11/2026). Pasada esa fecha
+// el pago pendiente sale «En mora». Lo usa «Abrir cobros del mes» (migración 012).
+const PAYMENT_DUE_DAY = 5;
+// Cobros que no son la mensualidad. El membership anual (Q125) por ahora no se cobra.
+const EXTRA_PAYMENT_CONCEPTS = {
+  inscripcion: { label: 'Inscripción', amount: () => SCHEDULE_FEES.registration }
+};
+// Inscripciones y otros cobros: no tocan el estado de la mensualidad, por eso van
+// aparte de state.payments. Se recargan de Supabase en cada sesión de administración.
+let extraPayments = [];
 let recoveryReport = null;
 
 function isPlainObject(value) {
@@ -1878,6 +1904,18 @@ const ATTENDANCE_ENABLED = DEMO_MODE;
 // Los pases individuales viven solo en el navegador (localStorage): en la app real no se
 // comparten entre equipos, así que solo la demo los muestra.
 const PASSES_ENABLED = DEMO_MODE;
+// La Rockola guarda las canciones en el navegador de quien las pide: con datos
+// reales el maestro nunca las vería. Queda solo en la demo hasta tener su tabla.
+const MUSIC_ENABLED = DEMO_MODE;
+
+// Lo que todavía no funciona va en una sola línea al pie del inicio del alumno,
+// en vez de tres tarjetas o botones desactivados repartidos por la pantalla.
+function comingSoonStrip() {
+  const items = ['pagar tu mensualidad', 'pedir tu ticket de parqueo'];
+  if (!ATTENDANCE_ENABLED) items.unshift('ver tu asistencia del mes');
+  const list = items.length > 1 ? `${items.slice(0, -1).join(', ')} y ${items[items.length - 1]}` : items[0];
+  return `<p class="coming-soon-strip"><span class="tag">Pronto</span> Muy pronto podrás ${escapeHtml(list)} desde la app.</p>`;
+}
 
 function comingSoonCard(title, detail) {
   return `<article class="surface-card coming-soon-card"><p class="eyebrow">${escapeHtml(title)}</p><h2>Próximamente</h2><p class="payment-meta">${escapeHtml(detail)}</p></article>`;
@@ -1965,15 +2003,25 @@ function icon(name) {
   return `<svg viewBox="0 0 24 24" aria-hidden="true">${icons[name] || icons.home}</svg>`;
 }
 
+function routeFeatureEnabled(options = {}) {
+  if (options.feature === 'attendance') return ATTENDANCE_ENABLED;
+  if (options.feature === 'passes') return PASSES_ENABLED;
+  return true;
+}
+
 // El catalogo de videos vive fuera de la app (raiz del sitio), pero es de lo que
 // mas se usa: va como pestaña mas en la navegacion. En la barra inferior solo
-// entra si quedan 5 pestañas o menos (admin ya tiene 5).
+// entra si quedan 5 pestañas o menos.
+// Las secciones que todavía son «Próximamente» quedan en el menú lateral, marcadas
+// «Pronto», y no ocupan lugar en la barra inferior.
 function navMarkup(config, { mobile = false } = {}) {
-  const routes = mobile ? config.routes.filter((route) => !route[3]?.sidebarOnly) : config.routes;
-  const items = routes.map(([route, label, iconName], index) => `
+  const routes = mobile
+    ? config.routes.filter(([, , , options = {}]) => routeFeatureEnabled(options) && !(options.sidebarOnly === true || (options.sidebarOnly === 'demo' && DEMO_MODE)))
+    : config.routes;
+  const items = routes.map(([route, label, iconName, options = {}], index) => `
     <a class="nav-item ${activeRoute === route ? 'is-active' : ''}" href="#/${escapeHtml(route)}" ${activeRoute === route ? 'aria-current="page"' : ''} data-route="${escapeHtml(route)}">
       <span class="nav-icon">${icon(iconName)}</span>
-      <span>${escapeHtml(label)}</span>
+      <span>${escapeHtml(mobile && options.shortLabel ? options.shortLabel : label)}${!mobile && !routeFeatureEnabled(options) ? ' <small class="nav-soon">Pronto</small>' : ''}</span>
       <span class="nav-index">0${index + 1}</span>
     </a>
   `);
@@ -2196,7 +2244,7 @@ function classCards(classes = scheduledClasses().slice(0, 3), empty = null) {
       <span class="class-card-index">0${index + 1}</span>
       <div class="class-card-top">
         <span class="tag ${index === 0 ? 'tag--dark' : ''}">${escapeHtml(item.day)} · ${escapeHtml(item.time)}</span>
-        ${index === 0 ? '<span class="status-dot">Inscripta</span>' : ''}
+        ${index === 0 ? '<span class="status-dot">Próxima</span>' : ''}
       </div>
       <h3>${escapeHtml(item.name)}</h3>
       <p class="class-card-date">${escapeHtml(dateLabelStr)}</p>
@@ -2205,7 +2253,7 @@ function classCards(classes = scheduledClasses().slice(0, 3), empty = null) {
         <span>${escapeHtml(item.level)}</span>
         <div class="class-card-actions">
           <button class="button button--small button--light" type="button" data-class-detail="${escapeHtml(item.id)}" data-context-date="${escapeHtml(contextDateKey)}" aria-label="Ver detalles de ${escapeHtml(item.name)}">Ver detalles</button>
-          <button class="button button--small button--light" type="button" data-open-music-modal="${escapeHtml(item.id)}" aria-label="Sugerir una canción para ${escapeHtml(item.name)}">Canción 🎶</button>
+          ${MUSIC_ENABLED ? `<button class="button button--small button--light" type="button" data-open-music-modal="${escapeHtml(item.id)}" aria-label="Sugerir una canción para ${escapeHtml(item.name)}">Canción 🎶</button>` : ''}
         </div>
       </div>
     </article>
@@ -2220,7 +2268,7 @@ function scheduleList(classes = scheduledClasses()) {
       <div class="schedule-time">${escapeHtml(item.time)}<small>${escapeHtml(item.day)} · ${escapeHtml(item.dateLabel)}</small></div>
       <div class="schedule-name"><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(item.level)} · ${escapeHtml(item.room)}</small></div>
       <div class="schedule-teacher">${escapeHtml(item.teacher)}<small>Maestro</small></div>
-      <span class="capacity">${escapeHtml(capacityText(item))} cupos</span>
+      ${capacityTag(item)}
       <button class="button button--light button--small" type="button" data-class-detail="${escapeHtml(item.id)}" aria-label="Ver clase ${escapeHtml(item.name)}, ${escapeHtml(item.day)} ${escapeHtml(item.time)}">Ver clase</button>
     </div>
   `).join('')}</div>`;
@@ -2643,10 +2691,26 @@ function renderStudentHome() {
       </aside>
     </section>
 
+    <section class="section ${ATTENDANCE_ENABLED ? 'split-grid' : ''}">
+      <article class="surface-card">
+        <p class="eyebrow">Mensualidad · ${escapeHtml(monthName(TODAY))}</p>
+        <div class="payment-status">
+          <div><p class="payment-amount">Q ${escapeHtml(payment ? formatAmount(payment.amount) : '—')}</p><p class="payment-meta">${escapeHtml(studentPaymentLabel(studentId, payment))} · ${escapeHtml(paymentDateText(payment))}<br/>${plan.noPlan ? 'Tu plan se confirma en recepción' : `${escapeHtml(plan.planName)} · ${escapeHtml(priceText(plan.price))}${plan.needsReview ? '' : ' al mes'}`}</p></div>
+          <button class="button ${paid ? 'button--light' : ''}" type="button" data-student-payment>${paid ? 'Ver comprobante' : 'Ver detalle'}</button>
+        </div>
+      </article>
+      ${!ATTENDANCE_ENABLED ? '' : `<article class="surface-card">
+        <p class="eyebrow">Asistencia del mes</p>
+        ${allowance === null || allowanceUnknown
+          ? `<h2>${attended} clase${attended === 1 ? '' : 's'} este mes</h2>`
+          : `<h2>${attended} de ${allowance} clases</h2><progress class="attendance-progress" value="${Math.min(attended, allowance)}" max="${allowance}" aria-label="Clases asistidas este mes">${attended} de ${allowance}</progress>`}
+        <p class="payment-meta">${escapeHtml(attendanceNote)}</p>
+      </article>`}
+    </section>
+
     <div class="journey-actions" role="group" aria-label="Explora la academia">
       <a class="journey-featured" href="../index.html"><span class="journey-icon">${icon('play')}</span><span><strong>Videos para practicar</strong><small>Repasa en casa los pasos de tus clases</small></span><span aria-hidden="true">→</span></a>
       <button type="button" data-go="planes"><span class="journey-icon">${icon('money')}</span><span><strong>Encuentra tu plan</strong><small>Compara opciones a tu ritmo</small></span><span aria-hidden="true">↗</span></button>
-      <button type="button" class="is-coming-soon" disabled aria-disabled="true"><span class="journey-icon">${icon('ticket')}</span><span><strong>Ticket de parqueo</strong><small>Próximamente: pídelo desde la app, si aplica</small></span><span class="tag">Pronto</span></button>
     </div>
     <section class="section">
       <div class="section-head"><div><h2>Esta semana</h2><p>Tu agenda de clases del ${escapeHtml(weekRange())}.</p></div><button class="text-button" type="button" data-go="clases">Ver calendario →</button></div>
@@ -2658,25 +2722,9 @@ function renderStudentHome() {
       ${classCards(own, { title: 'Sin clases asignadas', detail: 'Todavía no tienes clases asignadas. Consulta el calendario para ver los horarios.' })}
     </section>
 
-    <section class="section split-grid">
-      <article class="surface-card">
-        <p class="eyebrow">Mensualidad · ${escapeHtml(monthName(TODAY))}</p>
-        <div class="payment-status">
-          <div><p class="payment-amount">Q ${escapeHtml(payment ? formatAmount(payment.amount) : '—')}</p><p class="payment-meta">${escapeHtml(studentPaymentLabel(studentId, payment))} · ${escapeHtml(paymentDateText(payment))}<br/>${plan.noPlan ? 'Tu plan se confirma en recepción' : `${escapeHtml(plan.planName)} · ${escapeHtml(priceText(plan.price))}${plan.needsReview ? '' : ' al mes'}`}</p></div>
-          <button class="button ${paid ? 'button--light' : ''}" type="button" data-student-payment>${paid ? 'Ver comprobante' : 'Ver detalle'}</button>
-        </div>
-        <button class="button button--light button--small coming-soon-button" type="button" disabled aria-disabled="true">Pagar desde la app · Próximamente</button>
-      </article>
-      ${!ATTENDANCE_ENABLED ? comingSoonCard('Asistencia del mes', 'Muy pronto verás aquí las clases a las que asististe.') : `<article class="surface-card">
-        <p class="eyebrow">Asistencia del mes</p>
-        ${allowance === null || allowanceUnknown
-          ? `<h2>${attended} clase${attended === 1 ? '' : 's'} este mes</h2>`
-          : `<h2>${attended} de ${allowance} clases</h2><progress class="attendance-progress" value="${Math.min(attended, allowance)}" max="${allowance}" aria-label="Clases asistidas este mes">${attended} de ${allowance}</progress>`}
-        <p class="payment-meta">${escapeHtml(attendanceNote)}</p>
-      </article>`}
-    </section>
+    ${comingSoonStrip()}
 
-    ${studentMusicSection()}
+    ${MUSIC_ENABLED ? studentMusicSection() : ''}
   `;
 }
 
@@ -3120,14 +3168,14 @@ function studentCalendarMarkup() {
                 </div>
                 <p class="calendar-agenda-meta">
                   <span class="agenda-meta-item">${escapeHtml(item.level)}</span> · 
-                  <span class="agenda-meta-item">Salón: ${escapeHtml(item.room)}</span> · 
+                  <span class="agenda-meta-item">${escapeHtml(item.room)}</span> · 
                   <span class="agenda-meta-item">Profesor: ${escapeHtml(item.teacher)}</span>
                 </p>
                 <div class="calendar-agenda-foot">
-                  <span class="capacity">${escapeHtml(capacityText(item))} cupos</span>
+                  ${capacityTag(item)}
                   <div class="calendar-agenda-actions">
                     <button class="button button--small ${isEnrolled ? 'button--red' : 'button--light'}" type="button" data-class-detail="${escapeHtml(item.id)}" data-context-date="${escapeHtml(dayKey(studentCalendarDate))}" aria-label="Ver detalles de ${escapeHtml(item.name)}">Ver detalles</button>
-                    <button class="button button--small button--light" type="button" data-open-music-modal="${escapeHtml(item.id)}" aria-label="Sugerir una canción para ${escapeHtml(item.name)}">Canción 🎶</button>
+                    ${MUSIC_ENABLED ? `<button class="button button--small button--light" type="button" data-open-music-modal="${escapeHtml(item.id)}" aria-label="Sugerir una canción para ${escapeHtml(item.name)}">Canción 🎶</button>` : ''}
                   </div>
                 </div>
               </div>
@@ -3205,7 +3253,7 @@ function renderStudentClasses() {
       <div>
         <p class="eyebrow">Agenda y horarios</p>
         <h1>Tu calendario<br/>de clases.</h1>
-        <p>Consulta tus clases y horarios disponibles. Abre los detalles de cualquier sesión para ver salón, profesor y cupos.</p>
+        <p>Consulta tus clases y horarios disponibles. Abre los detalles de cualquier sesión para ver salón y profesor${DEMO_MODE ? ' y cupos' : ''}.</p>
       </div>
       <div class="form-actions">
         <button class="button button--red" type="button" data-open-my-classes>Elegir mis clases</button>
@@ -3349,7 +3397,7 @@ function renderStudentCard() {
         <div>
           <p class="eyebrow">Uso del carné</p>
           <h2>Acceso a la academia</h2>
-          <p class="payment-meta">Tu credencial digital es permanente e intransferible. Mostrala en recepción desde tu teléfono o impresa al llegar a tu clase; la asistencia se registra en el dispositivo de la academia.</p>
+          <p class="payment-meta">Tu credencial digital es permanente e intransferible. Muéstrala en recepción desde tu teléfono o impresa al llegar a tu clase; la asistencia se registra en el dispositivo de la academia.</p>
         </div>
         <div class="member-info-badges">
           <div class="info-badge">
@@ -3378,7 +3426,7 @@ function teacherCards() {
   return `<div class="teacher-day-grid">${own.map((item, index) => `
     <article class="teacher-class">
       <div class="teacher-class-time">${escapeHtml(item.time).replace(' ', '<br/>')}</div>
-      <div><span class="tag ${index === 0 ? 'tag--red' : ''}">${escapeHtml(item.day)}</span><h3>${escapeHtml(item.name)}</h3><p>${escapeHtml(item.room)} · ${escapeHtml(capacityText(item))} cupos</p></div>
+      <div><span class="tag ${index === 0 ? 'tag--red' : ''}">${escapeHtml(item.day)}</span><h3>${escapeHtml(item.name)}</h3><p>${escapeHtml(item.room)}${capacitySuffix(item)}</p></div>
       <button class="button button--small ${index === 0 ? 'button--red' : 'button--light'}" type="button" data-take-attendance="${escapeHtml(item.id)}" aria-label="${index === 0 ? 'Pasar asistencia' : 'Abrir clase'} de ${escapeHtml(item.name)}, ${escapeHtml(item.day)} ${escapeHtml(item.time)}">${index === 0 ? 'Pasar asistencia' : 'Abrir clase'}</button>
     </article>
   `).join('')}</div>`;
@@ -3416,7 +3464,7 @@ function renderTeacherHome() {
       </div>
     </section>
     <section class="section"><div class="section-head"><div><h2>Tu agenda</h2><p>Próximas clases asignadas.</p></div><button class="text-button" type="button" data-go="agenda">Ver semana →</button></div>${teacherCards()}</section>
-    ${teacherMusicSection()}
+    ${MUSIC_ENABLED ? teacherMusicSection() : ''}
   `;
 }
 
@@ -3469,7 +3517,7 @@ function renderTeacherAgenda() {
               <div>
                 <span class="tag">${escapeHtml(item.day)}</span>
                 <h3>${escapeHtml(item.name)}</h3>
-                <p>${escapeHtml(item.teacher)} · ${escapeHtml(item.room)} · ${escapeHtml(capacityText(item))} cupos</p>
+                <p>${escapeHtml(item.teacher)} · ${escapeHtml(item.room)}${capacitySuffix(item)}</p>
               </div>
               <button class="button button--small button--light" type="button" data-take-attendance="${escapeHtml(item.id)}" aria-label="Abrir clase de ${escapeHtml(item.name)}, ${escapeHtml(item.day)} ${escapeHtml(item.time)}">Abrir clase</button>
             </article>
@@ -3477,7 +3525,7 @@ function renderTeacherAgenda() {
         </div>
       </section>
     ` : ''}
-    ${teacherMusicSection()}
+    ${MUSIC_ENABLED ? teacherMusicSection() : ''}
   `;
 }
 
@@ -3749,6 +3797,7 @@ function renderAdminHome() {
       <div><p class="eyebrow">Administración · ${escapeHtml(shortDayLabel(TODAY))}</p><h1>La academia,<br/>en orden.</h1></div>
       <div class="admin-intro-meta"><div><strong>${escapeHtml(state.students.length)}</strong><span>alumnos registrados</span></div><div><strong>${escapeHtml(withPlan)}</strong><span>con plan cargado</span></div></div>
     </section>
+    ${monthOpenNotice()}
     ${withoutPlan > 0 ? `
     <section class="section">
       <article class="surface-card admin-notice">
@@ -4239,8 +4288,60 @@ async function handleStaffSubmit(event) {
   }
 }
 
+// Alumnos activos con plan que todavía no tienen la mensualidad del mes creada.
+// Sin ella no se puede registrar su pago ni aparecen como pendientes.
+function studentsWithoutMonth(period = monthKey(TODAY)) {
+  return state.students.filter((item) => item.status === 'active' && item.plan
+    && !state.payments.some((payment) => payment.studentId === item.id && payment.period === period));
+}
+
+function monthOpenNotice() {
+  if (DEMO_MODE || !isSupabaseConnected || studentPreviewId) return '';
+  const period = monthKey(TODAY);
+  const missing = studentsWithoutMonth(period);
+  if (!missing.length) return '';
+  const month = monthName(TODAY);
+  return `
+    <section class="section">
+      <article class="surface-card admin-notice">
+        <p class="eyebrow">Cobros de ${escapeHtml(month)}</p>
+        <h2>${missing.length === 1 ? '1 alumno no tiene' : `${escapeHtml(missing.length)} alumnos no tienen`} su mensualidad de ${escapeHtml(month)}</h2>
+        <p class="payment-meta">Ábrelas para registrar sus pagos y ver quién debe. Cada alumno activo recibe la mensualidad de su último plan, con vencimiento el ${PAYMENT_DUE_DAY} de ${escapeHtml(month)}. A quien ya la tiene no se le toca.</p>
+        <div class="form-actions"><button class="button button--red button--small" type="button" data-open-month="${escapeHtml(period)}">Abrir cobros de ${escapeHtml(month)}</button></div>
+      </article>
+    </section>`;
+}
+
+async function handleOpenMonth(button) {
+  const period = button.dataset.openMonth;
+  button.disabled = true;
+  button.textContent = 'Abriendo…';
+  try {
+    const created = await openMonthMemberships(period, PAYMENT_DUE_DAY);
+    await syncWithSupabase();
+    showToast('Cobros abiertos', created === 1 ? 'Se creó 1 mensualidad.' : `Se crearon ${created} mensualidades.`);
+  } catch (err) {
+    button.disabled = false;
+    button.textContent = 'Reintentar';
+    showToast('No se pudieron abrir los cobros', err.message);
+  }
+}
+
+function extraPaymentsSection() {
+  const thisMonth = extraPayments.filter((item) => item.paidAt?.startsWith(monthKey(TODAY)));
+  if (!thisMonth.length) return '';
+  return `
+    <section class="section">
+      <div class="section-head"><div><h2>Otros cobros de ${escapeHtml(monthName(TODAY))}</h2><p>Inscripciones registradas este mes. No cambian el estado de la mensualidad.</p></div></div>
+      <div class="table-wrap table-wrap--stack"><table class="data-table"><thead><tr><th scope="col">Alumno</th><th scope="col">Concepto</th><th scope="col">Monto</th><th scope="col">Método</th><th scope="col">Fecha</th></tr></thead><tbody>
+        ${thisMonth.map((item) => `<tr><td data-label="Alumno">${escapeHtml(item.student)} <small>${escapeHtml(item.studentId)}</small></td><td data-label="Concepto">${escapeHtml(EXTRA_PAYMENT_CONCEPTS[item.concept]?.label || item.concept)}</td><td data-label="Monto">Q ${escapeHtml(formatAmount(item.amount))}</td><td data-label="Método">${escapeHtml(item.method)}</td><td data-label="Fecha">${escapeHtml(item.date)}</td></tr>`).join('')}
+      </tbody></table></div>
+    </section>`;
+}
+
 function renderAdminPayments() {
-  const paid = state.payments.filter((item) => item.status === 'Pagado' && item.paidAt?.startsWith(monthKey(TODAY))).reduce((sum, item) => sum + item.amount, 0);
+  const extrasThisMonth = extraPayments.filter((item) => item.paidAt?.startsWith(monthKey(TODAY))).reduce((sum, item) => sum + item.amount, 0);
+  const paid = state.payments.filter((item) => item.status === 'Pagado' && item.paidAt?.startsWith(monthKey(TODAY))).reduce((sum, item) => sum + item.amount, 0) + extrasThisMonth;
   const due = pendingPayments().reduce((sum, item) => sum + item.amount, 0);
   return `
     <header class="page-heading">
@@ -4250,12 +4351,14 @@ function renderAdminPayments() {
         <button class="button button--red" type="button" data-open-payment>+ Registrar pago</button>
       </div>
     </header>
+    ${monthOpenNotice()}
     <section class="split-grid" style="margin-bottom:28px">
-      <article class="surface-card"><p class="eyebrow">Registrado en ${escapeHtml(monthName(TODAY))}</p><p class="payment-amount">Q ${escapeHtml(paid.toLocaleString('es-GT'))}</p><p class="payment-meta">${DEMO_MODE ? 'Monto visible en esta demo local.' : 'Pagos registrados en la app este mes.'}</p></article>
+      <article class="surface-card"><p class="eyebrow">Registrado en ${escapeHtml(monthName(TODAY))}</p><p class="payment-amount">Q ${escapeHtml(paid.toLocaleString('es-GT'))}</p><p class="payment-meta">${DEMO_MODE ? 'Monto visible en esta demo local.' : 'Pagos registrados en la app este mes.'}${extrasThisMonth ? ` Incluye Q ${escapeHtml(formatAmount(extrasThisMonth))} de inscripciones.` : ''}</p></article>
       <article class="surface-card"><p class="eyebrow">Pendiente / mora</p><p class="payment-amount">Q ${escapeHtml(due.toLocaleString('es-GT'))}</p><p class="payment-meta">Mensualidades de planes cargados sin pago registrado.</p></article>
     </section>
     <div class="filter-row" id="paymentFilters" role="group" aria-label="Filtrar pagos por estado"><button class="filter-chip is-active" type="button" aria-pressed="true" data-payment-filter="all">Todos</button><button class="filter-chip" type="button" aria-pressed="false" data-payment-filter="Pagado">Pagados</button><button class="filter-chip" type="button" aria-pressed="false" data-payment-filter="Pendiente">Pendientes</button><button class="filter-chip" type="button" aria-pressed="false" data-payment-filter="En mora">En mora</button></div>
     <div class="table-wrap table-wrap--stack"><table class="data-table"><thead><tr><th scope="col">Alumno</th><th scope="col">Mes</th><th scope="col">Monto</th><th scope="col">Método</th><th scope="col">Estado</th><th scope="col">Acción</th></tr></thead><tbody id="paymentTableBody">${adminPaymentRows()}</tbody></table></div>
+    ${extraPaymentsSection()}
   `;
 }
 
@@ -6010,10 +6113,12 @@ function openPaymentModal(studentId = null, period = monthKey(TODAY)) {
       <form id="paymentForm">
         <div class="form-grid">
           <label class="field field--wide"><span>Alumno</span><select name="studentId" required data-student-search>${[...state.students].sort((a, b) => a.name.localeCompare(b.name, 'es')).map((item) => `<option value="${escapeHtml(item.id)}" data-search="${studentSearchText(item)}" ${item.id === student.id ? 'selected' : ''}>${escapeHtml(item.name)} · ${escapeHtml(item.id)}</option>`).join('')}</select></label>
+          <label class="field"><span>Concepto</span><select name="concept"><option value="mensualidad">Mensualidad</option>${Object.entries(EXTRA_PAYMENT_CONCEPTS).map(([value, item]) => `<option value="${escapeHtml(value)}">${escapeHtml(item.label)} · Q ${escapeHtml(formatAmount(item.amount()))}</option>`).join('')}</select></label>
           <label class="field"><span>Monto (Q) · liquidación completa</span><input name="amount" type="number" min="0.01" step="0.01" required readonly /></label>
           <label class="field"><span>Método</span><select name="method" required>${PAYMENT_METHODS.map((value) => `<option>${escapeHtml(value)}</option>`).join('')}</select></label>
           <label class="field"><span>Mes aplicado</span><select name="period">${periods.map((value) => `<option value="${escapeHtml(value)}" ${value === period ? 'selected' : ''}>${escapeHtml(monthLabel(parseDayKey(`${value}-01`)))}</option>`).join('')}</select></label>
           <label class="field"><span>Referencia</span><input name="reference" placeholder="Ej. voucher 1842" /></label>
+          <label class="field field--wide field-check" data-promo-field hidden><input type="checkbox" name="promo" /> <span>Promoción alumno nuevo: primer mes a Q ${escapeHtml(formatAmount(SCHEDULE_FEES.newStudentFirstMonth))}</span></label>
         </div>
         <p class="modal-note">Este registro no realiza ningún cobro, no procesa tarjetas y no genera factura FEL. El importe sale de la deuda del mes o, si no hay ninguna registrada, de la cuota del plan del alumno.</p>
         <p class="payment-meta" id="paymentFormMessage" role="status"></p>
@@ -6024,20 +6129,53 @@ function openPaymentModal(studentId = null, period = monthKey(TODAY)) {
   updatePaymentForm();
 }
 
+// Nunca pagó una mensualidad: puede llevar la promoción de alumno nuevo.
+function isNewStudentForPromo(studentId) {
+  return !state.payments.some((item) => item.studentId === studentId && item.status === 'Pagado');
+}
+
+function extraPaymentFor(studentId, concept, period) {
+  return extraPayments.find((item) => item.studentId === studentId && item.concept === concept && item.period === period) || null;
+}
+
 function updatePaymentForm() {
   const form = document.querySelector('#paymentForm');
   if (!form) return;
   const studentId = form.elements.studentId.value;
   const period = form.elements.period.value;
+  const concept = form.elements.concept?.value || 'mensualidad';
+  const promoField = form.querySelector('[data-promo-field]');
+  const submitButton = form.querySelector('[type="submit"]');
+  const message = document.querySelector('#paymentFormMessage');
+  if (concept !== 'mensualidad') {
+    const extra = EXTRA_PAYMENT_CONCEPTS[concept];
+    const done = extraPaymentFor(studentId, concept, period);
+    if (promoField) promoField.hidden = true;
+    form.elements.amount.value = extra.amount();
+    form.elements.amount.readOnly = true;
+    submitButton.disabled = Boolean(done);
+    message.textContent = done
+      ? `${extra.label} de ${monthLabel(parseDayKey(`${period}-01`))} ya está registrada (${done.date}).`
+      : `${extra.label}: Q ${formatAmount(extra.amount())}. No cambia el estado de la mensualidad.`;
+    return;
+  }
   const required = requiredPaymentFor(studentId, period);
   const existing = required.existing;
   const paid = existing?.status === 'Pagado';
-  form.elements.amount.value = required.amount === null ? '' : required.amount;
+  const promoAvailable = !paid && required.amount !== null && isNewStudentForPromo(studentId) && required.amount > SCHEDULE_FEES.newStudentFirstMonth;
+  if (promoField) promoField.hidden = !promoAvailable;
+  if (!promoAvailable && form.elements.promo) form.elements.promo.checked = false;
+  const usePromo = promoAvailable && form.elements.promo?.checked;
+  form.elements.amount.value = required.amount === null ? '' : (usePromo ? SCHEDULE_FEES.newStudentFirstMonth : required.amount);
   // El importe es derivado en los dos casos: queda visible pero no editable,
   // porque un valor distinto solo puede ser un abono o un descuento y la demo
   // no los admite. registerPayment igual lo revalida.
   form.elements.amount.readOnly = true;
-  form.querySelector('[type="submit"]').disabled = paid || required.amount === null;
+  submitButton.disabled = paid || required.amount === null;
+  if (usePromo) {
+    message.textContent = `Primer mes de alumno nuevo: Q ${formatAmount(SCHEDULE_FEES.newStudentFirstMonth)} en lugar de Q ${formatAmount(required.amount)}.`;
+    return;
+  }
   document.querySelector('#paymentFormMessage').textContent = paid
     ? 'Este mes ya está pagado. El registro existente se conserva y no se puede reemplazar desde este formulario.'
     : required.amount === null
@@ -6101,14 +6239,14 @@ function openClassDetail(classId, contextDate = null) {
         <p class="payment-meta">
           <strong>Horario:</strong> ${escapeHtml(item.time)} (${escapeHtml(dateFormatted)})<br/>
           <strong>Profesor:</strong> ${escapeHtml(item.teacher)}<br/>
-          <strong>Salón:</strong> ${escapeHtml(item.room)}<br/>
-          <strong>Cupos:</strong> ${escapeHtml(capacityText(item))} ocupados · ${escapeHtml(rosterCount)} alumno${rosterCount === 1 ? '' : 's'} inscrito${rosterCount === 1 ? '' : 's'} en la demo
+          <strong>Salón:</strong> ${escapeHtml(item.room)}${DEMO_MODE ? `<br/>
+          <strong>Cupos:</strong> ${escapeHtml(capacityText(item))} ocupados · ${escapeHtml(rosterCount)} alumno${rosterCount === 1 ? '' : 's'} inscrito${rosterCount === 1 ? '' : 's'} en la demo` : ''}
         </p>
         ${isEnrolled ? '<p style="margin-top:12px"><span class="tag tag--red">Estás inscrito en esta clase</span></p>' : '<p style="margin-top:12px"><span class="tag tag--dark">Clase disponible en catálogo</span></p>'}
       </div>
-      <p class="modal-note">Esta pantalla es de consulta. La inscripción a una clase la administra la academia; el prototipo no habilita reservas por sesión.</p>
+      <p class="modal-note">Esta pantalla es de consulta. La inscripción a una clase la administra la academia${DEMO_MODE ? '; el prototipo no habilita reservas por sesión' : ''}.</p>
       <div class="form-actions">
-        ${activeRole === 'student' ? `<button class="button button--red" type="button" data-open-music-modal="${escapeHtml(item.id)}">Pedir una canción para esta clase 🎶</button>` : ''}
+        ${MUSIC_ENABLED && activeRole === 'student' ? `<button class="button button--red" type="button" data-open-music-modal="${escapeHtml(item.id)}">Pedir una canción para esta clase 🎶</button>` : ''}
         <button class="button button--light" type="button" data-close-modal>Cerrar</button>
       </div>
     `
@@ -7384,12 +7522,110 @@ function registerPayment({ studentId, period, amount, method, reference = '' }) 
   return commitPaymentRecord(prepared);
 }
 
+// Deja en memoria la mensualidad del mes con el precio de la promoción, para que la
+// validación de liquidación completa compare contra Q250 y no contra el plan.
+function applyPromoLocally(studentId, period, price) {
+  state.students = state.students.map((item) => {
+    if (item.id !== studentId || !Array.isArray(item.memberships)) return item;
+    return { ...item, memberships: item.memberships.map((mem) => ((mem.period === period || mem.start_date?.slice(0, 7) === period) ? { ...mem, price } : mem)) };
+  });
+  const existing = state.payments.find((item) => item.studentId === studentId && item.period === period);
+  if (existing) {
+    state.payments = state.payments.map((item) => (item === existing ? { ...item, amount: price } : item));
+  } else {
+    const student = studentById(studentId);
+    state.payments = [{ id: nextPaymentId(), studentId, student: student?.name || studentId, month: monthLabel(parseDayKey(`${period}-01`)), period, amount: price, method: 'Pendiente', date: '', paidAt: null, dueDate: null, status: 'Pendiente', reference: 'Promoción alumno nuevo' }, ...state.payments];
+  }
+}
+
+async function handleExtraPaymentSubmit(form, data) {
+  const message = document.querySelector('#paymentFormMessage');
+  const submitBtn = form.querySelector('button[type="submit"]');
+  const concept = String(data.get('concept'));
+  const extra = EXTRA_PAYMENT_CONCEPTS[concept];
+  const student = studentById(data.get('studentId'));
+  const period = String(data.get('period'));
+  const method = String(data.get('method'));
+  if (!extra || !student) {
+    message.textContent = 'Revisa el alumno y el concepto.';
+    return;
+  }
+  if (extraPaymentFor(student.id, concept, period)) {
+    message.textContent = `${extra.label} de ${monthLabel(parseDayKey(`${period}-01`))} ya está registrada.`;
+    return;
+  }
+  const record = {
+    id: `${concept.slice(0, 3).toUpperCase()}-${student.id}-${period}`,
+    studentId: student.id,
+    student: student.name,
+    concept,
+    period,
+    amount: extra.amount(),
+    method,
+    paidAt: dayKey(TODAY),
+    date: shortDate(TODAY)
+  };
+  if (isSupabaseConnected) {
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Guardando en la nube...';
+    try {
+      const result = await registerExtraPayment({
+        studentCardId: student.id,
+        concept,
+        period,
+        amount: record.amount,
+        method,
+        receiptNumber: record.id,
+        notes: String(data.get('reference') || ''),
+        idempotencyKey: record.id
+      });
+      if (result.recordedAt) {
+        record.paidAt = result.recordedAt.slice(0, 10);
+        record.date = formatShortDateLocal(result.recordedAt);
+      }
+    } catch (err) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Guardar pago';
+      message.textContent = `Error remoto: ${err.message}. Puedes corregir o reintentar sin duplicar.`;
+      return;
+    }
+  }
+  extraPayments = [record, ...extraPayments];
+  closeModal();
+  showToast('Pago guardado', `${record.student} · ${extra.label} · Q ${formatAmount(record.amount)} · ${record.method}`);
+  renderAndFocus();
+}
+
+function formatShortDateLocal(value) {
+  return shortDate(new Date(value));
+}
+
 async function handlePaymentSubmit(event) {
   event.preventDefault();
   const form = event.target;
   const data = new FormData(form);
   const message = document.querySelector('#paymentFormMessage');
   const submitBtn = form.querySelector('button[type="submit"]');
+
+  if ((data.get('concept') || 'mensualidad') !== 'mensualidad') return handleExtraPaymentSubmit(form, data);
+
+  const usePromo = data.get('promo') === 'on' && !form.querySelector('[data-promo-field]')?.hidden;
+  if (usePromo) {
+    const promoStudentId = String(data.get('studentId'));
+    const promoPeriod = String(data.get('period'));
+    const promoPrice = SCHEDULE_FEES.newStudentFirstMonth;
+    if (isSupabaseConnected) {
+      try {
+        submitBtn.disabled = true;
+        await applyNewStudentPromo(promoStudentId, promoPeriod, promoPrice);
+      } catch (err) {
+        submitBtn.disabled = false;
+        message.textContent = `No se pudo aplicar la promoción: ${err.message}`;
+        return;
+      }
+    }
+    applyPromoLocally(promoStudentId, promoPeriod, promoPrice);
+  }
 
   let prepared;
   try {
@@ -8046,6 +8282,8 @@ function handleContentClick(event) {
   if (detail) return openClassDetail(detail.dataset.classDetail, detail.dataset.contextDate || null);
   const register = find('[data-register-for]');
   if (register) return openPaymentModal(register.dataset.registerFor, register.dataset.paymentPeriod);
+  const openMonth = find('[data-open-month]');
+  if (openMonth) return handleOpenMonth(openMonth);
   const waPayment = find('[data-whatsapp-payment]');
   if (waPayment) return openWhatsAppPaymentModal(waPayment.dataset.whatsappPayment);
   const waAttendance = find('[data-whatsapp-attendance]');
@@ -8183,7 +8421,7 @@ elements.modalLayer.addEventListener('click', handleModalClick);
 elements.modalLayer.addEventListener('submit', handleModalSubmit);
 elements.modalLayer.addEventListener('input', handleModalInput);
 elements.modalLayer.addEventListener('change', (event) => {
-  if (event.target.closest('#paymentForm') && ['studentId', 'period'].includes(event.target.name)) updatePaymentForm();
+  if (event.target.closest('#paymentForm') && ['studentId', 'period', 'concept', 'promo'].includes(event.target.name)) updatePaymentForm();
   if (event.target.closest('#createPassForm')) updateCreatePassForm();
 });
 
@@ -8306,6 +8544,7 @@ async function handleSignOut() {
   isSupabaseConnected = false;
   authenticatedUser = null;
   authenticatedProfile = null;
+  rememberRoleForCatalog(null);
   clearLocalAuthCache(true);
   state = loadState();
   activeRole = state.role || 'student';
@@ -8322,6 +8561,16 @@ function enterAuthenticatedApp() {
   window.setTimeout(() => enterDemo(activeRole, route), Math.max(0, INTRO_DONE_AT - performance.now()));
 }
 
+// El catálogo de videos (raíz del sitio) no carga Supabase: solo lee este rol para
+// mostrar «Gestión del catálogo» al equipo y no a los alumnos.
+const CATALOG_ROLE_KEY = 'inmotion_catalog_role';
+function rememberRoleForCatalog(role) {
+  try {
+    if (role) localStorage.setItem(CATALOG_ROLE_KEY, role);
+    else localStorage.removeItem(CATALOG_ROLE_KEY);
+  } catch {}
+}
+
 // Aplica una sesión recién iniciada o restaurada. En modo login una cuenta sin rol
 // válido no entra: mostrarle el portal de alumno por defecto sería darle otra vista.
 async function applyAuthenticatedSession(res) {
@@ -8335,6 +8584,7 @@ async function applyAuthenticatedSession(res) {
   authenticatedProfile = res.profile;
   isSupabaseConnected = true;
   if (roleConfig[role]) activeRole = role;
+  rememberRoleForCatalog(role);
   state = loadState();
   await syncWithSupabase();
 }
@@ -8566,7 +8816,10 @@ async function loadRemoteData() {
     persistState(state);
   }
 
-  if (activeRole === 'admin') staffProfiles = await fetchRemoteStaff();
+  if (activeRole === 'admin') {
+    staffProfiles = await fetchRemoteStaff();
+    extraPayments = await fetchRemoteExtraPayments(state.students);
+  }
 }
 
 async function syncWithSupabase() {

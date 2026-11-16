@@ -13,8 +13,14 @@
         ok = !!(s && s.access_token && (s.refresh_token || (s.expires_at && s.expires_at * 1000 > Date.now())));
       } catch (e) {}
       if (!ok) location.replace('./academia/');
+      // «Gestión del catálogo» es solo para el equipo (rol que guarda la academia al entrar).
+      try {
+        var role = localStorage.getItem('inmotion_catalog_role');
+        if (role === 'admin' || role === 'teacher') document.documentElement.dataset.staff = 'true';
+      } catch (e) {}
     })();
   </script>
+  <style>html:not([data-staff]) #staffToolsSection { display: none; }</style>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, interactive-widget=resizes-content" />
   <meta name="theme-color" content="#0a0a0a" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
