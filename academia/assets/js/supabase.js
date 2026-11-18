@@ -730,6 +730,88 @@ export async function fetchRemoteAttendance() {
 }
 
 /**
+ * Lista de cada clase (migración 013): inscritos y alumnos cuyo plan cubre la clase,
+ * con el estado de la mensualidad del mes. Devuelve null si la función todavía no
+ * existe en la base (antes de correr 013): la app vuelve a la lista por inscripción.
+ */
+export async function fetchClassRosters() {
+  let rows;
+  try {
+    rows = await db.rpc('class_roster', {});
+  } catch (err) {
+    console.warn('[In Motion] Lista de clases por plan no disponible (¿falta la migración 013?):', err.message);
+    return null;
+  }
+  if (!Array.isArray(rows)) return null;
+  return rows.map((r) => {
+    cardToProfileUuid.set(r.card_number, r.student_id);
+    profileUuidToCard.set(r.student_id, r.card_number);
+    return {
+      classId: r.class_id,
+      studentId: r.card_number,
+      profileId: r.student_id,
+      firstName: r.first_name || '',
+      lastName: r.last_name || '',
+      plan: r.plan_name || null,
+      enrolled: Boolean(r.enrolled),
+      paymentStatus: r.payment_status || 'sin_cobro'
+    };
+  });
+}
+
+/**
+ * Sesiones con lista guardada (aunque nadie haya llegado): clase y fecha.
+ */
+export async function fetchRemoteSessions() {
+  try {
+    const rows = await db.get('class_sessions', 'select=class_id,session_date');
+    return Array.isArray(rows) ? rows.map((r) => `${r.class_id}|${r.session_date}`) : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Canciones pedidas (Rockola, migración 013). El maestro y administración las leen con
+ * class_song_requests; el alumno lee las suyas directo de la tabla. null = sin tabla.
+ */
+export async function fetchSongRequests(role) {
+  try {
+    if (role === 'teacher' || role === 'admin') {
+      const rows = await db.rpc('class_song_requests', {});
+      return (rows || []).map((r) => ({
+        id: r.id, classId: r.class_id, studentId: r.card_number, studentName: r.student_name || 'Alumno',
+        song: r.song || '', artist: r.artist || '', moodId: r.mood_id, status: r.status, liked: Boolean(r.liked), createdAt: r.created_at
+      }));
+    }
+    const rows = await db.get('song_requests', 'select=*&order=created_at.desc');
+    return (rows || []).map((r) => ({
+      id: r.id, classId: r.class_id, studentId: profileUuidToCard.get(r.student_id) || null, song: r.song || '', artist: r.artist || '',
+      moodId: r.mood_id, status: r.status, liked: Boolean(r.liked), createdAt: r.created_at
+    }));
+  } catch (err) {
+    console.warn('[In Motion] Rockola no disponible (¿falta la migración 013?):', err.message);
+    return null;
+  }
+}
+
+export async function createSongRequest({ studentCardId, classId, song, artist, moodId }) {
+  const studentUuid = await getProfileUuidByCard(studentCardId);
+  if (!studentUuid) throw new Error('No se encontró tu ficha de alumno.');
+  try {
+    return await db.insert('song_requests', { student_id: studentUuid, class_id: classId, song, artist, mood_id: moodId });
+  } catch (err) {
+    if (/5 canciones/.test(err.message)) throw new Error('Ya tienes 5 canciones esperando. Espera a que tu maestro las revise.');
+    if (/row-level security/i.test(err.message)) throw new Error('Esa clase no está en tu plan.');
+    throw err;
+  }
+}
+
+export async function reviewSongRequest(id, status, liked) {
+  return db.rpc('review_song_request', { p_id: id, p_status: status, p_liked: liked });
+}
+
+/**
  * Registra un pago en Supabase con período e idempotencia vía RPC.
  * Valida período e importe en servidor y rechaza reutilización de clave con datos alterados.
  */

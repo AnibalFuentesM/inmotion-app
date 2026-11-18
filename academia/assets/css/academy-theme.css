@@ -4267,3 +4267,23 @@ button.student-check > span:last-child { color: var(--red); font-size: .74rem; f
   .class-card { min-height: auto; }
   .class-card-foot { position: static; margin-top: 16px; align-items: center; gap: 12px; }
 }
+
+/* Portal del maestro: próxima clase, pasar lista, pagos pendientes de sus alumnos. */
+.teacher-next { display: grid; gap: 2px; margin: 0 0 14px; }
+.teacher-next strong { font-size: 1.15rem; }
+.teacher-next b { color: var(--red); font-weight: 600; }
+.teacher-pay-list { display: grid; gap: 8px; }
+.teacher-pay-row { display: grid; grid-template-columns: 42px minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 10px 14px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--paper); }
+.teacher-pay-name { display: grid; min-width: 0; }
+.teacher-pay-name small { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.attendance-pickers { display: grid; gap: 12px; margin-bottom: 18px; }
+.attendance-pickers select { width: 100%; }
+.attendance-pickers .filter-row { margin: 0; }
+.roster-search { margin: 0 0 12px; }
+.roster-search input { width: 100%; }
+.student-check[hidden] { display: none; }
+.roster-pay { font-style: normal; font-weight: 600; color: #b26b00; }
+.roster-pay--en_mora { color: var(--red); }
+.attendance-history { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 8px; }
+.attendance-history li { display: flex; justify-content: space-between; gap: 12px; align-items: center; }
+.attendance-history li > span:last-child { color: var(--muted); font-size: .85rem; }

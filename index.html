@@ -247,6 +247,14 @@
         </div>
       </details>
     </section>
+    <script>
+      // Desde la app, el maestro llega con #subir-video: se abre el panel de subida.
+      if (location.hash === '#subir-video' && document.documentElement.dataset.staff) {
+        var staffPanel = document.getElementById('staffToolsSection');
+        staffPanel.open = true;
+        setTimeout(function () { staffPanel.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 300);
+      }
+    </script>
 
     <!-- Content States -->
     <section class="mt-8" aria-live="polite">

@@ -97,12 +97,22 @@ Se trabaja **siempre sobre esta misma app**: `academia/`, dentro de
    anual (Q125) por ahora no se cobra. Las inscripciones van en `extraPayments`, aparte de
    `state.payments`, para no marcar el mes como pagado.
 11. **Lo que no funciona con datos reales no se muestra como si funcionara.** Fuera de `?demo`
-   no hay cupos (`capacityTag`), ni Rockola (`MUSIC_ENABLED`), y Asistencia y Pases salen de
-   la barra inferior y quedan en el menú lateral con la marca «Pronto» (`routeFeatureEnabled`).
+   no hay cupos (`capacityTag`) y Pases sale de la barra inferior y queda en el menú lateral
+   con la marca «Pronto» (`routeFeatureEnabled`). La Rockola (`MUSIC_ENABLED`) se enciende sola
+   cuando la base tiene `song_requests` (migración 013). El conteo de asistencia del alumno y
+   el carné QR siguen solo en la demo (`ATTENDANCE_ENABLED`).
    En el inicio del alumno lo pendiente va en una sola línea (`comingSoonStrip`).
    El catálogo muestra «Gestión del catálogo» solo si la academia guardó un rol de equipo en
    `localStorage['inmotion_catalog_role']`.
-12. **Nunca commitear** `.env*.local` ni `.vercel/` (ya están en `.gitignore`).
+12. **Pasar lista (migración 013).** El maestro pasa lista de sus clases en «Pasar lista»
+   (`renderTeacherAttendance`, `CLASS_LIST_ENABLED`); administración ve la última lista de cada
+   clase en Asistencia y abre la misma pantalla en la ruta oculta `lista` (`HIDDEN_ROUTES`).
+   La lista sale de `class_roster`: inscritos más alumnos cuyo plan cubre la clase
+   (`student_can_attend`), con la mensualidad del mes. Sin 013 la app vuelve a la lista por
+   inscripción. El maestro corrige hasta 14 días atrás, nunca fechas futuras. Su inicio muestra
+   la próxima clase, las listas que faltan, los pagos pendientes de sus alumnos, las canciones
+   pedidas y el acceso a subir videos (`../index.html#subir-video` abre el panel del catálogo).
+13. **Nunca commitear** `.env*.local` ni `.vercel/` (ya están en `.gitignore`).
 
 ## Convenciones
 

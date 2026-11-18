@@ -29,10 +29,21 @@ import {
   fetchRemoteExtraPayments,
   registerExtraPayment,
   openMonthMemberships,
-  applyNewStudentPromo
+  applyNewStudentPromo,
+  fetchClassRosters,
+  fetchRemoteSessions,
+  fetchSongRequests,
+  createSongRequest,
+  reviewSongRequest
 } from './supabase.js';
 
 let isSupabaseConnected = false;
+// Lista de cada clase según la base (class_roster, migración 013). null = no disponible.
+let classRosters = null;
+// Sesiones con lista guardada («clase|AAAA-MM-DD»), aunque nadie haya llegado.
+let takenSessions = new Set();
+// Fecha de la lista abierta (AAAA-MM-DD). null = la más reciente de esa clase.
+let activeSessionKey = null;
 let supabaseSyncError = null;
 let authenticatedUser = null;
 let authenticatedProfile = null;
@@ -72,6 +83,10 @@ function clearCurrentSessionState() {
   };
   activeChildId = null;
   supabaseSyncError = null;
+  classRosters = null;
+  takenSessions = new Set();
+  activeSessionKey = null;
+  MUSIC_ENABLED = DEMO_MODE;
 }
 let TODAY = new Date();
 const WEEKDAY_SHORT = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
@@ -107,7 +122,7 @@ const roleConfig = {
     routes: [
       ['inicio', 'Inicio', 'home'],
       ['agenda', 'Agenda', 'calendar'],
-      ['asistencia', 'Asistencia', 'scan', { feature: 'attendance' }]
+      ['asistencia', 'Pasar lista', 'scan', { feature: 'classList', shortLabel: 'Lista' }]
     ]
   },
   admin: {
@@ -117,7 +132,7 @@ const roleConfig = {
       ['inicio', 'Inicio', 'home'],
       ['alumnos', 'Alumnos', 'users'],
       ['pagos', 'Pagos', 'money'],
-      ['asistencia', 'Asistencia', 'list', { feature: 'attendance' }],
+      ['asistencia', 'Asistencia', 'list', { feature: 'classList' }],
       ['pases', 'Pases', 'ticket', { feature: 'passes' }],
       // En la demo va solo en el menú lateral (la barra inferior ya lleva cinco). Con
       // datos reales Asistencia y Pases salen de la barra y «Datos» ocupa su lugar.
@@ -735,8 +750,27 @@ function studentLifecycleStatus(student) {
 
 // La lista de una sesion son los alumnos activos inscritos en esa clase.
 // Un alumno suspendido o archivado se excluye de las listas operativas.
+// Con datos reales y la migración 013, la lista viene de class_roster: inscritos más los
+// alumnos cuyo plan cubre la clase (un Night Pass que no marcó sus clases igual sale).
 function rosterFor(classId) {
+  if (isSupabaseConnected && classRosters) {
+    return (classRosters.get(classId) || [])
+      .map((row) => studentById(row.studentId))
+      .filter((student) => student && studentLifecycleStatus(student) === 'active');
+  }
   return state.students.filter((student) => studentLifecycleStatus(student) === 'active' && (student.classIds || []).includes(classId));
+}
+
+function rosterRow(classId, studentId) {
+  return classRosters?.get(classId)?.find((row) => row.studentId === studentId) || null;
+}
+
+// Estado de la mensualidad del mes para la lista del maestro (sin montos).
+const ROSTER_PAYMENT_LABELS = { pendiente: 'Pago pendiente', en_mora: 'En mora' };
+function rosterPaymentStatus(classId, studentId) {
+  if (isSupabaseConnected) return rosterRow(classId, studentId)?.paymentStatus || null;
+  const status = studentPaymentStatus(studentId);
+  return status === 'En mora' ? 'en_mora' : status === 'Pendiente' ? 'pendiente' : 'al_dia';
 }
 
 function canDeleteStudent(studentId) {
@@ -1048,8 +1082,8 @@ function recordAttendance(classId, studentIds, sessionDate, { replaceDay = false
     if (lifecycle === 'archived') {
       throw new Error(`El alumno ${student.name || studentId} está archivado. No se puede registrar su asistencia.`);
     }
-    if (!(student.classIds || []).includes(classId)) {
-      throw new Error('Solo se puede marcar a alumnos inscritos en esta clase.');
+    if (!rosterFor(classId).some((entry) => entry.id === studentId)) {
+      throw new Error('Solo se puede marcar a alumnos de la lista de esta clase.');
     }
   }
   const sameSession = (entry) => entry.classId === classId && entry.at === sessionDate;
@@ -1899,14 +1933,19 @@ let activeRoute = 'inicio';
 // Sin ?demo la entrada es el login y el rol sale del perfil en Supabase.
 // Con ?demo se mantiene el selector de roles con datos ficticios.
 const DEMO_MODE = document.documentElement.dataset.mode === 'demo';
-// La asistencia todavía no está activa en la app real: solo la demo la simula.
+// La asistencia del lado del alumno (su conteo del mes, el carné QR y las alertas de
+// inasistencia del inicio de administración) sigue solo en la demo.
 const ATTENDANCE_ENABLED = DEMO_MODE;
+// Pasar lista sí funciona con datos reales: el maestro (y administración) guardan la
+// lista de cada clase en Supabase. La migración 013 suma a la lista a quien su plan
+// cubre la clase aunque no la haya elegido; sin 013 la lista son solo los inscritos.
+const CLASS_LIST_ENABLED = true;
 // Los pases individuales viven solo en el navegador (localStorage): en la app real no se
 // comparten entre equipos, así que solo la demo los muestra.
 const PASSES_ENABLED = DEMO_MODE;
-// La Rockola guarda las canciones en el navegador de quien las pide: con datos
-// reales el maestro nunca las vería. Queda solo en la demo hasta tener su tabla.
-const MUSIC_ENABLED = DEMO_MODE;
+// La Rockola: en la demo con canciones ficticias; con datos reales se enciende cuando
+// la base tiene la tabla song_requests (migración 013, ver loadRemoteData).
+let MUSIC_ENABLED = DEMO_MODE;
 
 // Lo que todavía no funciona va en una sola línea al pie del inicio del alumno,
 // en vez de tres tarjetas o botones desactivados repartidos por la pantalla.
@@ -2005,6 +2044,7 @@ function icon(name) {
 
 function routeFeatureEnabled(options = {}) {
   if (options.feature === 'attendance') return ATTENDANCE_ENABLED;
+  if (options.feature === 'classList') return CLASS_LIST_ENABLED;
   if (options.feature === 'passes') return PASSES_ENABLED;
   return true;
 }
@@ -2037,9 +2077,13 @@ function navMarkup(config, { mobile = false } = {}) {
   return items.join('');
 }
 
+// Pantallas que no van en el menú pero tienen ruta propia (la lista de una clase,
+// que administración abre desde Asistencia).
+const HIDDEN_ROUTES = { admin: ['lista'] };
+
 function updateShell() {
   const config = roleConfig[activeRole];
-  if (!config.routes.some(([route]) => route === activeRoute)) activeRoute = 'inicio';
+  if (!config.routes.some(([route]) => route === activeRoute) && !(HIDDEN_ROUTES[activeRole] || []).includes(activeRoute)) activeRoute = 'inicio';
   elements.sideNav.innerHTML = navMarkup(config);
   elements.bottomNav.innerHTML = navMarkup(config, { mobile: true });
   elements.roleSwitcher.value = activeRole;
@@ -2285,6 +2329,15 @@ function nextMusicSuggestionId() {
   return `sug-${nextNum}`;
 }
 
+// Clases para las que el alumno puede pedir canción: las que eligió o, si no eligió
+// ninguna, las que cubre su plan (la misma regla que student_can_attend en la base).
+function songClassesForStudent(studentId) {
+  const own = classesForStudent(studentId);
+  if (own.length) return own;
+  const rule = PLAN_CLASS_RULES[planForStudent(studentId).id];
+  return rule ? scheduledClasses().filter((item) => rule.covers(item)) : [];
+}
+
 function studentMusicSection() {
   const student = currentStudent();
   if (isSupabaseConnected && !student) {
@@ -2305,7 +2358,7 @@ function studentMusicSection() {
     `;
   }
   const suggestions = student ? (state.musicSuggestions || []).filter((s) => s.studentId === student.id) : [];
-  const enrolledClasses = student ? classesForStudent(student.id) : [];
+  const enrolledClasses = student ? songClassesForStudent(student.id) : [];
 
   return `
     <section class="section music-section">
@@ -2396,7 +2449,8 @@ function teacherMusicSection() {
     <section class="section music-section">
       <div class="section-head">
         <div>
-          <h2>Sugerido por los alumnos</h2>
+          <h2>Canciones pedidas</h2>
+          <p>Lo que tus alumnos quieren bailar en tus clases.</p>
         </div>
         <div class="filter-group" role="group" aria-label="Filtrar canciones sugeridas por alumnos">
           <button type="button" class="filter-chip ${musicTeacherFilter === 'all' ? 'is-active' : ''}" data-teacher-music-filter="all">
@@ -2473,8 +2527,12 @@ function openMusicSuggestionModal(preselectedClassId = null) {
     showToast('Acción no disponible', 'No tienes un carné o perfil de alumno vinculado.');
     return;
   }
-  const studentClasses = classesForStudent(student.id);
-  const options = studentClasses.length ? studentClasses : classData;
+  const studentClasses = songClassesForStudent(student.id);
+  const options = studentClasses.length ? studentClasses : (isSupabaseConnected ? [] : classData);
+  if (!options.length) {
+    showToast('Sin clases', 'Cuando la academia registre tu plan podrás pedir canciones para tus clases.');
+    return;
+  }
   const defaultClassId = preselectedClassId || options[0]?.id || 'interm12-mar';
   const targetClass = findClass(defaultClassId) || options[0];
   const randomMood = MUSIC_MOODS[Math.floor(Math.random() * MUSIC_MOODS.length)] || MUSIC_MOODS[0];
@@ -2560,6 +2618,24 @@ function handleMusicSuggestionSubmit(event) {
 
   const mood = findMusicMood(moodId);
   const targetClass = findClass(classId) || scheduledClasses()[0];
+
+  if (isSupabaseConnected) {
+    const submitBtn = form.querySelector('button[type="submit"]');
+    if (submitBtn) submitBtn.disabled = true;
+    createSongRequest({ studentCardId: student.id, classId: targetClass.id, song, artist, moodId: mood.id })
+      .then(async () => {
+        const songs = await fetchSongRequests('student');
+        if (songs) state.musicSuggestions = songs.map(decorateSongRequest);
+        closeModal();
+        renderAndFocus();
+        showToast('¡Sugerencia enviada! 🎶', `Le pediste "${song || artist}" al profe ${targetClass.teacher}.`);
+      })
+      .catch((err) => {
+        if (submitBtn) submitBtn.disabled = false;
+        showToast('No se envió la canción', String(err.message).replace(/^Error al insertar en song_requests: /, ''));
+      });
+    return;
+  }
 
   const newSuggestion = {
     id: nextMusicSuggestionId(),
@@ -3416,20 +3492,129 @@ function renderStudentCard() {
 }
 
 
-function teacherCards() {
+// ---------------------------------------------------------------------------
+// Portal del maestro: su próxima clase, pasar lista, listas que faltan, pagos
+// pendientes de sus alumnos, canciones pedidas y subir videos al catálogo.
+// ---------------------------------------------------------------------------
+
+// Fechas en las que se puede pasar lista de una clase: la más reciente (hoy si toca
+// hoy) y las anteriores. La base no deja pasar lista de fechas futuras y el maestro
+// solo corrige hasta 14 días atrás (migración 013).
+function listSessionsFor(item, count = 3) {
+  const today = startOfDay(TODAY);
+  const back = (today.getDay() - item.weekday + 7) % 7;
+  const last = addDays(today, -back);
+  return Array.from({ length: count }, (_, index) => addDays(last, -7 * index));
+}
+
+function sessionTaken(classId, date) {
+  const key = dayKey(date);
+  return takenSessions.has(`${classId}|${key}`) || state.attendanceLog.some((entry) => entry.classId === classId && entry.at === key);
+}
+
+function sessionLabel(date) {
+  const diff = daysBetween(date);
+  if (diff === 0) return 'Hoy';
+  if (diff === -1) return 'Ayer';
+  return `${WEEKDAY_SHORT[date.getDay()]} ${shortDate(date)}`;
+}
+
+function classEnded(item, date) {
+  const endsAt = startOfDay(date);
+  endsAt.setMinutes(timeValue(item.time) + 60);
+  return TODAY > endsAt;
+}
+
+// Clases del maestro de los últimos 7 días que ya terminaron y no tienen lista.
+function missingLists(classes = teacherClasses()) {
+  const missing = [];
+  for (const item of classes) {
+    if (!rosterFor(item.id).length) continue;
+    for (const date of listSessionsFor(item, 2)) {
+      if (daysBetween(date) < -7 || !classEnded(item, date) || sessionTaken(item.id, date)) continue;
+      missing.push({ item, date });
+    }
+  }
+  return missing.sort((a, b) => b.date - a.date);
+}
+
+// Alumnos de las clases del maestro con la mensualidad del mes pendiente o en mora.
+function teacherPendingPayments(classes = teacherClasses()) {
+  const byStudent = new Map();
+  for (const item of classes) {
+    for (const student of rosterFor(item.id)) {
+      const status = rosterPaymentStatus(item.id, student.id);
+      if (!ROSTER_PAYMENT_LABELS[status]) continue;
+      const entry = byStudent.get(student.id) || { student, status, classes: [] };
+      if (status === 'en_mora') entry.status = 'en_mora';
+      if (!entry.classes.includes(item.name)) entry.classes.push(item.name);
+      byStudent.set(student.id, entry);
+    }
+  }
+  return [...byStudent.values()].sort((a, b) => (a.status === b.status ? a.student.name.localeCompare(b.student.name) : (a.status === 'en_mora' ? -1 : 1)));
+}
+
+function relativeStart(item) {
+  if (item.isOngoing) return 'está en curso';
+  const minutes = Math.round((item.startsAt - TODAY) / 60000);
+  if (minutes <= 0) return 'empieza ya';
+  if (minutes < 60) return `empieza en ${minutes} min`;
+  if (minutes < 60 * 12 && daysBetween(item.startsAt) === 0) {
+    const hours = Math.round(minutes / 60);
+    return `empieza en ${hours} h`;
+  }
+  return '';
+}
+
+function teacherCards(limit = 4) {
   const teacher = currentTeacher();
-  const own = teacherClasses().slice(0, 4);
+  const own = upcomingClasses(teacherClasses()).slice(0, limit);
   if (!own.length) {
     const teacherName = teacher?.name || 'El maestro';
-    return `<div class="empty-state"><strong>Sin clases asignadas</strong>${escapeHtml(teacherName)} no tiene clases en la agenda asignada.</div>`;
+    return `<div class="empty-state"><strong>Sin clases asignadas</strong>${escapeHtml(teacherName)} todavía no tiene clases asignadas. Administración las asigna en «Completar datos».</div>`;
   }
-  return `<div class="teacher-day-grid">${own.map((item, index) => `
+  return `<div class="teacher-day-grid">${own.map((item) => {
+    const today = daysBetween(item.startsAt) === 0;
+    const count = rosterFor(item.id).length;
+    return `
     <article class="teacher-class">
       <div class="teacher-class-time">${escapeHtml(item.time).replace(' ', '<br/>')}</div>
-      <div><span class="tag ${index === 0 ? 'tag--red' : ''}">${escapeHtml(item.day)}</span><h3>${escapeHtml(item.name)}</h3><p>${escapeHtml(item.room)}${capacitySuffix(item)}</p></div>
-      <button class="button button--small ${index === 0 ? 'button--red' : 'button--light'}" type="button" data-take-attendance="${escapeHtml(item.id)}" aria-label="${index === 0 ? 'Pasar asistencia' : 'Abrir clase'} de ${escapeHtml(item.name)}, ${escapeHtml(item.day)} ${escapeHtml(item.time)}">${index === 0 ? 'Pasar asistencia' : 'Abrir clase'}</button>
+      <div><span class="tag ${today ? 'tag--red' : ''}">${escapeHtml(today ? 'Hoy' : `${WEEKDAY_SHORT[item.startsAt.getDay()]} ${shortDate(item.startsAt)}`)}</span><h3>${escapeHtml(item.name)}</h3><p>${escapeHtml(item.room)} · ${count} alumno${count === 1 ? '' : 's'} en lista</p></div>
+      <button class="button button--small ${today ? 'button--red' : 'button--light'}" type="button" data-take-attendance="${escapeHtml(item.id)}" aria-label="${today ? 'Pasar lista' : 'Ver lista'} de ${escapeHtml(item.name)}">${today ? 'Pasar lista' : 'Ver lista'}</button>
     </article>
-  `).join('')}</div>`;
+  `;
+  }).join('')}</div>`;
+}
+
+function teacherPaymentsSection(classes) {
+  const pending = teacherPendingPayments(classes);
+  const monthLabel = monthName(TODAY);
+  return `
+    <section class="section">
+      <div class="section-head"><div><h2>Pagos pendientes de ${escapeHtml(monthLabel)}</h2><p>Alumnos de tus clases que aún no pagan la mensualidad. Recuérdales en persona; el pago lo registra recepción.</p></div></div>
+      ${pending.length ? `
+        <div class="teacher-pay-list">
+          ${pending.map(({ student, status, classes: names }) => `
+            <div class="teacher-pay-row">
+              <span class="avatar" aria-hidden="true">${escapeHtml(student.initials || initials(student.name))}</span>
+              <span class="teacher-pay-name"><strong>${escapeHtml(student.name)}</strong><small>${escapeHtml(names.join(' · '))}</small></span>
+              <span class="status-pill ${status === 'en_mora' ? 'is-mora' : 'is-due'}">${escapeHtml(ROSTER_PAYMENT_LABELS[status])}</span>
+            </div>
+          `).join('')}
+        </div>
+      ` : `<div class="empty-state"><strong>Nadie pendiente</strong>${isSupabaseConnected && !classRosters ? 'Este dato aparece cuando administración active la lista por plan.' : `Tus alumnos están al día con ${escapeHtml(monthLabel)}, o administración todavía no abrió los cobros del mes.`}</div>`}
+    </section>
+  `;
+}
+
+function teacherVideosCard() {
+  return `
+    <a class="journey-featured teacher-videos-card" href="../index.html#subir-video">
+      <span class="journey-icon">${icon('play')}</span>
+      <span><strong>Sube un video para tus alumnos</strong><small>Pasos de la clase para que repasen en casa. Se sube al catálogo de videos con tu cuenta de Google.</small></span>
+      <span aria-hidden="true">→</span>
+    </a>
+  `;
 }
 
 function renderTeacherHome() {
@@ -3442,29 +3627,43 @@ function renderTeacherHome() {
       </section>
       <div class="empty-state">
         <strong>Perfil docente no vinculado</strong>
-        Tu usuario autenticado no tiene un perfil de maestro activo en el sistema.
+        Tu usuario no tiene un perfil de maestro activo. Pide a administración que lo revise.
       </div>
     `;
   }
   const own = teacherClasses();
-  const today = own.filter((item) => item.day === 'Hoy');
+  const todayCount = own.filter((item) => item.weekday === TODAY.getDay()).length;
   const next = upcomingClasses(own)[0];
-  const count = today.length;
   const firstName = teacher?.firstName || 'Alex';
+  const missing = missingLists(own);
+  const nextIsToday = next && daysBetween(next.startsAt) === 0;
+  const when = next ? relativeStart(next) : '';
   return `
     <section class="teacher-hero">
-      <p class="eyebrow">${escapeHtml(shortDayLabel(TODAY))} · ${count ? `${count} clase${count === 1 ? '' : 's'} programada${count === 1 ? '' : 's'}` : 'sin clases hoy'}</p>
+      <p class="eyebrow">${escapeHtml(shortDayLabel(TODAY))} · ${todayCount ? `${todayCount} clase${todayCount === 1 ? '' : 's'} hoy` : 'sin clases hoy'}</p>
       <h1>${escapeHtml(greeting())},<br/><span>${escapeHtml(firstName)}.</span></h1>
       <div class="teacher-hero-foot">
-        <div class="filter-row" style="margin-bottom:8px">
-          ${next ? `<button class="button button--red" type="button" data-take-attendance="${escapeHtml((today[0] || next).id)}">${count ? 'Abrir asistencia de hoy' : 'Abrir próxima clase'}</button>` : ''}
-          <button class="button button--light" type="button" data-open-validate-pass>Validar pase individual</button>
-        </div>
-        <p>${next ? `Tu siguiente clase es ${escapeHtml(next.day.toLowerCase())} a las ${escapeHtml(next.time)}<br/>en el ${escapeHtml(next.room)}.` : 'No tienes clases asignadas.'}</p>
+        ${next ? `
+          <p class="teacher-next"><span class="eyebrow">Tu próxima clase</span><strong>${escapeHtml(next.name)}</strong>${escapeHtml(nextIsToday ? 'Hoy' : longDate(next.startsAt))} · ${escapeHtml(next.time)} · ${escapeHtml(next.room)}${when ? ` · <b>${escapeHtml(when)}</b>` : ''}</p>
+          <div class="filter-row" style="margin-bottom:8px">
+            <button class="button button--red" type="button" data-take-attendance="${escapeHtml(next.id)}">${nextIsToday ? 'Pasar lista' : 'Ver la lista'}</button>
+            ${PASSES_ENABLED ? '<button class="button button--light" type="button" data-open-validate-pass>Validar pase individual</button>' : ''}
+          </div>
+        ` : '<p>No tienes clases asignadas. Administración las asigna en «Completar datos».</p>'}
       </div>
     </section>
-    <section class="section"><div class="section-head"><div><h2>Tu agenda</h2><p>Próximas clases asignadas.</p></div><button class="text-button" type="button" data-go="agenda">Ver semana →</button></div>${teacherCards()}</section>
+    ${missing.length ? `
+      <section class="section">
+        <div class="section-head"><div><h2>Te falta pasar lista</h2><p>Clases de esta semana sin lista guardada. Puedes pasarla hasta dos semanas después.</p></div></div>
+        <div class="filter-row">
+          ${missing.map(({ item, date }) => `<button class="button button--light button--small" type="button" data-take-attendance="${escapeHtml(item.id)}" data-session-date="${escapeHtml(dayKey(date))}">${escapeHtml(sessionLabel(date))} · ${escapeHtml(item.name.replace(' Salsa y Bachata', ''))}</button>`).join('')}
+        </div>
+      </section>
+    ` : ''}
+    <section class="section"><div class="section-head"><div><h2>Tu semana</h2><p>Tus próximas clases.</p></div><button class="text-button" type="button" data-go="agenda">Ver agenda →</button></div>${teacherCards()}</section>
+    ${own.length ? teacherPaymentsSection(own) : ''}
     ${MUSIC_ENABLED ? teacherMusicSection() : ''}
+    <div class="journey-actions" role="group" aria-label="Videos">${teacherVideosCard()}</div>
   `;
 }
 
@@ -3486,28 +3685,28 @@ function renderTeacherAgenda() {
       <div>
         <p class="eyebrow">Agenda docente</p>
         <h1>Una semana<br/>en movimiento.</h1>
-        <p>Clases asignadas a ${escapeHtml(teacherName)} y programación de la academia.</p>
+        <p>Clases asignadas a ${escapeHtml(teacherName)} y el resto del horario de la academia.</p>
       </div>
-      <div class="heading-actions">
+      ${PASSES_ENABLED ? `<div class="heading-actions">
         <button class="button button--light" type="button" data-open-validate-pass>Validar pase</button>
-      </div>
+      </div>` : ''}
     </header>
     ${weekStrip(scheduledClasses())}
     <section class="section">
       <div class="section-head">
         <div>
-          <h2>Tus clases asignadas</h2>
-          <p>Próximas clases a tu cargo.</p>
+          <h2>Tus clases</h2>
+          <p>Las próximas a tu cargo.</p>
         </div>
       </div>
-      ${teacherCards()}
+      ${teacherCards(own.length || 4)}
     </section>
     ${otherClasses.length ? `
       <section class="section">
         <div class="section-head">
           <div>
-            <h2>Próximas clases de los otros días</h2>
-            <p>Otras clases programadas en la academia con otros maestros.</p>
+            <h2>Las demás clases de la semana</h2>
+            <p>Para saber quién está en el salón antes o después de ti.</p>
           </div>
         </div>
         <div class="teacher-day-grid">
@@ -3519,85 +3718,128 @@ function renderTeacherAgenda() {
                 <h3>${escapeHtml(item.name)}</h3>
                 <p>${escapeHtml(item.teacher)} · ${escapeHtml(item.room)}${capacitySuffix(item)}</p>
               </div>
-              <button class="button button--small button--light" type="button" data-take-attendance="${escapeHtml(item.id)}" aria-label="Abrir clase de ${escapeHtml(item.name)}, ${escapeHtml(item.day)} ${escapeHtml(item.time)}">Abrir clase</button>
+              ${DEMO_MODE ? `<button class="button button--small button--light" type="button" data-take-attendance="${escapeHtml(item.id)}" aria-label="Abrir clase de ${escapeHtml(item.name)}, ${escapeHtml(item.day)} ${escapeHtml(item.time)}">Abrir clase</button>` : ''}
             </article>
           `).join('')}
         </div>
       </section>
     ` : ''}
-    ${MUSIC_ENABLED ? teacherMusicSection() : ''}
   `;
 }
 
-// Antes la lista era un padron fijo de seis nombres: no incluia a los alumnos
-// dados de alta en la demo, mostraba alumnos de otras clases y guardar la sesion
-// borraba las marcas de quien no aparecia en ella.
+// Cada fila de la lista: casilla, nombre, plan y, si debe el mes, la marca de pago.
 function rosterMarkup(classId = activeClassId, date = TODAY) {
-  const students = rosterFor(classId);
+  const students = [...rosterFor(classId)].sort((a, b) => a.name.localeCompare(b.name));
   if (!students.length) {
-    return '<div class="empty-state"><strong>Sin alumnos inscritos</strong>Esta clase no tiene inscripciones en los datos demo, así que no hay lista que pasar.</div>';
+    return `<div class="empty-state"><strong>Sin alumnos en la lista</strong>${isSupabaseConnected
+      ? 'Ningún alumno activo tiene esta clase en su plan o la eligió. Si alguien vino, pide a administración que revise su plan en «Completar datos».'
+      : 'Esta clase no tiene inscripciones en los datos demo, así que no hay lista que pasar.'}</div>`;
   }
   const selected = attendanceFor(classId, date);
-  const editable = true;
   return `<div class="attendance-roster">${students.map((student) => {
     const present = selected.includes(student.id);
+    const payment = rosterPaymentStatus(classId, student.id);
+    const row = rosterRow(classId, student.id);
+    const planName = row?.plan || planForStudent(student.id).planName || 'Sin plan';
     return `
-    <label class="student-check">
-      <input type="checkbox" name="attendance" value="${escapeHtml(student.id)}" ${present ? 'checked' : ''} ${editable ? '' : 'disabled'} />
+    <label class="student-check" data-roster-name="${escapeHtml(student.name.toLowerCase())}">
+      <input type="checkbox" name="attendance" value="${escapeHtml(student.id)}" ${present ? 'checked' : ''} />
       <span class="avatar" aria-hidden="true">${escapeHtml(student.initials || initials(student.name))}</span>
-      <span><strong>${escapeHtml(student.name)}</strong><small>${escapeHtml(student.id)} · ${escapeHtml(planForStudent(student.id).name)}</small></span>
+      <span><strong>${escapeHtml(student.name)}</strong><small>${escapeHtml(planName)}${ROSTER_PAYMENT_LABELS[payment] ? ` · <em class="roster-pay roster-pay--${escapeHtml(payment)}">${escapeHtml(ROSTER_PAYMENT_LABELS[payment])}</em>` : ''}</small></span>
       <span>${present ? 'Presente' : 'Sin registro'}</span>
     </label>
   `;
   }).join('')}</div>`;
 }
 
+// Las clases que esta persona puede pasar: el maestro las suyas, administración todas.
+function listableClasses() {
+  if (activeRole === 'admin') return scheduledClasses();
+  return teacherClasses();
+}
+
 function renderTeacherAttendance() {
-  const item = findClass(activeClassId) || scheduledClasses()[0];
-  const live = item.day === 'Hoy';
+  const classes = listableClasses();
+  if (!classes.length) {
+    return `
+      <header class="page-heading"><div><p class="eyebrow">Pasar lista</p><h1>Sin clases<br/>asignadas.</h1><p>Cuando administración te asigne clases en «Completar datos», aquí pasas lista.</p></div></header>
+    `;
+  }
+  const item = classes.find((entry) => entry.id === activeClassId) || upcomingClasses(classes)[0] || classes[0];
+  activeClassId = item.id;
+  const sessions = listSessionsFor(item, activeRole === 'admin' ? 6 : 3);
+  const date = (activeSessionKey && sessions.find((entry) => dayKey(entry) === activeSessionKey)) || sessions[0];
   const enrolled = rosterFor(item.id);
   const enrolledIds = enrolled.map((entry) => entry.id);
-  const historyOnly = attendanceFor(item.id, item.date).filter((id) => !enrolledIds.includes(id));
+  const marked = attendanceFor(item.id, date);
+  const historyOnly = marked.filter((id) => !enrolledIds.includes(id));
+  const taken = sessionTaken(item.id, date);
   const canSubmit = enrolled.length > 0;
+  const recent = listSessionsFor(item, 4).filter((entry) => sessionTaken(item.id, entry));
+  const lastTwo = recent.filter((entry) => dayKey(entry) !== dayKey(date) || taken).slice(0, 2);
+  // Inscritos en esta clase que no vinieron a ninguna de las dos últimas listas.
+  const absent = lastTwo.length === 2
+    ? enrolled.filter((student) => (rosterRow(item.id, student.id)?.enrolled ?? true) && lastTwo.every((entry) => !attendanceFor(item.id, entry).includes(student.id)))
+    : [];
   const student = currentStudent();
   return `
     <header class="page-heading">
       <div>
-        <p class="eyebrow">Control de asistencia</p>
+        <p class="eyebrow">Pasar lista</p>
         <h1>¿Quién vino<br/>a bailar?</h1>
-        <p>Marca la lista y guarda esta sesión localmente.</p>
+        <p>${isSupabaseConnected ? `Marca a quien vino y guarda. ${activeRole === 'admin' ? 'El maestro' : 'Administración'} ve la misma lista.` : 'Marca a quien vino y guarda. En la demo se guarda solo en este navegador.'}</p>
       </div>
-      <div class="heading-actions">
+      ${PASSES_ENABLED ? `<div class="heading-actions">
         <button class="button button--red" type="button" data-open-validate-pass>Validar pase</button>
-      </div>
+      </div>` : ''}
     </header>
     <section class="split-grid">
       <article class="surface-card">
-        <div class="section-head"><div><h2>${escapeHtml(item.name)}</h2><p>${escapeHtml(item.day)} · ${escapeHtml(item.time)} · ${escapeHtml(item.room)}</p></div><span class="tag ${live ? 'tag--red' : ''}">${live ? 'Programada para hoy' : `Programada · ${escapeHtml(item.day)}`}</span></div>
-        <form id="attendanceForm" data-class-id="${escapeHtml(item.id)}" data-session-date="${escapeHtml(dayKey(item.date))}">
+        <div class="attendance-pickers">
+          <label class="field"><span>Clase</span>
+            <select data-attendance-class aria-label="Clase">
+              ${classes.map((entry) => `<option value="${escapeHtml(entry.id)}" ${entry.id === item.id ? 'selected' : ''}>${escapeHtml(WEEKDAY_SHORT[entry.weekday])} ${escapeHtml(entry.time)} · ${escapeHtml(entry.name)}</option>`).join('')}
+            </select>
+          </label>
+          <div class="filter-row" role="group" aria-label="Fecha de la clase">
+            ${sessions.map((entry) => `<button type="button" class="filter-chip ${dayKey(entry) === dayKey(date) ? 'is-active' : ''}" aria-pressed="${dayKey(entry) === dayKey(date)}" data-attendance-session="${escapeHtml(dayKey(entry))}">${escapeHtml(sessionLabel(entry))}${sessionTaken(item.id, entry) ? ' ✓' : ''}</button>`).join('')}
+          </div>
+        </div>
+        <div class="section-head"><div><h2>${escapeHtml(item.name)}</h2><p>${escapeHtml(longDate(date))} · ${escapeHtml(item.time)} · ${escapeHtml(item.room)}</p></div><span class="tag ${taken ? '' : 'tag--red'}">${taken ? 'Lista guardada' : 'Sin lista'}</span></div>
+        <form id="attendanceForm" data-class-id="${escapeHtml(item.id)}" data-session-date="${escapeHtml(dayKey(date))}">
           <div class="roster-actions-bar">
-            <p class="payment-meta" style="margin:0">${enrolled.length} alumno${enrolled.length === 1 ? '' : 's'} inscrito${enrolled.length === 1 ? '' : 's'} en esta clase.</p>
+            <p class="payment-meta" style="margin:0"><span data-roster-count>${marked.filter((id) => enrolledIds.includes(id)).length}</span> de ${enrolled.length} presente${enrolled.length === 1 ? '' : 's'}</p>
             <div class="roster-quick-actions">
               <button type="button" class="button button--light button--small" data-attendance-action="check-all" ${canSubmit ? '' : 'disabled'}>Marcar todos</button>
               <button type="button" class="button button--light button--small" data-attendance-action="clear-all" ${canSubmit ? '' : 'disabled'}>Desmarcar</button>
             </div>
           </div>
-          ${rosterMarkup(item.id, item.date)}
-          ${historyOnly.length ? `<p class="modal-note">${historyOnly.length} alumno${historyOnly.length === 1 ? '' : 's'} con asistencia registrada en esta sesión ya no está${historyOnly.length === 1 ? '' : 'n'} inscrito${historyOnly.length === 1 ? '' : 's'} en la clase: ${escapeHtml(historyOnly.map((id) => studentById(id)?.name || id).join(', '))}. Su registro se conserva y no se modifica desde esta lista.</p>` : ''}
-          <div class="form-actions"><button class="button button--red" type="submit" ${canSubmit ? '' : 'disabled'}>Guardar asistencia</button></div>
+          ${enrolled.length > 8 ? '<label class="field roster-search"><span>Buscar alumno</span><input type="search" data-roster-search placeholder="Escribe un nombre" autocomplete="off" /></label>' : ''}
+          ${rosterMarkup(item.id, date)}
+          ${historyOnly.length ? `<p class="modal-note">${historyOnly.length} alumno${historyOnly.length === 1 ? '' : 's'} con asistencia en esta fecha ya no está${historyOnly.length === 1 ? '' : 'n'} en la lista: ${escapeHtml(historyOnly.map((id) => studentById(id)?.name || id).join(', '))}. Su registro se conserva.</p>` : ''}
+          <div class="form-actions"><button class="button button--red" type="submit" ${canSubmit ? '' : 'disabled'}>${taken ? 'Guardar cambios' : 'Guardar lista'}</button></div>
         </form>
       </article>
       <aside class="surface-card">
-        <p class="eyebrow">Validación de pases</p>
-        <h2>Pases y carné</h2>
-        <p class="payment-meta">Valida asistencia de alumnos con pase de prueba o particular mediante código corto.</p>
-        <button class="button button--red" style="width:100%;margin-top:16px" type="button" data-open-validate-pass>Validar pase individual</button>
-        
-        <hr style="margin:24px 0;border:none;border-top:1px solid rgba(255,255,255,0.08)" />
-        <p class="eyebrow">Lectura QR de alumno</p>
-        <p class="payment-meta">Simula la lectura del carnet ${student ? `de ${escapeHtml(student.name)}` : ''}.</p>
-        <div class="qr-code" style="max-width:220px;margin-top:16px">${student ? qrMarkup(student.id) : '<p class="payment-meta">Sin carné</p>'}</div>
-        <button class="button button--light" style="width:100%;margin-top:16px" type="button" data-open-scan ${student ? '' : 'disabled'}>Simular escaneo</button>
+        <p class="eyebrow">Últimas listas</p>
+        <h2>${escapeHtml(item.name.replace(' Salsa y Bachata', ''))}</h2>
+        ${recent.length ? `<ul class="attendance-history">${recent.map((entry) => {
+          const count = attendanceFor(item.id, entry).length;
+          return `<li><button type="button" class="text-button" data-attendance-session="${escapeHtml(dayKey(entry))}">${escapeHtml(sessionLabel(entry))}</button><span>${count} vinieron</span></li>`;
+        }).join('')}</ul>` : '<p class="payment-meta">Todavía no hay listas guardadas de esta clase.</p>'}
+        ${absent.length ? `
+          <hr style="margin:20px 0;border:none;border-top:1px solid rgba(255,255,255,0.08)" />
+          <p class="eyebrow">Faltaron las dos últimas veces</p>
+          <ul class="attendance-history">${absent.map((entry) => `<li><span>${escapeHtml(entry.name)}</span></li>`).join('')}</ul>
+          <p class="payment-meta">Solo cuenta a quien eligió esta clase. Un mensaje a tiempo ayuda a que no deje de venir.</p>
+        ` : ''}
+        ${DEMO_MODE ? `
+          <hr style="margin:24px 0;border:none;border-top:1px solid rgba(255,255,255,0.08)" />
+          <p class="eyebrow">Lectura QR de alumno</p>
+          <p class="payment-meta">Simula la lectura del carnet ${student ? `de ${escapeHtml(student.name)}` : ''}.</p>
+          <div class="qr-code" style="max-width:220px;margin-top:16px">${student ? qrMarkup(student.id) : '<p class="payment-meta">Sin carné</p>'}</div>
+          <button class="button button--light" style="width:100%;margin-top:16px" type="button" data-open-scan ${student ? '' : 'disabled'}>Simular escaneo</button>
+        ` : ''}
       </aside>
     </section>
   `;
@@ -4363,41 +4605,40 @@ function renderAdminPayments() {
 }
 
 function renderAdminAttendance() {
-  // El estado se leia del indice de la fila: la primera clase de la lista salia
-  // siempre marcada como pendiente, fuera o no la de hoy.
-  const sessions = scheduledClasses().map((item) => {
-    const enrolled = rosterFor(item.id).length;
-    const marked = attendanceFor(item.id, item.date).length;
-    return {
-      when: `${item.day} · ${item.time}`,
-      name: item.name,
-      teacher: item.teacher,
-      attendance: enrolled || marked
-        ? `${marked} marcado${marked === 1 ? '' : 's'} · ${enrolled} inscrito${enrolled === 1 ? '' : 's'}`
-        : 'Sin inscritos en la demo',
-      live: item.day === 'Hoy'
-    };
+  // Cada clase con su lista más reciente: cuántos vinieron de cuántos en lista, o si
+  // falta pasarla. «Pasar lista» abre la misma pantalla que usa el maestro.
+  const classes = [...scheduledClasses()].sort((a, b) => (((a.weekday + 6) % 7) - ((b.weekday + 6) % 7)) || (timeValue(a.time) - timeValue(b.time)));
+  const rows = classes.map((item) => {
+    const date = listSessionsFor(item, 1)[0];
+    const inList = rosterFor(item.id).length;
+    const taken = sessionTaken(item.id, date);
+    const marked = attendanceFor(item.id, date).length;
+    const ended = classEnded(item, date);
+    return { item, date, inList, taken, marked, ended };
   });
+  const missing = rows.filter((row) => row.ended && !row.taken && row.inList).length;
   return `
     <header class="page-heading">
       <div>
         <p class="eyebrow">Registro de asistencia</p>
         <h1>Cada llegada<br/>cuenta.</h1>
-        <p>Las ${classData.length} clases de la semana. Consulta operativa, sin gráficas ni analítica avanzada.</p>
+        <p>La lista más reciente de cada clase. ${missing ? `${missing} clase${missing === 1 ? '' : 's'} ya terminaron sin lista.` : 'Todas las clases que ya pasaron tienen lista.'}</p>
       </div>
       <div class="heading-actions">
-        <button class="button button--red" type="button" data-open-validate-pass>Validar pase</button>
-        <button class="button button--light" type="button" data-open-scan>Simular escáner QR</button>
+        ${PASSES_ENABLED ? '<button class="button button--red" type="button" data-open-validate-pass>Validar pase</button>' : ''}
+        ${ATTENDANCE_ENABLED ? '<button class="button button--light" type="button" data-open-scan>Simular escáner QR</button>' : ''}
       </div>
     </header>
-    <div class="table-wrap"><table class="data-table"><thead><tr><th scope="col">Fecha y hora</th><th scope="col">Clase</th><th scope="col">Maestro</th><th scope="col">Asistencia</th><th scope="col">Estado</th></tr></thead><tbody>${sessions.map((row) => `<tr>
-      <td>${escapeHtml(row.when)}</td>
-      <td>${escapeHtml(row.name)}</td>
-      <td>${escapeHtml(row.teacher)}</td>
-      <td>${escapeHtml(row.attendance)}</td>
-      <td><span class="status-pill ${row.live ? 'is-due' : ''}">${row.live ? 'Programada para hoy' : 'Programada'}</span></td>
+    <div class="table-wrap table-wrap--stack table-wrap--classes"><table class="data-table"><thead><tr><th scope="col">Clase</th><th scope="col">Fecha y hora</th><th scope="col">Maestro</th><th scope="col">Asistencia</th><th scope="col">Acción</th></tr></thead><tbody>${rows.map((row) => `<tr>
+      <td data-label="Clase"><strong>${escapeHtml(row.item.name)}</strong></td>
+      <td data-label="Fecha">${escapeHtml(sessionLabel(row.date))} · ${escapeHtml(row.item.time)}</td>
+      <td data-label="Maestro">${escapeHtml(row.item.teacherId || DEMO_MODE ? row.item.teacher : 'Por asignar')}</td>
+      <td data-label="Asistencia">${row.taken
+        ? `<span class="status-pill is-paid">${row.marked} de ${row.inList}</span>`
+        : row.ended && row.inList ? '<span class="status-pill is-mora">Sin lista</span>' : `<span class="status-pill">${row.inList ? 'Por pasar' : 'Sin alumnos'}</span>`}</td>
+      <td data-label="Acción"><button class="table-action" type="button" data-take-attendance="${escapeHtml(row.item.id)}" data-session-date="${escapeHtml(dayKey(row.date))}">${row.taken ? 'Ver lista' : 'Pasar lista'}</button></td>
     </tr>`).join('')}</tbody></table></div>
-    <p class="modal-note">La columna de asistencia cuenta las marcas registradas y las inscripciones vigentes de los datos demo; pueden no coincidir si un alumno fue retirado de la clase después de asistir. Los cupos del calendario son cifras de referencia de una academia de 50 alumnos y no se calculan con estas inscripciones.</p>
+    <p class="modal-note">La lista de cada clase son los alumnos activos que la eligieron o cuyo plan la cubre. El maestro asignado puede pasarla o corregirla hasta dos semanas después; administración, cualquier fecha.</p>
   `;
 }
 
@@ -5774,12 +6015,13 @@ const renderers = {
   'student:carnet': renderStudentCard,
   'teacher:inicio': renderTeacherHome,
   'teacher:agenda': renderTeacherAgenda,
-  'teacher:asistencia': () => (ATTENDANCE_ENABLED ? renderTeacherAttendance() : attendanceComingSoon()),
+  'teacher:asistencia': () => (CLASS_LIST_ENABLED ? renderTeacherAttendance() : attendanceComingSoon()),
   'admin:inicio': renderAdminHome,
   'admin:alumnos': renderAdminStudents,
   'admin:pagos': renderAdminPayments,
   'admin:datos': renderAdminAcademyData,
-  'admin:asistencia': () => (ATTENDANCE_ENABLED ? renderAdminAttendance() : attendanceComingSoon()),
+  'admin:asistencia': () => (CLASS_LIST_ENABLED ? renderAdminAttendance() : attendanceComingSoon()),
+  'admin:lista': () => (CLASS_LIST_ENABLED ? renderTeacherAttendance() : attendanceComingSoon()),
   'admin:pases': () => (PASSES_ENABLED ? renderAdminPasses() : passesComingSoon()),
   'guardian:inicio': renderGuardianHome,
   'guardian:carnet': renderGuardianCard
@@ -8002,16 +8244,12 @@ async function handleAttendanceSubmit(event) {
         method: 'manual_list'
       });
     } catch (error) {
-      if (submitBtn) {
-        submitBtn.disabled = false;
-        submitBtn.textContent = 'Guardar asistencia';
-      }
-      showToast('No se guardó la asistencia', `Error remoto: ${error.message}. Puedes reintentar.`);
+      showToast('No se guardó la lista', `${String(error.message).replace(/^Error en RPC \w+: /, '')} Puedes reintentar.`);
       return;
     } finally {
       if (submitBtn) {
         submitBtn.disabled = false;
-        submitBtn.textContent = 'Guardar asistencia';
+        submitBtn.textContent = 'Guardar lista';
       }
     }
   }
@@ -8022,15 +8260,20 @@ async function handleAttendanceSubmit(event) {
     showToast('No se guardó la asistencia', error.message);
     return;
   }
-  showToast('Asistencia guardada', `${studentIds.length} alumno${studentIds.length === 1 ? '' : 's'} marcado${studentIds.length === 1 ? '' : 's'} como presente${studentIds.length === 1 ? '' : 's'}.`);
+  takenSessions.add(`${classId}|${sessionDate}`);
+  activeSessionKey = sessionDate;
+  showToast('Lista guardada', `${studentIds.length} de ${scope.length} presente${scope.length === 1 ? '' : 's'}.`);
   renderAndFocus();
 }
 
-function openClassAttendance(classId) {
+function openClassAttendance(classId, sessionDate = null) {
   if (findClass(classId)) activeClassId = classId;
-  activeRole = 'teacher';
-  activeRoute = 'asistencia';
-  history.pushState(null, '', '#/asistencia');
+  activeSessionKey = sessionDate;
+  // Administración pasa lista sin cambiar de portal (antes la mandaba al de maestro).
+  const route = activeRole === 'admin' ? 'lista' : 'asistencia';
+  if (activeRole !== 'admin') activeRole = 'teacher';
+  activeRoute = route;
+  history.pushState(null, '', `#/${route}`);
   renderAndFocus();
 }
 
@@ -8159,6 +8402,7 @@ function handleContentClick(event) {
         const label = input.closest('.student-check')?.querySelector('span:last-child');
         if (label) label.textContent = shouldCheck ? 'Presente' : 'Sin registro';
       });
+      updateRosterCount();
     }
     return;
   }
@@ -8200,6 +8444,12 @@ function handleContentClick(event) {
     const item = (state.musicSuggestions || []).find((s) => s.id === id);
     if (item) {
       const nextStatus = item.status === 'accepted' ? 'pending' : 'accepted';
+      if (isSupabaseConnected) {
+        reviewSongRequest(id, nextStatus, item.liked)
+          .then(() => { item.status = nextStatus; renderAndFocus(); })
+          .catch((err) => showToast('No se guardó', String(err.message).replace(/^Error en RPC \w+: /, '')));
+        return;
+      }
       item.status = nextStatus;
       persistOrWarn({ ...state });
       renderAndFocus();
@@ -8216,6 +8466,12 @@ function handleContentClick(event) {
     const id = toggleMusicLikeBtn.dataset.toggleMusicLike;
     const item = (state.musicSuggestions || []).find((s) => s.id === id);
     if (item) {
+      if (isSupabaseConnected) {
+        reviewSongRequest(id, item.status, !item.liked)
+          .then(() => { item.liked = !item.liked; renderAndFocus(); })
+          .catch((err) => showToast('No se guardó', String(err.message).replace(/^Error en RPC \w+: /, '')));
+        return;
+      }
       item.liked = !item.liked;
       persistOrWarn({ ...state });
       renderAndFocus();
@@ -8275,8 +8531,13 @@ function handleContentClick(event) {
 
   const attendance = find('[data-take-attendance]');
   if (attendance) {
-    if (!ATTENDANCE_ENABLED) return showToast('Asistencia · Próximamente', 'Muy pronto podrás registrar la asistencia desde la app.');
-    return openClassAttendance(attendance.dataset.takeAttendance);
+    if (!CLASS_LIST_ENABLED) return showToast('Asistencia · Próximamente', 'Muy pronto podrás registrar la asistencia desde la app.');
+    return openClassAttendance(attendance.dataset.takeAttendance, attendance.dataset.sessionDate || null);
+  }
+  const attendanceSession = find('[data-attendance-session]');
+  if (attendanceSession) {
+    activeSessionKey = attendanceSession.dataset.attendanceSession;
+    return renderAndFocus();
   }
   const detail = find('[data-class-detail]');
   if (detail) return openClassDetail(detail.dataset.classDetail, detail.dataset.contextDate || null);
@@ -8356,6 +8617,13 @@ function handleContentClick(event) {
 }
 
 function handleContentInput(event) {
+  if (event.target.matches('[data-roster-search]')) {
+    const q = event.target.value.trim().toLowerCase();
+    elements.content.querySelectorAll('.student-check[data-roster-name]').forEach((row) => {
+      row.hidden = Boolean(q) && !row.dataset.rosterName.includes(q);
+    });
+    return;
+  }
   if (event.target.id === 'passSearchInput') {
     passSearchQuery = event.target.value;
     updatePassViews();
@@ -8412,11 +8680,22 @@ elements.content.addEventListener('change', (event) => {
   }
   if (event.target.matches('select[data-dd-field]')) return handleAcademyDataChange(event.target);
   if (event.target.matches('[data-assign-teacher]')) return handleAssignTeacher(event.target);
+  if (event.target.matches('[data-attendance-class]')) {
+    activeClassId = event.target.value;
+    activeSessionKey = null;
+    return renderAndFocus();
+  }
   if (event.target.matches('input[name="attendance"]')) {
     const label = event.target.closest('.student-check')?.querySelector('span:last-child');
     if (label) label.textContent = event.target.checked ? 'Presente' : 'Sin registro';
+    updateRosterCount();
   }
 });
+
+function updateRosterCount() {
+  const counter = elements.content.querySelector('[data-roster-count]');
+  if (counter) counter.textContent = elements.content.querySelectorAll('#attendanceForm input[name="attendance"]:checked').length;
+}
 elements.modalLayer.addEventListener('click', handleModalClick);
 elements.modalLayer.addEventListener('submit', handleModalSubmit);
 elements.modalLayer.addEventListener('input', handleModalInput);
@@ -8809,7 +9088,30 @@ async function loadRemoteData() {
     persistState(state);
   }
 
-  // 4. Asistencias remotas (reemplaza sin preservar marcas viejas ni demo)
+  // 4. Listas de clase (maestro y administración). Va antes de las asistencias: trae a
+  // los alumnos que el maestro no ve por inscripción, para poder leer sus marcas.
+  classRosters = null;
+  if (activeRole === 'teacher' || activeRole === 'admin') {
+    const rosterRows = await fetchClassRosters();
+    if (rosterRows) {
+      classRosters = new Map();
+      for (const row of rosterRows) {
+        if (!classRosters.has(row.classId)) classRosters.set(row.classId, []);
+        classRosters.get(row.classId).push(row);
+        if (!studentById(row.studentId)) {
+          const name = `${row.firstName} ${row.lastName}`.trim() || 'Alumno In Motion';
+          state.students.push({
+            id: row.studentId, profileId: row.profileId, name, firstName: row.firstName, lastName: row.lastName,
+            initials: initials(name) || 'IM', plan: row.plan, classIds: [], memberships: [], phone: 'Sin registrar',
+            status: 'active', lifecycleStatus: 'active', level: 'Sin nivel', fromRoster: true
+          });
+        }
+      }
+    }
+    takenSessions = new Set(await fetchRemoteSessions());
+  }
+
+  // 5. Asistencias remotas (reemplaza sin preservar marcas viejas ni demo)
   const remoteAttendance = await fetchRemoteAttendance();
   if (Array.isArray(remoteAttendance)) {
     state.attendanceLog = remoteAttendance;
@@ -8820,6 +9122,27 @@ async function loadRemoteData() {
     staffProfiles = await fetchRemoteStaff();
     extraPayments = await fetchRemoteExtraPayments(state.students);
   }
+
+  // 6. Rockola: se enciende solo si la base ya tiene la tabla (migración 013).
+  const songs = ['student', 'teacher'].includes(activeRole) ? await fetchSongRequests(activeRole) : null;
+  MUSIC_ENABLED = Array.isArray(songs);
+  if (songs) state.musicSuggestions = songs.map(decorateSongRequest);
+}
+
+// Completa una canción de la base con lo que pinta la tarjeta: clase, maestro y etiqueta.
+function decorateSongRequest(raw) {
+  const item = classData.find((entry) => entry.id === raw.classId);
+  const mood = findMusicMood(raw.moodId);
+  const student = studentById(raw.studentId);
+  return {
+    ...raw,
+    studentName: raw.studentName || student?.name || 'Alumno',
+    className: item?.name || 'Clase',
+    teacherName: item?.teacher || '',
+    moodId: mood.id,
+    moodEmoji: mood.emoji,
+    moodLabel: mood.label
+  };
 }
 
 async function syncWithSupabase() {
