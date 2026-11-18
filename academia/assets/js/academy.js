@@ -2340,9 +2340,13 @@ function nextMusicSuggestionId() {
 // todavía no eligió ninguna. Con datos reales solo las que tienen maestro (si no, nadie
 // vería la canción).
 function songClassesForStudent(studentId) {
+  // Misma regla que student_can_attend: carné activo, y el plan de la última membresía no
+  // cancelada (activePlan); quien solo tiene membresías canceladas no tiene clases por plan.
+  const student = studentById(studentId);
+  if (!student || student.lifecycleStatus === 'suspended') return [];
   const own = classesForStudent(studentId);
-  const ruleId = planForStudent(studentId).id;
-  const rule = PLAN_CLASS_RULES[ruleId];
+  const planName = 'activePlan' in student ? student.activePlan : student.plan;
+  const rule = PLAN_CLASS_RULES[(planName && planByName(planName))?.id];
   const byPlan = rule && (rule.maxGroups === null || !own.length) ? scheduledClasses().filter((item) => rule.covers(item)) : [];
   const ids = new Set([...own, ...byPlan].map((item) => item.id));
   return scheduledClasses()
@@ -2391,6 +2395,9 @@ function studentMusicSection() {
 
       <div class="music-class-picker">
         <p class="music-picker-label">1. Elige tu clase para sugerir:</p>
+        ${enrolledClasses.length ? '' : `<div class="empty-state"><strong>Todavía no tienes clases para pedir</strong>${escapeHtml(student?.lifecycleStatus === 'suspended'
+          ? 'Tu carné no está activo. Pregunta en recepción.'
+          : 'Cuando la academia registre tu plan, aquí salen tus clases.')}</div>`}
         <div class="music-picker-grid">
           ${enrolledClasses.map((c) => `
             <button type="button" class="music-class-btn" data-open-music-modal="${escapeHtml(c.id)}">
@@ -3672,7 +3679,7 @@ function renderTeacherHome() {
         ${next ? `
           <p class="teacher-next"><span class="eyebrow">Tu próxima clase</span><strong>${escapeHtml(next.name)}</strong>${escapeHtml(nextIsToday ? 'Hoy' : longDate(next.startsAt))} · ${escapeHtml(next.time)} · ${escapeHtml(next.room)}${when ? ` · <b>${escapeHtml(when)}</b>` : ''}</p>
           <div class="filter-row" style="margin-bottom:8px">
-            <button class="button button--red" type="button" data-take-attendance="${escapeHtml(next.id)}">${nextIsToday ? 'Pasar lista' : 'Ver la lista'}</button>
+            <button class="button button--red" type="button" data-take-attendance="${escapeHtml(next.id)}">${nextIsToday ? 'Pasar lista' : 'Ver alumnos'}</button>
             ${PASSES_ENABLED ? '<button class="button button--light" type="button" data-open-validate-pass>Validar pase individual</button>' : ''}
           </div>
         ` : '<p>No tienes clases asignadas. Administración las asigna en «Completar datos».</p>'}
@@ -3869,7 +3876,11 @@ function renderTeacherAttendance() {
         <h2>${escapeHtml(item.name.replace(' Salsa y Bachata', ''))}</h2>
         ${recent.length ? `<ul class="attendance-history">${recent.map((entry) => {
           const count = attendanceFor(item.id, entry).length;
-          return `<li><button type="button" class="text-button" data-attendance-session="${escapeHtml(dayKey(entry))}">${escapeHtml(sessionLabel(entry))}</button><span>${count === 0 ? 'Nadie vino' : `${count} ${count === 1 ? 'vino' : 'vinieron'}`}</span></li>`;
+          // Solo se abre una fecha que se puede corregir; las más viejas quedan como texto.
+          const label = sessions.some((option) => dayKey(option) === dayKey(entry))
+            ? `<button type="button" class="text-button" data-attendance-session="${escapeHtml(dayKey(entry))}">${escapeHtml(sessionLabel(entry))}</button>`
+            : `<span>${escapeHtml(sessionLabel(entry))}</span>`;
+          return `<li>${label}<span>${count === 0 ? 'Nadie vino' : `${count} ${count === 1 ? 'vino' : 'vinieron'}`}</span></li>`;
         }).join('')}</ul>` : '<p class="payment-meta">Todavía no hay listas guardadas de esta clase.</p>'}
         ${absent.length ? `
           <hr style="margin:20px 0;border:none;border-top:1px solid rgba(255,255,255,0.08)" />

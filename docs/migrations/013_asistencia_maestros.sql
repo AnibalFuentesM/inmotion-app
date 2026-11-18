@@ -143,7 +143,7 @@ begin
     and (p_class_id is null or c.id = p_class_id)
     and (public.is_admin() or c.teacher_id = public.current_profile_id())
     and public.student_can_attend(p.id, c.id)
-  order by c.id, p.first_name, p.last_name;
+  order by c.id, p.first_name, p.last_name, p.id;
 end;
 $$;
 
@@ -191,7 +191,7 @@ $$;
 -- 3b. Apertura de la sesión: sin fechas futuras y, para el maestro, máximo 14 días atrás.
 create or replace function public.get_or_create_session(
   p_class_id text,
-  p_session_date date default current_date
+  p_session_date date default ((now() at time zone 'America/Guatemala')::date)
 )
 returns uuid
 language plpgsql
@@ -285,7 +285,8 @@ create policy "attendances_select_teacher" on public.attendances
 -- get_or_create_session ya las valida, pero administración tiene escritura directa en la
 -- tabla (política class_sessions_admin_all) y por ahí podía crear sesiones futuras o en
 -- otro día. Para todos: el día de la semana de la clase y nada futuro. Más de 14 días
--- atrás, solo administración o la consola (importaciones).
+-- atrás, solo administración o la consola SQL de Supabase. También se fija la fecha por
+-- defecto en la de Guatemala (current_date es UTC y de 18:00 a 24:00 ya es «mañana»).
 create or replace function public.validate_class_session_date()
 returns trigger
 language plpgsql
@@ -314,6 +315,9 @@ end;
 $$;
 
 revoke all on function public.validate_class_session_date() from public, anon, authenticated;
+
+alter table public.class_sessions
+  alter column session_date set default ((now() at time zone 'America/Guatemala')::date);
 
 drop trigger if exists trg_validate_class_session_date on public.class_sessions;
 create trigger trg_validate_class_session_date
@@ -361,7 +365,9 @@ begin
     where not public.student_can_attend(s.id, p_class_id);
 
     if v_invalid_count > 0 then
-      raise exception '% alumno(s) marcados no están en la lista de esta clase.', v_invalid_count
+      raise exception '%', case when v_invalid_count = 1
+          then 'Un alumno marcado ya no está en la lista de esta clase. Recarga la página e intenta de nuevo.'
+          else v_invalid_count || ' alumnos marcados ya no están en la lista de esta clase. Recarga la página e intenta de nuevo.' end
         using errcode = '23503';
     end if;
 

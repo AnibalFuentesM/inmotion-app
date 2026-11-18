@@ -100,7 +100,9 @@ Se trabaja **siempre sobre esta misma app**: `academia/`, dentro de
    no hay cupos (`capacityTag`) y Pases sale de la barra inferior y queda en el menú lateral
    con la marca «Pronto» (`routeFeatureEnabled`). La Rockola (`MUSIC_ENABLED`) se enciende sola
    para alumno y maestro cuando la base tiene `song_requests` (migración 013); administración
-   no la carga. El conteo de asistencia del alumno y
+   no la carga. El alumno pide solo para las clases de `songClassesForStudent`, que copia a
+   `student_can_attend`: carné activo y el plan de la última membresía no cancelada
+   (`activePlan`, distinto de `plan`, que Pagos muestra aunque esté cancelado). El conteo de asistencia del alumno y
    el carné QR siguen solo en la demo (`ATTENDANCE_ENABLED`).
    En el inicio del alumno lo pendiente va en una sola línea (`comingSoonStrip`).
    El catálogo muestra «Gestión del catálogo» solo si la academia guardó un rol de equipo en

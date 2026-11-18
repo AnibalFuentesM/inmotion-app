@@ -73,9 +73,17 @@ export function setReadOnlyPreview(on) {
   readOnlyPreview = Boolean(on);
 }
 
+// Un Error cuyo texto es para la persona: friendlyError lo muestra tal cual.
+function userError(message) {
+  const error = new Error(message);
+  error.userMessage = message;
+  return error;
+}
+const SESSION_EXPIRED_MESSAGE = 'Tu sesión venció. Cierra sesión y vuelve a ingresar.';
+
 async function authFetch(url, options = {}, extraHeaders = {}) {
   if (readOnlyPreview && options.method && options.method !== 'GET') {
-    throw new Error('Estás en la vista de alumno: aquí no se guarda ningún cambio.');
+    throw userError('Estás en la vista de alumno: aquí no se guarda ningún cambio.');
   }
   const stored = getStoredAuthSession();
   const canRenew = Boolean(currentAuthToken && stored?.refresh_token);
@@ -87,7 +95,7 @@ async function authFetch(url, options = {}, extraHeaders = {}) {
     try {
       await renewSession();
     } catch {
-      throw new Error('Tu sesión venció. Cierra sesión y vuelve a ingresar.');
+      throw userError(SESSION_EXPIRED_MESSAGE);
     }
     res = await fetch(url, { ...options, headers: getHeaders(extraHeaders) });
   }
@@ -198,7 +206,9 @@ export const db = {
       const error = new Error(`Error en RPC ${functionName}: ${parsedMessage}`);
       error.code = code;
       error.status = res.status;
-      if (DB_VALIDATION_CODES.has(code) && !POSTGRES_INTERNAL_MESSAGE.test(parsedMessage)) {
+      if (res.status === 401) {
+        error.userMessage = SESSION_EXPIRED_MESSAGE;
+      } else if (DB_VALIDATION_CODES.has(code) && !POSTGRES_INTERNAL_MESSAGE.test(parsedMessage)) {
         error.userMessage = parsedMessage;
       }
       throw error;
@@ -563,7 +573,8 @@ export async function fetchRemoteStudents() {
     // cancelada más reciente por start_date y luego created_at.
     const byRecent = (a, b) => String(b.start_date || '').localeCompare(String(a.start_date || '')) || new Date(b.created_at || 0) - new Date(a.created_at || 0);
     studentMems.sort(byRecent);
-    const mem = studentMems.find((m) => m.status !== 'cancelled') || studentMems[0] || null;
+    const activeMem = studentMems.find((m) => m.status !== 'cancelled') || null;
+    const mem = activeMem || studentMems[0] || null;
     const fullName = `${p.first_name || ''} ${p.last_name || ''}`.trim() || 'Alumno In Motion';
     const initials = fullName
       .split(/\s+/)
@@ -589,6 +600,8 @@ export async function fetchRemoteStudents() {
       initials: initials || 'IM',
       memberships: studentMems,
       plan: planName,
+      // Plan que da clases (como student_can_attend): sin la caída a una membresía cancelada.
+      activePlan: activeMem ? activeMem.plan_name : null,
       phone: p.phone || 'Sin registrar',
       paymentStatus: planStatus,
       status: lifecycleStatus,
@@ -690,8 +703,8 @@ export async function syncRemoteEnrollments({ studentCardId, classIds = [] }) {
 // Mensajes que se pueden mostrar tal cual: los que escriben en español las validaciones de
 // la base (raise exception en las funciones). Lo demás (sin conexión, tiempo agotado,
 // errores internos de Postgres en inglés) se cambia por un texto general.
-const DB_VALIDATION_CODES = new Set(['P0001', 'P0002', '22000', '22023', '28000', '42501']);
-const POSTGRES_INTERNAL_MESSAGE = /^(permission denied|new row violates|must be owner|function .+ does not exist|could not find)/i;
+const DB_VALIDATION_CODES = new Set(['P0001', 'P0002', '22000', '22023', '23503', '28000', '42501']);
+const POSTGRES_INTERNAL_MESSAGE = /^(permission denied|new row violates|must be owner|function .+ does not exist|could not find)|violates .*constraint/i;
 export const SAVE_ERROR_FALLBACK = 'No se pudo guardar. Revisa tu conexión e intenta de nuevo.';
 
 export function friendlyError(err, fallback = SAVE_ERROR_FALLBACK) {
@@ -707,9 +720,7 @@ export async function syncSessionAttendances({ classId, sessionDate, presentStud
   for (const card of presentStudentCards) {
     const uuid = await getProfileUuidByCard(card);
     if (!uuid) {
-      const error = new Error(`No se encontró perfil para el alumno con carné ${card}`);
-      error.userMessage = `No se encontró la cuenta del carné ${card}. Recarga la página e intenta de nuevo.`;
-      throw error;
+      throw userError(`No se encontró la cuenta del carné ${card}. Recarga la página e intenta de nuevo.`);
     }
     presentUuids.push(uuid);
   }
