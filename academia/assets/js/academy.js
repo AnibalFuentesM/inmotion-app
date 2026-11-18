@@ -34,7 +34,8 @@ import {
   fetchRemoteSessions,
   fetchSongRequests,
   createSongRequest,
-  reviewSongRequest
+  reviewSongRequest,
+  friendlyError
 } from './supabase.js';
 
 let isSupabaseConnected = false;
@@ -2302,7 +2303,7 @@ function classCards(classes = scheduledClasses().slice(0, 3), empty = null) {
         <span>${escapeHtml(item.level)}</span>
         <div class="class-card-actions">
           <button class="button button--small button--light" type="button" data-class-detail="${escapeHtml(item.id)}" data-context-date="${escapeHtml(contextDateKey)}" aria-label="Ver detalles de ${escapeHtml(item.name)}">Ver detalles</button>
-          ${MUSIC_ENABLED ? `<button class="button button--small button--light" type="button" data-open-music-modal="${escapeHtml(item.id)}" aria-label="Sugerir una canción para ${escapeHtml(item.name)}">Canción 🎶</button>` : ''}
+          ${canRequestSongFor(item.id) ? `<button class="button button--small button--light" type="button" data-open-music-modal="${escapeHtml(item.id)}" aria-label="Sugerir una canción para ${escapeHtml(item.name)}">Canción 🎶</button>` : ''}
         </div>
       </div>
     </article>
@@ -2347,6 +2348,13 @@ function songClassesForStudent(studentId) {
   return scheduledClasses()
     .filter((item) => ids.has(item.id) && (!isSupabaseConnected || item.teacherId))
     .sort((a, b) => (((a.weekday + 6) % 7) - ((b.weekday + 6) % 7)) || (timeValue(a.time) - timeValue(b.time)));
+}
+
+// El botón «Canción» solo sale en las clases para las que el alumno puede pedir.
+function canRequestSongFor(classId) {
+  if (!MUSIC_ENABLED || activeRole !== 'student') return false;
+  const student = currentStudent();
+  return Boolean(student) && songClassesForStudent(student.id).some((item) => item.id === classId);
 }
 
 function studentMusicSection() {
@@ -2544,8 +2552,9 @@ function openMusicSuggestionModal(preselectedClassId = null) {
     showToast('Sin clases', 'Cuando la academia registre tu plan podrás pedir canciones para tus clases.');
     return;
   }
-  const defaultClassId = preselectedClassId || options[0]?.id || 'interm12-mar';
-  const targetClass = findClass(defaultClassId) || options[0];
+  // Solo se preselecciona una clase de su lista; si no, la primera que sí puede.
+  const targetClass = options.find((item) => item.id === preselectedClassId) || options[0];
+  const defaultClassId = targetClass.id;
   const randomMood = MUSIC_MOODS[Math.floor(Math.random() * MUSIC_MOODS.length)] || MUSIC_MOODS[0];
   currentSelectedMoodId = randomMood.id;
 
@@ -2604,6 +2613,12 @@ function openMusicSuggestionModal(preselectedClassId = null) {
         </div>
       </form>
     `
+  });
+  // El encabezado sigue a la clase elegida, para que nadie pida para una creyendo que es otra.
+  const classSelect = document.getElementById('musicClassId');
+  classSelect?.addEventListener('change', () => {
+    const picked = options.find((item) => item.id === classSelect.value);
+    if (picked) elements.modalEyebrow.textContent = `${picked.name} · ${picked.teacher}`;
   });
 }
 
@@ -3262,7 +3277,7 @@ function studentCalendarMarkup() {
                   ${capacityTag(item)}
                   <div class="calendar-agenda-actions">
                     <button class="button button--small ${isEnrolled ? 'button--red' : 'button--light'}" type="button" data-class-detail="${escapeHtml(item.id)}" data-context-date="${escapeHtml(dayKey(studentCalendarDate))}" aria-label="Ver detalles de ${escapeHtml(item.name)}">Ver detalles</button>
-                    ${MUSIC_ENABLED ? `<button class="button button--small button--light" type="button" data-open-music-modal="${escapeHtml(item.id)}" aria-label="Sugerir una canción para ${escapeHtml(item.name)}">Canción 🎶</button>` : ''}
+                    ${canRequestSongFor(item.id) ? `<button class="button button--small button--light" type="button" data-open-music-modal="${escapeHtml(item.id)}" aria-label="Sugerir una canción para ${escapeHtml(item.name)}">Canción 🎶</button>` : ''}
                   </div>
                 </div>
               </div>
@@ -4651,7 +4666,7 @@ function renderAdminAttendance() {
       <div>
         <p class="eyebrow">Registro de asistencia</p>
         <h1>Cada llegada<br/>cuenta.</h1>
-        <p>La lista más reciente de cada clase. ${missing ? `${missing} clase${missing === 1 ? '' : 's'} ya terminaron sin lista.` : 'Todas las clases que ya pasaron tienen lista.'}</p>
+        <p>La lista más reciente de cada clase. ${missing ? `${missing === 1 ? '1 clase ya terminó' : `${missing} clases ya terminaron`} sin lista.` : 'Todas las clases que ya pasaron tienen lista.'}</p>
       </div>
       <div class="heading-actions">
         ${PASSES_ENABLED ? '<button class="button button--red" type="button" data-open-validate-pass>Validar pase</button>' : ''}
@@ -6517,7 +6532,7 @@ function openClassDetail(classId, contextDate = null) {
       </div>
       <p class="modal-note">Esta pantalla es de consulta. La inscripción a una clase la administra la academia${DEMO_MODE ? '; el prototipo no habilita reservas por sesión' : ''}.</p>
       <div class="form-actions">
-        ${MUSIC_ENABLED && activeRole === 'student' ? `<button class="button button--red" type="button" data-open-music-modal="${escapeHtml(item.id)}">Pedir una canción para esta clase 🎶</button>` : ''}
+        ${canRequestSongFor(item.id) ? `<button class="button button--red" type="button" data-open-music-modal="${escapeHtml(item.id)}">Pedir una canción para esta clase 🎶</button>` : ''}
         <button class="button button--light" type="button" data-close-modal>Cerrar</button>
       </div>
     `
@@ -8273,7 +8288,7 @@ async function handleAttendanceSubmit(event) {
         method: 'manual_list'
       });
     } catch (error) {
-      showToast('No se guardó la lista', `${String(error.message).replace(/^Error en RPC \w+: /, '')} Puedes reintentar.`);
+      showToast('No se guardó la lista', friendlyError(error));
       return;
     } finally {
       if (submitBtn) {
@@ -8479,7 +8494,7 @@ function handleContentClick(event) {
       if (isSupabaseConnected) {
         reviewSongRequest(id, nextStatus, item.liked)
           .then(() => { item.status = nextStatus; renderAndFocus(); })
-          .catch((err) => showToast('No se guardó', String(err.message).replace(/^Error en RPC \w+: /, '')));
+          .catch((err) => showToast('No se guardó', friendlyError(err)));
         return;
       }
       item.status = nextStatus;
@@ -8501,7 +8516,7 @@ function handleContentClick(event) {
       if (isSupabaseConnected) {
         reviewSongRequest(id, item.status, !item.liked)
           .then(() => { item.liked = !item.liked; renderAndFocus(); })
-          .catch((err) => showToast('No se guardó', String(err.message).replace(/^Error en RPC \w+: /, '')));
+          .catch((err) => showToast('No se guardó', friendlyError(err)));
         return;
       }
       item.liked = !item.liked;

@@ -22,9 +22,13 @@
 -- 4b. El maestro ya no escribe directo en class_sessions ni attendances (las políticas de
 --    001 le daban escritura total y así se saltaba las reglas de fecha): solo lee, y guarda
 --    por sync_session_attendances / set_attendance, que validan todo.
+-- 4c. Toda sesión, aunque administración escriba directo en la tabla, cae en el día de su
+--    clase y nunca en el futuro (trigger en class_sessions).
 -- 5. song_requests: la Rockola deja de vivir en el navegador del alumno. El alumno pide
 --    canciones para una clase de su lista; el maestro de esa clase las ve con
 --    class_song_requests y las suma a su playlist con review_song_request.
+-- 6. set_my_classes (009) toma el plan igual que student_can_attend: la última membresía
+--    no cancelada, aunque su plan no esté en el catálogo.
 
 begin;
 
@@ -221,10 +225,13 @@ begin
       using errcode = '42501';
   end if;
 
+  if p_session_date is null then
+    raise exception 'Falta la fecha de la clase.' using errcode = '22023';
+  end if;
+
   v_dow := extract(dow from p_session_date)::smallint;
   if v_class.weekday <> v_dow then
-    raise exception 'Fecha no válida: la clase % está programada para el día % y se intentó abrir en día %.',
-      p_class_id, v_class.weekday, v_dow
+    raise exception 'Esta clase no se da el %: revisa la fecha.', to_char(p_session_date, 'DD/MM/YYYY')
       using errcode = '22023';
   end if;
 
@@ -273,6 +280,45 @@ create policy "attendances_select_teacher" on public.attendances
         and public.teacher_has_class(public.current_profile_id(), s.class_id)
     )
   );
+
+-- 4c. Las mismas reglas de fecha para cualquier escritura en class_sessions --------------
+-- get_or_create_session ya las valida, pero administración tiene escritura directa en la
+-- tabla (política class_sessions_admin_all) y por ahí podía crear sesiones futuras o en
+-- otro día. Para todos: el día de la semana de la clase y nada futuro. Más de 14 días
+-- atrás, solo administración o la consola (importaciones).
+create or replace function public.validate_class_session_date()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_weekday smallint;
+  v_today date := (now() at time zone 'America/Guatemala')::date;
+begin
+  select weekday into v_weekday from public.classes where id = new.class_id;
+  if v_weekday is not null and v_weekday <> extract(dow from new.session_date)::smallint then
+    raise exception 'Esta clase no se da el %: revisa la fecha.', to_char(new.session_date, 'DD/MM/YYYY')
+      using errcode = '22023';
+  end if;
+  if new.session_date > v_today then
+    raise exception 'Todavía no se puede pasar lista de la clase del %.', to_char(new.session_date, 'DD/MM/YYYY')
+      using errcode = '22023';
+  end if;
+  if new.session_date < v_today - 14 and not (public.is_admin() or public.is_trusted_backend()) then
+    raise exception 'Solo puedes corregir listas de las últimas dos semanas. Pide a administración que corrija esa fecha.'
+      using errcode = '22023';
+  end if;
+  return new;
+end;
+$$;
+
+revoke all on function public.validate_class_session_date() from public, anon, authenticated;
+
+drop trigger if exists trg_validate_class_session_date on public.class_sessions;
+create trigger trg_validate_class_session_date
+  before insert or update of class_id, session_date on public.class_sessions
+  for each row execute function public.validate_class_session_date();
 
 -- 3c. Guardar la lista completa de una sesión ------------------------------------------
 create or replace function public.sync_session_attendances(
@@ -532,6 +578,83 @@ revoke all on function public.review_song_request(uuid, text, boolean) from publ
 grant execute on function public.review_song_request(uuid, text, boolean) to authenticated;
 
 grant select, insert, delete on public.song_requests to authenticated;
+
+-- 6. Elegir mis clases con el mismo plan que usa la lista -------------------------------
+-- Antes (009) set_my_classes buscaba la última membresía cuyo plan estuviera en el
+-- catálogo: si la última tenía un plan viejo y había un Night Pass anterior, dejaba
+-- inscribirse con el Night Pass mientras la lista (student_can_attend) no le daba clases.
+-- Ahora las dos miran la última membresía no cancelada.
+create or replace function public.set_my_classes(p_class_ids text[])
+returns setof text
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+#variable_conflict use_column
+declare
+  v_student uuid := public.current_profile_id();
+  v_plan_name text;
+  v_plan public.pass_plans%rowtype;
+  v_ids text[] := coalesce(array(select distinct unnest(p_class_ids)), '{}');
+  v_outside text;
+  v_tracks int;
+begin
+  if v_student is null or public.current_user_role() <> 'student' then
+    raise exception 'Solo un alumno puede elegir sus clases.';
+  end if;
+
+  select m.plan_name into v_plan_name
+  from public.memberships m
+  where m.student_id = v_student and m.status <> 'cancelled'
+  order by m.start_date desc, m.created_at desc
+  limit 1;
+
+  if v_plan_name is null or trim(v_plan_name) = '' then
+    raise exception 'La academia todavía no ha registrado tu plan. Pregunta en recepción.';
+  end if;
+
+  select pp.* into v_plan
+  from public.pass_plans pp
+  where lower(pp.plan_name) = lower(trim(v_plan_name));
+
+  if v_plan.plan_name is null then
+    raise exception 'Tu plan (%) no tiene clases asignadas en la app. Pregunta en recepción.', trim(v_plan_name);
+  end if;
+
+  select string_agg(c.name, ', ') into v_outside
+  from public.classes c
+  where c.id = any(v_ids)
+    and not exists (select 1 from public.pass_plan_classes ppc
+                    where ppc.plan_name = v_plan.plan_name and ppc.class_id = c.id);
+  if v_outside is not null then
+    raise exception 'Tu % no incluye: %.', v_plan.plan_name, v_outside;
+  end if;
+  if exists (select 1 from unnest(v_ids) i where not exists (select 1 from public.classes c where c.id = i)) then
+    raise exception 'Una de las clases ya no existe en el horario.';
+  end if;
+
+  select count(distinct coalesce(c.track, c.id)) into v_tracks
+  from public.classes c where c.id = any(v_ids);
+  if v_plan.max_tracks is not null and v_tracks > v_plan.max_tracks then
+    raise exception 'Tu % incluye % clase%. Elige solo esa.', v_plan.plan_name, v_plan.max_tracks,
+      case when v_plan.max_tracks = 1 then '' else 's' end;
+  end if;
+
+  update public.enrollments
+  set status = 'cancelled'
+  where student_id = v_student and status <> 'cancelled' and not (class_id = any(v_ids));
+
+  insert into public.enrollments (student_id, class_id, status)
+  select v_student, i, 'active'::public.enrollment_status from unnest(v_ids) i
+  on conflict (student_id, class_id) do update set status = 'active';
+
+  return query select e.class_id from public.enrollments e
+    where e.student_id = v_student and e.status = 'active';
+end;
+$$;
+
+revoke all on function public.set_my_classes(text[]) from public, anon;
+grant execute on function public.set_my_classes(text[]) to authenticated;
 
 commit;
 

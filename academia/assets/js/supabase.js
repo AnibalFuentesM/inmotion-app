@@ -189,11 +189,19 @@ export const db = {
       const err = await res.text();
       console.error(`[Supabase RPC Error ${res.status}] ${functionName}:`, err);
       let parsedMessage = err || res.statusText;
+      let code = '';
       try {
         const jsonErr = JSON.parse(err);
         if (jsonErr.message) parsedMessage = jsonErr.message;
+        code = jsonErr.code || '';
       } catch {}
-      throw new Error(`Error en RPC ${functionName}: ${parsedMessage}`);
+      const error = new Error(`Error en RPC ${functionName}: ${parsedMessage}`);
+      error.code = code;
+      error.status = res.status;
+      if (DB_VALIDATION_CODES.has(code) && !POSTGRES_INTERNAL_MESSAGE.test(parsedMessage)) {
+        error.userMessage = parsedMessage;
+      }
+      throw error;
     }
     // Una función que no devuelve nada responde 204 sin cuerpo.
     const text = await res.text();
@@ -679,6 +687,17 @@ export async function syncRemoteEnrollments({ studentCardId, classIds = [] }) {
   return true;
 }
 
+// Mensajes que se pueden mostrar tal cual: los que escriben en español las validaciones de
+// la base (raise exception en las funciones). Lo demás (sin conexión, tiempo agotado,
+// errores internos de Postgres en inglés) se cambia por un texto general.
+const DB_VALIDATION_CODES = new Set(['P0001', 'P0002', '22000', '22023', '28000', '42501']);
+const POSTGRES_INTERNAL_MESSAGE = /^(permission denied|new row violates|must be owner|function .+ does not exist|could not find)/i;
+export const SAVE_ERROR_FALLBACK = 'No se pudo guardar. Revisa tu conexión e intenta de nuevo.';
+
+export function friendlyError(err, fallback = SAVE_ERROR_FALLBACK) {
+  return err?.userMessage || fallback;
+}
+
 /**
  * Sincronización transaccional y por lotes de la lista de asistencia de una sesión.
  * Permite listas vacías para desmarcar el ámbito consultado sin fallos parciales.
@@ -688,7 +707,9 @@ export async function syncSessionAttendances({ classId, sessionDate, presentStud
   for (const card of presentStudentCards) {
     const uuid = await getProfileUuidByCard(card);
     if (!uuid) {
-      throw new Error(`No se encontró perfil para el alumno con carné ${card}`);
+      const error = new Error(`No se encontró perfil para el alumno con carné ${card}`);
+      error.userMessage = `No se encontró la cuenta del carné ${card}. Recarga la página e intenta de nuevo.`;
+      throw error;
     }
     presentUuids.push(uuid);
   }

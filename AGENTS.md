@@ -112,7 +112,10 @@ Se trabaja **siempre sobre esta misma app**: `academia/`, dentro de
    (`student_can_attend`), con la mensualidad del mes. Sin 013 la app vuelve a la lista por
    inscripción. El maestro corrige hasta 14 días atrás, nunca fechas futuras, y solo escribe
    por las RPC (`sync_session_attendances`, `set_attendance`): directo en `class_sessions` y
-   `attendances` solo lee. La app carga 12 semanas de asistencia y pagina de a 1000 filas
+   `attendances` solo lee. Un trigger en `class_sessions` aplica el día de la clase y «nada
+   futuro» a cualquier escritura, también la de administración. Los errores del servidor se
+   muestran con `friendlyError`: solo pasan los mensajes en español de las validaciones de la
+   base; lo demás (sin conexión, errores de Postgres en inglés) sale como un texto general. La app carga 12 semanas de asistencia y pagina de a 1000 filas
    (`db.getAll`, `db.rpcAll`): Supabase corta cada respuesta en 1000 sin avisar. Su inicio muestra
    la próxima clase, las listas que faltan, los pagos pendientes de sus alumnos, las canciones
    pedidas y el acceso a subir videos (`../index.html#subir-video` abre el panel del catálogo).

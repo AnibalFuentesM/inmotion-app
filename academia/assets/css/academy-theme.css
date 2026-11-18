@@ -2125,7 +2125,7 @@
 
 .music-cards-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(300px, 100%), 1fr));
   gap: 16px;
 }
 
@@ -2141,6 +2141,7 @@
   gap: 14px;
   transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
   box-shadow: 0 4px 16px rgba(16, 16, 20, 0.04);
+  min-width: 0;
 }
 
 .music-card:hover {
@@ -2156,6 +2157,7 @@
 
 .music-card-header {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
@@ -2166,6 +2168,7 @@
   align-items: center;
   gap: 10px;
   min-width: 0;
+  flex: 1 1 140px;
 }
 
 .avatar-mini {
@@ -2208,6 +2211,7 @@
   font-size: 0.8rem;
   font-weight: 600;
   white-space: nowrap;
+  max-width: 100%;
   background: var(--mist);
   color: #101014;
   border: 1px solid var(--line);
@@ -2253,6 +2257,8 @@
 
 .music-card-body {
   flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .music-song-title {
@@ -2284,6 +2290,7 @@
 
 .music-card-footer {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   padding-top: 10px;
@@ -2427,7 +2434,7 @@
     grid-template-columns: 1fr;
   }
   .music-cards-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 
