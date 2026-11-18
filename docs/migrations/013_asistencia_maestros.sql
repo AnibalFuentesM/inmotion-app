@@ -19,6 +19,9 @@
 --    puede corregir listas de los últimos 14 días (administración, cualquier fecha).
 --    Además una clase sin maestro asignado ya no la puede abrir cualquier maestro (antes
 --    teacher_id null dejaba pasar a todos).
+-- 4b. El maestro ya no escribe directo en class_sessions ni attendances (las políticas de
+--    001 le daban escritura total y así se saltaba las reglas de fecha): solo lee, y guarda
+--    por sync_session_attendances / set_attendance, que validan todo.
 -- 5. song_requests: la Rockola deja de vivir en el navegador del alumno. El alumno pide
 --    canciones para una clase de su lista; el maestro de esa clase las ve con
 --    class_song_requests y las suma a su playlist con review_song_request.
@@ -33,7 +36,10 @@ security definer
 set search_path = public, pg_temp
 stable
 as $$
-  select exists (
+  -- Solo responde por uno mismo, o a maestros y administración (no sirve para espiar a otro alumno).
+  select (public.is_admin() or public.is_teacher() or public.is_trusted_backend()
+          or p_student_id = public.current_profile_id())
+  and exists (
     select 1 from public.cards k where k.student_id = p_student_id and k.is_active is not false
   ) and (exists (
     select 1 from public.enrollments e
@@ -124,7 +130,8 @@ begin
   ) lp on true
   left join lateral (
     select m.id, m.due_date from public.memberships m
-    where m.student_id = p.id and m.period = v_period and m.status <> 'cancelled'
+    where m.student_id = p.id and m.status <> 'cancelled'
+      and (m.period = v_period or (m.period is null and to_char(m.start_date, 'YYYY-MM') = v_period))
     order by m.created_at desc
     limit 1
   ) cm on true
@@ -247,6 +254,25 @@ $$;
 
 revoke all on function public.get_or_create_session(text, date) from public, anon;
 grant execute on function public.get_or_create_session(text, date) to authenticated;
+
+-- 4b. Maestro: solo lectura directa de sesiones y asistencias de sus clases ------------
+drop policy if exists "class_sessions_teacher_manage" on public.class_sessions;
+drop policy if exists "class_sessions_select_teacher" on public.class_sessions;
+create policy "class_sessions_select_teacher" on public.class_sessions
+  for select using (
+    public.is_teacher() and public.teacher_has_class(public.current_profile_id(), class_id)
+  );
+
+drop policy if exists "attendances_teacher_manage" on public.attendances;
+drop policy if exists "attendances_select_teacher" on public.attendances;
+create policy "attendances_select_teacher" on public.attendances
+  for select using (
+    public.is_teacher() and exists (
+      select 1 from public.class_sessions s
+      where s.id = attendances.session_id
+        and public.teacher_has_class(public.current_profile_id(), s.class_id)
+    )
+  );
 
 -- 3c. Guardar la lista completa de una sesión ------------------------------------------
 create or replace function public.sync_session_attendances(
@@ -477,8 +503,9 @@ revoke all on function public.class_song_requests() from public, anon;
 grant execute on function public.class_song_requests() to authenticated;
 
 -- Sumar a la playlist / quitar, y el «me gusta» del maestro.
+drop function if exists public.review_song_request(uuid, text, boolean);
 create or replace function public.review_song_request(p_id uuid, p_status text, p_liked boolean)
-returns void
+returns boolean
 language plpgsql
 security definer
 set search_path = public, pg_temp
@@ -498,6 +525,7 @@ begin
   if not found then
     raise exception 'Permiso denegado: esa canción no es de una de tus clases.' using errcode = '42501';
   end if;
+  return true;
 end;
 $$;
 revoke all on function public.review_song_request(uuid, text, boolean) from public, anon;

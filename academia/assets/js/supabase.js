@@ -195,9 +195,45 @@ export const db = {
       } catch {}
       throw new Error(`Error en RPC ${functionName}: ${parsedMessage}`);
     }
-    return await res.json();
+    // Una función que no devuelve nada responde 204 sin cuerpo.
+    const text = await res.text();
+    return text ? JSON.parse(text) : null;
+  },
+
+  /**
+   * Trae todas las filas de una consulta o función en páginas de 1000: Supabase corta
+   * cada respuesta en 1000 filas sin avisar. query debe llevar un order estable.
+   */
+  async getAll(table, query, pageSize = 1000) {
+    const rows = [];
+    for (let offset = 0; ; offset += pageSize) {
+      const page = await db.get(table, `${query}&limit=${pageSize}&offset=${offset}`);
+      if (!Array.isArray(page)) break;
+      rows.push(...page);
+      if (page.length < pageSize) break;
+    }
+    return rows;
+  },
+
+  async rpcAll(functionName, params = {}, pageSize = 1000) {
+    const rows = [];
+    for (let offset = 0; ; offset += pageSize) {
+      const page = await db.rpc(`${functionName}?limit=${pageSize}&offset=${offset}`, params);
+      if (!Array.isArray(page)) break;
+      rows.push(...page);
+      if (page.length < pageSize) break;
+    }
+    return rows;
   }
 };
+
+// Ventana de asistencia que carga la app: 12 semanas (lo que miran las alertas de
+// inasistencia y las listas que el maestro puede corregir).
+function attendanceWindowStart() {
+  const d = new Date();
+  d.setDate(d.getDate() - 84);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
 
 // ------------------------------------------------------------------------------
 // SUPABASE AUTH (AUTENTICACIÓN REAL)
@@ -237,10 +273,10 @@ export function loginIdToEmail(loginId) {
   return `502${digits}@${PHONE_LOGIN_DOMAIN}`;
 }
 
-// Las cuentas de alumnos y encargados se crean con una contraseña que viaja por
+// Las cuentas de alumnos, encargados y maestros se crean con una contraseña que viaja por
 // WhatsApp. Hasta que la persona pone una propia, la app le pide cambiarla al entrar.
 // La marca vive en user_metadata, que cada quien puede escribir de su propia cuenta.
-const ACCOUNTS_WITH_INITIAL_PASSWORD = ['student', 'guardian'];
+const ACCOUNTS_WITH_INITIAL_PASSWORD = ['student', 'guardian', 'teacher'];
 
 export function mustChangePassword(user, profile) {
   if (!ACCOUNTS_WITH_INITIAL_PASSWORD.includes(profile?.role)) return false;
@@ -515,8 +551,11 @@ export async function fetchRemoteStudents() {
     if (!p) continue;
 
     const studentMems = studentMembershipsMap.get(c.student_id) || [];
-    studentMems.sort((a, b) => new Date(b.created_at || b.start_date || 0) - new Date(a.created_at || a.start_date || 0));
-    const mem = studentMems[0] || null;
+    // Mismo criterio que la base (set_my_classes, student_can_attend): la membresía no
+    // cancelada más reciente por start_date y luego created_at.
+    const byRecent = (a, b) => String(b.start_date || '').localeCompare(String(a.start_date || '')) || new Date(b.created_at || 0) - new Date(a.created_at || 0);
+    studentMems.sort(byRecent);
+    const mem = studentMems.find((m) => m.status !== 'cancelled') || studentMems[0] || null;
     const fullName = `${p.first_name || ''} ${p.last_name || ''}`.trim() || 'Alumno In Motion';
     const initials = fullName
       .split(/\s+/)
@@ -714,7 +753,7 @@ export async function deleteRemoteAttendance({ studentCardId, classId, sessionDa
  * Consulta el historial de asistencia en Supabase
  */
 export async function fetchRemoteAttendance() {
-  const rows = await db.get('attendances', 'select=student_id,recorded_at,class_sessions(class_id,session_date)');
+  const rows = await db.getAll('attendances', `select=id,student_id,recorded_at,class_sessions!inner(class_id,session_date)&class_sessions.session_date=gte.${attendanceWindowStart()}&order=id.asc`);
   if (!Array.isArray(rows)) return [];
 
   const log = [];
@@ -737,7 +776,7 @@ export async function fetchRemoteAttendance() {
 export async function fetchClassRosters() {
   let rows;
   try {
-    rows = await db.rpc('class_roster', {});
+    rows = await db.rpcAll('class_roster', {});
   } catch (err) {
     console.warn('[In Motion] Lista de clases por plan no disponible (¿falta la migración 013?):', err.message);
     return null;
@@ -764,7 +803,7 @@ export async function fetchClassRosters() {
  */
 export async function fetchRemoteSessions() {
   try {
-    const rows = await db.get('class_sessions', 'select=class_id,session_date');
+    const rows = await db.getAll('class_sessions', `select=id,class_id,session_date&session_date=gte.${attendanceWindowStart()}&order=id.asc`);
     return Array.isArray(rows) ? rows.map((r) => `${r.class_id}|${r.session_date}`) : [];
   } catch {
     return [];
@@ -803,7 +842,8 @@ export async function createSongRequest({ studentCardId, classId, song, artist, 
   } catch (err) {
     if (/5 canciones/.test(err.message)) throw new Error('Ya tienes 5 canciones esperando. Espera a que tu maestro las revise.');
     if (/row-level security/i.test(err.message)) throw new Error('Esa clase no está en tu plan.');
-    throw err;
+    if (/check constraint|violates/i.test(err.message)) throw new Error('Revisa la canción y el artista: máximo 120 letras cada uno.');
+    throw new Error('No se pudo enviar. Revisa tu conexión e intenta de nuevo.');
   }
 }
 

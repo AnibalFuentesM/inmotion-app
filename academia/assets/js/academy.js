@@ -44,6 +44,8 @@ let classRosters = null;
 let takenSessions = new Set();
 // Fecha de la lista abierta (AAAA-MM-DD). null = la más reciente de esa clase.
 let activeSessionKey = null;
+// Clase de la lista abierta. null = la clase de hoy o la última que dio (currentListClass).
+let listClassId = null;
 let supabaseSyncError = null;
 let authenticatedUser = null;
 let authenticatedProfile = null;
@@ -86,6 +88,7 @@ function clearCurrentSessionState() {
   classRosters = null;
   takenSessions = new Set();
   activeSessionKey = null;
+  listClassId = null;
   MUSIC_ENABLED = DEMO_MODE;
 }
 let TODAY = new Date();
@@ -135,7 +138,7 @@ const roleConfig = {
       ['asistencia', 'Asistencia', 'list', { feature: 'classList' }],
       ['pases', 'Pases', 'ticket', { feature: 'passes' }],
       // En la demo va solo en el menú lateral (la barra inferior ya lleva cinco). Con
-      // datos reales Asistencia y Pases salen de la barra y «Datos» ocupa su lugar.
+      // datos reales Pases sale de la barra y «Datos» ocupa su lugar.
       ['datos', 'Completar datos', 'edit', { sidebarOnly: 'demo', shortLabel: 'Datos' }]
     ]
   },
@@ -1162,7 +1165,7 @@ function createBasePayments() {
 
 const MUSIC_MOODS = [
   { id: 'sed', emoji: '🍺', label: 'Me da sed' },
-  { id: 'duela', emoji: '💔', label: 'Subile, que duela' },
+  { id: 'duela', emoji: '💔', label: 'Súbele, que duela' },
   { id: 'perdio', emoji: '💅', label: 'Que vea lo que se perdió' },
   { id: 'fuego', emoji: '🔥', label: 'En todo' },
   { id: 'piso', emoji: '💃', label: 'Pal piso' },
@@ -1171,7 +1174,7 @@ const MUSIC_MOODS = [
   { id: 'prohibidos', emoji: '🕺', label: "Pa' sacar los prohibidos" },
   { id: 'chilera', emoji: '😎', label: 'Ta chilera' },
   { id: 'oila', emoji: '🎧', label: 'Oila' },
-  { id: 'chille', emoji: '😭', label: 'Que chille!' }
+  { id: 'chille', emoji: '😭', label: '¡Que chille!' }
 ];
 
 function findMusicMood(moodId) {
@@ -1191,7 +1194,7 @@ function createBaseMusicSuggestions() {
       artist: 'Aventura',
       moodId: 'duela',
       moodEmoji: '💔',
-      moodLabel: 'Subile, que duela',
+      moodLabel: 'Súbele, que duela',
       status: 'accepted',
       liked: true,
       createdAt: dayKey(previousDateFor(3))
@@ -2058,8 +2061,10 @@ function navMarkup(config, { mobile = false } = {}) {
   const routes = mobile
     ? config.routes.filter(([, , , options = {}]) => routeFeatureEnabled(options) && !(options.sidebarOnly === true || (options.sidebarOnly === 'demo' && DEMO_MODE)))
     : config.routes;
+  // La lista de una clase (ruta oculta «lista») se ve dentro de Asistencia.
+  const current = activeRoute === 'lista' ? 'asistencia' : activeRoute;
   const items = routes.map(([route, label, iconName, options = {}], index) => `
-    <a class="nav-item ${activeRoute === route ? 'is-active' : ''}" href="#/${escapeHtml(route)}" ${activeRoute === route ? 'aria-current="page"' : ''} data-route="${escapeHtml(route)}">
+    <a class="nav-item ${current === route ? 'is-active' : ''}" href="#/${escapeHtml(route)}" ${current === route ? 'aria-current="page"' : ''} data-route="${escapeHtml(route)}">
       <span class="nav-icon">${icon(iconName)}</span>
       <span>${escapeHtml(mobile && options.shortLabel ? options.shortLabel : label)}${!mobile && !routeFeatureEnabled(options) ? ' <small class="nav-soon">Pronto</small>' : ''}</span>
       <span class="nav-index">0${index + 1}</span>
@@ -2329,13 +2334,19 @@ function nextMusicSuggestionId() {
   return `sug-${nextNum}`;
 }
 
-// Clases para las que el alumno puede pedir canción: las que eligió o, si no eligió
-// ninguna, las que cubre su plan (la misma regla que student_can_attend en la base).
+// Clases para las que el alumno puede pedir canción, con la regla de student_can_attend
+// en la base: las que eligió, más las de su plan si el plan no tiene límite de clases o si
+// todavía no eligió ninguna. Con datos reales solo las que tienen maestro (si no, nadie
+// vería la canción).
 function songClassesForStudent(studentId) {
   const own = classesForStudent(studentId);
-  if (own.length) return own;
-  const rule = PLAN_CLASS_RULES[planForStudent(studentId).id];
-  return rule ? scheduledClasses().filter((item) => rule.covers(item)) : [];
+  const ruleId = planForStudent(studentId).id;
+  const rule = PLAN_CLASS_RULES[ruleId];
+  const byPlan = rule && (rule.maxGroups === null || !own.length) ? scheduledClasses().filter((item) => rule.covers(item)) : [];
+  const ids = new Set([...own, ...byPlan].map((item) => item.id));
+  return scheduledClasses()
+    .filter((item) => ids.has(item.id) && (!isSupabaseConnected || item.teacherId))
+    .sort((a, b) => (((a.weekday + 6) % 7) - ((b.weekday + 6) % 7)) || (timeValue(a.time) - timeValue(b.time)));
 }
 
 function studentMusicSection() {
@@ -2378,7 +2389,7 @@ function studentMusicSection() {
               <span class="music-class-btn-icon" aria-hidden="true">🎵</span>
               <span class="music-class-btn-info">
                 <strong>${escapeHtml(c.name)}</strong>
-                <small>${escapeHtml(c.teacher)} · ${escapeHtml(c.time)}</small>
+                <small>${escapeHtml(WEEKDAY_SHORT[c.weekday])} ${escapeHtml(c.time)} · ${escapeHtml(c.teacher)}</small>
               </span>
               <span class="music-class-btn-action" aria-hidden="true">Sugerir canción ↗</span>
             </button>
@@ -2548,7 +2559,7 @@ function openMusicSuggestionModal(preselectedClassId = null) {
           <select name="classId" id="musicClassId" required>
             ${options.map((item) => `
               <option value="${escapeHtml(item.id)}" ${item.id === defaultClassId ? 'selected' : ''}>
-                ${escapeHtml(item.name)} · ${escapeHtml(item.teacher)}
+                ${escapeHtml(WEEKDAY_SHORT[item.weekday])} ${escapeHtml(item.time)} · ${escapeHtml(item.name)} · ${escapeHtml(item.teacher)}
               </option>
             `).join('')}
           </select>
@@ -2557,11 +2568,11 @@ function openMusicSuggestionModal(preselectedClassId = null) {
         <div class="split-fields">
           <label class="field">
             <span>Canción</span>
-            <input type="text" name="song" id="musicSongInput" placeholder="Nombre o tarareo" />
+            <input type="text" name="song" id="musicSongInput" placeholder="Nombre o tarareo" maxlength="120" />
           </label>
           <label class="field">
             <span>Artista</span>
-            <input type="text" name="artist" id="musicArtistInput" placeholder="Artista o grupo" />
+            <input type="text" name="artist" id="musicArtistInput" placeholder="Artista o grupo" maxlength="120" />
           </label>
         </div>
 
@@ -3752,6 +3763,21 @@ function rosterMarkup(classId = activeClassId, date = TODAY) {
   }).join('')}</div>`;
 }
 
+// Clase que abre «Pasar lista» desde el menú: la que empezó más recientemente (o está
+// por empezar en la próxima hora), es decir, la de hoy o la última que dio.
+function currentListClass(classes) {
+  const soon = TODAY.getTime() + 60 * 60 * 1000;
+  const startOf = (item) => {
+    const start = listSessionsFor(item, 2).map((date) => {
+      const at = startOfDay(date);
+      at.setMinutes(timeValue(item.time));
+      return at;
+    }).find((at) => at.getTime() <= soon);
+    return start ? start.getTime() : 0;
+  };
+  return [...classes].sort((a, b) => startOf(b) - startOf(a))[0];
+}
+
 // Las clases que esta persona puede pasar: el maestro las suyas, administración todas.
 function listableClasses() {
   if (activeRole === 'admin') return scheduledClasses();
@@ -3765,9 +3791,12 @@ function renderTeacherAttendance() {
       <header class="page-heading"><div><p class="eyebrow">Pasar lista</p><h1>Sin clases<br/>asignadas.</h1><p>Cuando administración te asigne clases en «Completar datos», aquí pasas lista.</p></div></header>
     `;
   }
-  const item = classes.find((entry) => entry.id === activeClassId) || upcomingClasses(classes)[0] || classes[0];
-  activeClassId = item.id;
-  const sessions = listSessionsFor(item, activeRole === 'admin' ? 6 : 3);
+  const item = classes.find((entry) => entry.id === listClassId) || currentListClass(classes);
+  listClassId = item.id;
+  // El maestro solo puede guardar listas de los últimos 14 días (la base rechaza las demás).
+  const sessions = activeRole === 'admin'
+    ? listSessionsFor(item, 6)
+    : listSessionsFor(item, 3).filter((entry) => daysBetween(entry) >= -14);
   const date = (activeSessionKey && sessions.find((entry) => dayKey(entry) === activeSessionKey)) || sessions[0];
   const enrolled = rosterFor(item.id);
   const enrolledIds = enrolled.map((entry) => entry.id);
@@ -3825,7 +3854,7 @@ function renderTeacherAttendance() {
         <h2>${escapeHtml(item.name.replace(' Salsa y Bachata', ''))}</h2>
         ${recent.length ? `<ul class="attendance-history">${recent.map((entry) => {
           const count = attendanceFor(item.id, entry).length;
-          return `<li><button type="button" class="text-button" data-attendance-session="${escapeHtml(dayKey(entry))}">${escapeHtml(sessionLabel(entry))}</button><span>${count} vinieron</span></li>`;
+          return `<li><button type="button" class="text-button" data-attendance-session="${escapeHtml(dayKey(entry))}">${escapeHtml(sessionLabel(entry))}</button><span>${count === 0 ? 'Nadie vino' : `${count} ${count === 1 ? 'vino' : 'vinieron'}`}</span></li>`;
         }).join('')}</ul>` : '<p class="payment-meta">Todavía no hay listas guardadas de esta clase.</p>'}
         ${absent.length ? `
           <hr style="margin:20px 0;border:none;border-top:1px solid rgba(255,255,255,0.08)" />
@@ -8267,7 +8296,10 @@ async function handleAttendanceSubmit(event) {
 }
 
 function openClassAttendance(classId, sessionDate = null) {
-  if (findClass(classId)) activeClassId = classId;
+  if (findClass(classId)) {
+    activeClassId = classId;
+    listClassId = classId;
+  }
   activeSessionKey = sessionDate;
   // Administración pasa lista sin cambiar de portal (antes la mandaba al de maestro).
   const route = activeRole === 'admin' ? 'lista' : 'asistencia';
@@ -8681,7 +8713,7 @@ elements.content.addEventListener('change', (event) => {
   if (event.target.matches('select[data-dd-field]')) return handleAcademyDataChange(event.target);
   if (event.target.matches('[data-assign-teacher]')) return handleAssignTeacher(event.target);
   if (event.target.matches('[data-attendance-class]')) {
-    activeClassId = event.target.value;
+    listClassId = event.target.value;
     activeSessionKey = null;
     return renderAndFocus();
   }
