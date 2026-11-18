@@ -2125,7 +2125,7 @@
 
 .music-cards-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(300px, 100%), 1fr));
   gap: 16px;
 }
 
@@ -2141,6 +2141,7 @@
   gap: 14px;
   transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
   box-shadow: 0 4px 16px rgba(16, 16, 20, 0.04);
+  min-width: 0;
 }
 
 .music-card:hover {
@@ -2156,6 +2157,7 @@
 
 .music-card-header {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
@@ -2166,6 +2168,7 @@
   align-items: center;
   gap: 10px;
   min-width: 0;
+  flex: 1 1 140px;
 }
 
 .avatar-mini {
@@ -2208,6 +2211,7 @@
   font-size: 0.8rem;
   font-weight: 600;
   white-space: nowrap;
+  max-width: 100%;
   background: var(--mist);
   color: #101014;
   border: 1px solid var(--line);
@@ -2253,6 +2257,8 @@
 
 .music-card-body {
   flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .music-song-title {
@@ -2284,6 +2290,7 @@
 
 .music-card-footer {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   padding-top: 10px;
@@ -2427,7 +2434,7 @@
     grid-template-columns: 1fr;
   }
   .music-cards-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 
@@ -4267,3 +4274,23 @@ button.student-check > span:last-child { color: var(--red); font-size: .74rem; f
   .class-card { min-height: auto; }
   .class-card-foot { position: static; margin-top: 16px; align-items: center; gap: 12px; }
 }
+
+/* Portal del maestro: próxima clase, pasar lista, pagos pendientes de sus alumnos. */
+.teacher-next { display: grid; gap: 2px; margin: 0 0 14px; }
+.teacher-next strong { font-size: 1.15rem; }
+.teacher-next b { color: var(--red); font-weight: 600; }
+.teacher-pay-list { display: grid; gap: 8px; }
+.teacher-pay-row { display: grid; grid-template-columns: 42px minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 10px 14px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--paper); }
+.teacher-pay-name { display: grid; min-width: 0; }
+.teacher-pay-name small { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.attendance-pickers { display: grid; gap: 12px; margin-bottom: 18px; }
+.attendance-pickers select { width: 100%; }
+.attendance-pickers .filter-row { margin: 0; }
+.roster-search { margin: 0 0 12px; }
+.roster-search input { width: 100%; }
+.student-check[hidden] { display: none; }
+.roster-pay { font-style: normal; font-weight: 600; color: #b26b00; }
+.roster-pay--en_mora { color: var(--red); }
+.attendance-history { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 8px; }
+.attendance-history li { display: flex; justify-content: space-between; gap: 12px; align-items: center; }
+.attendance-history li > span:last-child { color: var(--muted); font-size: .85rem; }

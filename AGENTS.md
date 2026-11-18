@@ -75,7 +75,7 @@ Se trabaja **siempre sobre esta misma app**: `academia/`, dentro de
    Las listas de alumnos y contraseñas van en `cuentas/`, que está en `.gitignore`.
    El selector de roles con datos ficticios solo aparece en `academia/?demo`. En el HTML,
    `data-demo-only` y `data-login-only` marcan qué se ve en cada modo.
-   Alumnos y encargados deben crear su propia contraseña en el primer ingreso
+   Alumnos, encargados y maestros deben crear su propia contraseña en el primer ingreso
    (`mustChangePassword`: falta `user_metadata.password_changed_at`, que `updatePassword` marca).
    Administración tiene «Ver como alumno»: muestra el portal de un alumno real en solo lectura
    (`studentPreviewId` en `academy.js`; `setReadOnlyPreview` corta toda escritura en `authFetch`).
@@ -97,12 +97,31 @@ Se trabaja **siempre sobre esta misma app**: `academia/`, dentro de
    anual (Q125) por ahora no se cobra. Las inscripciones van en `extraPayments`, aparte de
    `state.payments`, para no marcar el mes como pagado.
 11. **Lo que no funciona con datos reales no se muestra como si funcionara.** Fuera de `?demo`
-   no hay cupos (`capacityTag`), ni Rockola (`MUSIC_ENABLED`), y Asistencia y Pases salen de
-   la barra inferior y quedan en el menú lateral con la marca «Pronto» (`routeFeatureEnabled`).
+   no hay cupos (`capacityTag`) y Pases sale de la barra inferior y queda en el menú lateral
+   con la marca «Pronto» (`routeFeatureEnabled`). La Rockola (`MUSIC_ENABLED`) se enciende sola
+   para alumno y maestro cuando la base tiene `song_requests` (migración 013); administración
+   no la carga. El alumno pide solo para las clases de `songClassesForStudent`, que copia a
+   `student_can_attend`: carné activo y el plan de la última membresía no cancelada
+   (`activePlan`, distinto de `plan`, que Pagos muestra aunque esté cancelado). El conteo de asistencia del alumno y
+   el carné QR siguen solo en la demo (`ATTENDANCE_ENABLED`).
    En el inicio del alumno lo pendiente va en una sola línea (`comingSoonStrip`).
    El catálogo muestra «Gestión del catálogo» solo si la academia guardó un rol de equipo en
    `localStorage['inmotion_catalog_role']`.
-12. **Nunca commitear** `.env*.local` ni `.vercel/` (ya están en `.gitignore`).
+12. **Pasar lista (migración 013).** El maestro pasa lista de sus clases en «Pasar lista»
+   (`renderTeacherAttendance`, `CLASS_LIST_ENABLED`); administración ve la última lista de cada
+   clase en Asistencia y abre la misma pantalla en la ruta oculta `lista` (`HIDDEN_ROUTES`).
+   La lista sale de `class_roster`: inscritos más alumnos cuyo plan cubre la clase
+   (`student_can_attend`), con la mensualidad del mes. Sin 013 la app vuelve a la lista por
+   inscripción. El maestro corrige hasta 14 días atrás, nunca fechas futuras, y solo escribe
+   por las RPC (`sync_session_attendances`, `set_attendance`): directo en `class_sessions` y
+   `attendances` solo lee. Un trigger en `class_sessions` aplica el día de la clase y «nada
+   futuro» a cualquier escritura, también la de administración. Los errores del servidor se
+   muestran con `friendlyError`: solo pasan los mensajes en español de las validaciones de la
+   base; lo demás (sin conexión, errores de Postgres en inglés) sale como un texto general. La app carga 12 semanas de asistencia y pagina de a 1000 filas
+   (`db.getAll`, `db.rpcAll`): Supabase corta cada respuesta en 1000 sin avisar. Su inicio muestra
+   la próxima clase, las listas que faltan, los pagos pendientes de sus alumnos, las canciones
+   pedidas y el acceso a subir videos (`../index.html#subir-video` abre el panel del catálogo).
+13. **Nunca commitear** `.env*.local` ni `.vercel/` (ya están en `.gitignore`).
 
 ## Convenciones
 

@@ -73,9 +73,17 @@ export function setReadOnlyPreview(on) {
   readOnlyPreview = Boolean(on);
 }
 
+// Un Error cuyo texto es para la persona: friendlyError lo muestra tal cual.
+function userError(message) {
+  const error = new Error(message);
+  error.userMessage = message;
+  return error;
+}
+const SESSION_EXPIRED_MESSAGE = 'Tu sesión venció. Cierra sesión y vuelve a ingresar.';
+
 async function authFetch(url, options = {}, extraHeaders = {}) {
   if (readOnlyPreview && options.method && options.method !== 'GET') {
-    throw new Error('Estás en la vista de alumno: aquí no se guarda ningún cambio.');
+    throw userError('Estás en la vista de alumno: aquí no se guarda ningún cambio.');
   }
   const stored = getStoredAuthSession();
   const canRenew = Boolean(currentAuthToken && stored?.refresh_token);
@@ -87,7 +95,7 @@ async function authFetch(url, options = {}, extraHeaders = {}) {
     try {
       await renewSession();
     } catch {
-      throw new Error('Tu sesión venció. Cierra sesión y vuelve a ingresar.');
+      throw userError(SESSION_EXPIRED_MESSAGE);
     }
     res = await fetch(url, { ...options, headers: getHeaders(extraHeaders) });
   }
@@ -189,15 +197,61 @@ export const db = {
       const err = await res.text();
       console.error(`[Supabase RPC Error ${res.status}] ${functionName}:`, err);
       let parsedMessage = err || res.statusText;
+      let code = '';
       try {
         const jsonErr = JSON.parse(err);
         if (jsonErr.message) parsedMessage = jsonErr.message;
+        code = jsonErr.code || '';
       } catch {}
-      throw new Error(`Error en RPC ${functionName}: ${parsedMessage}`);
+      const error = new Error(`Error en RPC ${functionName}: ${parsedMessage}`);
+      error.code = code;
+      error.status = res.status;
+      if (res.status === 401) {
+        error.userMessage = SESSION_EXPIRED_MESSAGE;
+      } else if (DB_VALIDATION_CODES.has(code) && !POSTGRES_INTERNAL_MESSAGE.test(parsedMessage)) {
+        error.userMessage = parsedMessage;
+      }
+      throw error;
     }
-    return await res.json();
+    // Una función que no devuelve nada responde 204 sin cuerpo.
+    const text = await res.text();
+    return text ? JSON.parse(text) : null;
+  },
+
+  /**
+   * Trae todas las filas de una consulta o función en páginas de 1000: Supabase corta
+   * cada respuesta en 1000 filas sin avisar. query debe llevar un order estable.
+   */
+  async getAll(table, query, pageSize = 1000) {
+    const rows = [];
+    for (let offset = 0; ; offset += pageSize) {
+      const page = await db.get(table, `${query}&limit=${pageSize}&offset=${offset}`);
+      if (!Array.isArray(page)) break;
+      rows.push(...page);
+      if (page.length < pageSize) break;
+    }
+    return rows;
+  },
+
+  async rpcAll(functionName, params = {}, pageSize = 1000) {
+    const rows = [];
+    for (let offset = 0; ; offset += pageSize) {
+      const page = await db.rpc(`${functionName}?limit=${pageSize}&offset=${offset}`, params);
+      if (!Array.isArray(page)) break;
+      rows.push(...page);
+      if (page.length < pageSize) break;
+    }
+    return rows;
   }
 };
+
+// Ventana de asistencia que carga la app: 12 semanas (lo que miran las alertas de
+// inasistencia y las listas que el maestro puede corregir).
+function attendanceWindowStart() {
+  const d = new Date();
+  d.setDate(d.getDate() - 84);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
 
 // ------------------------------------------------------------------------------
 // SUPABASE AUTH (AUTENTICACIÓN REAL)
@@ -237,10 +291,10 @@ export function loginIdToEmail(loginId) {
   return `502${digits}@${PHONE_LOGIN_DOMAIN}`;
 }
 
-// Las cuentas de alumnos y encargados se crean con una contraseña que viaja por
+// Las cuentas de alumnos, encargados y maestros se crean con una contraseña que viaja por
 // WhatsApp. Hasta que la persona pone una propia, la app le pide cambiarla al entrar.
 // La marca vive en user_metadata, que cada quien puede escribir de su propia cuenta.
-const ACCOUNTS_WITH_INITIAL_PASSWORD = ['student', 'guardian'];
+const ACCOUNTS_WITH_INITIAL_PASSWORD = ['student', 'guardian', 'teacher'];
 
 export function mustChangePassword(user, profile) {
   if (!ACCOUNTS_WITH_INITIAL_PASSWORD.includes(profile?.role)) return false;
@@ -515,8 +569,12 @@ export async function fetchRemoteStudents() {
     if (!p) continue;
 
     const studentMems = studentMembershipsMap.get(c.student_id) || [];
-    studentMems.sort((a, b) => new Date(b.created_at || b.start_date || 0) - new Date(a.created_at || a.start_date || 0));
-    const mem = studentMems[0] || null;
+    // Mismo criterio que la base (set_my_classes, student_can_attend): la membresía no
+    // cancelada más reciente por start_date y luego created_at.
+    const byRecent = (a, b) => String(b.start_date || '').localeCompare(String(a.start_date || '')) || new Date(b.created_at || 0) - new Date(a.created_at || 0);
+    studentMems.sort(byRecent);
+    const activeMem = studentMems.find((m) => m.status !== 'cancelled') || null;
+    const mem = activeMem || studentMems[0] || null;
     const fullName = `${p.first_name || ''} ${p.last_name || ''}`.trim() || 'Alumno In Motion';
     const initials = fullName
       .split(/\s+/)
@@ -542,6 +600,8 @@ export async function fetchRemoteStudents() {
       initials: initials || 'IM',
       memberships: studentMems,
       plan: planName,
+      // Plan que da clases (como student_can_attend): sin la caída a una membresía cancelada.
+      activePlan: activeMem ? activeMem.plan_name : null,
       phone: p.phone || 'Sin registrar',
       paymentStatus: planStatus,
       status: lifecycleStatus,
@@ -640,6 +700,17 @@ export async function syncRemoteEnrollments({ studentCardId, classIds = [] }) {
   return true;
 }
 
+// Mensajes que se pueden mostrar tal cual: los que escriben en español las validaciones de
+// la base (raise exception en las funciones). Lo demás (sin conexión, tiempo agotado,
+// errores internos de Postgres en inglés) se cambia por un texto general.
+const DB_VALIDATION_CODES = new Set(['P0001', 'P0002', '22000', '22023', '23503', '28000', '42501']);
+const POSTGRES_INTERNAL_MESSAGE = /^(permission denied|new row violates|must be owner|function .+ does not exist|could not find)|violates .*constraint/i;
+export const SAVE_ERROR_FALLBACK = 'No se pudo guardar. Revisa tu conexión e intenta de nuevo.';
+
+export function friendlyError(err, fallback = SAVE_ERROR_FALLBACK) {
+  return err?.userMessage || fallback;
+}
+
 /**
  * Sincronización transaccional y por lotes de la lista de asistencia de una sesión.
  * Permite listas vacías para desmarcar el ámbito consultado sin fallos parciales.
@@ -649,7 +720,7 @@ export async function syncSessionAttendances({ classId, sessionDate, presentStud
   for (const card of presentStudentCards) {
     const uuid = await getProfileUuidByCard(card);
     if (!uuid) {
-      throw new Error(`No se encontró perfil para el alumno con carné ${card}`);
+      throw userError(`No se encontró la cuenta del carné ${card}. Recarga la página e intenta de nuevo.`);
     }
     presentUuids.push(uuid);
   }
@@ -714,7 +785,7 @@ export async function deleteRemoteAttendance({ studentCardId, classId, sessionDa
  * Consulta el historial de asistencia en Supabase
  */
 export async function fetchRemoteAttendance() {
-  const rows = await db.get('attendances', 'select=student_id,recorded_at,class_sessions(class_id,session_date)');
+  const rows = await db.getAll('attendances', `select=id,student_id,recorded_at,class_sessions!inner(class_id,session_date)&class_sessions.session_date=gte.${attendanceWindowStart()}&order=id.asc`);
   if (!Array.isArray(rows)) return [];
 
   const log = [];
@@ -727,6 +798,90 @@ export async function fetchRemoteAttendance() {
     }
   }
   return log;
+}
+
+/**
+ * Lista de cada clase (migración 013): inscritos y alumnos cuyo plan cubre la clase,
+ * con el estado de la mensualidad del mes. Devuelve null si la función todavía no
+ * existe en la base (antes de correr 013): la app vuelve a la lista por inscripción.
+ */
+export async function fetchClassRosters() {
+  let rows;
+  try {
+    rows = await db.rpcAll('class_roster', {});
+  } catch (err) {
+    console.warn('[In Motion] Lista de clases por plan no disponible (¿falta la migración 013?):', err.message);
+    return null;
+  }
+  if (!Array.isArray(rows)) return null;
+  return rows.map((r) => {
+    cardToProfileUuid.set(r.card_number, r.student_id);
+    profileUuidToCard.set(r.student_id, r.card_number);
+    return {
+      classId: r.class_id,
+      studentId: r.card_number,
+      profileId: r.student_id,
+      firstName: r.first_name || '',
+      lastName: r.last_name || '',
+      plan: r.plan_name || null,
+      enrolled: Boolean(r.enrolled),
+      paymentStatus: r.payment_status || 'sin_cobro'
+    };
+  });
+}
+
+/**
+ * Sesiones con lista guardada (aunque nadie haya llegado): clase y fecha.
+ */
+export async function fetchRemoteSessions() {
+  try {
+    const rows = await db.getAll('class_sessions', `select=id,class_id,session_date&session_date=gte.${attendanceWindowStart()}&order=id.asc`);
+    return Array.isArray(rows) ? rows.map((r) => `${r.class_id}|${r.session_date}`) : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Canciones pedidas (Rockola, migración 013). El maestro y administración las leen con
+ * class_song_requests; el alumno lee las suyas directo de la tabla. null = sin tabla.
+ */
+export async function fetchSongRequests(role) {
+  try {
+    if (role === 'teacher' || role === 'admin') {
+      const rows = await db.rpc('class_song_requests', {});
+      return (rows || []).map((r) => ({
+        id: r.id, classId: r.class_id, studentId: r.card_number, studentName: r.student_name || 'Alumno',
+        song: r.song || '', artist: r.artist || '', moodId: r.mood_id, status: r.status, liked: Boolean(r.liked), createdAt: r.created_at
+      }));
+    }
+    const rows = await db.get('song_requests', 'select=*&order=created_at.desc');
+    return (rows || []).map((r) => ({
+      id: r.id, classId: r.class_id, studentId: profileUuidToCard.get(r.student_id) || null, song: r.song || '', artist: r.artist || '',
+      moodId: r.mood_id, status: r.status, liked: Boolean(r.liked), createdAt: r.created_at
+    }));
+  } catch (err) {
+    console.warn('[In Motion] Rockola no disponible (¿falta la migración 013?):', err.message);
+    return null;
+  }
+}
+
+export async function createSongRequest({ studentCardId, classId, song, artist, moodId }) {
+  const studentUuid = await getProfileUuidByCard(studentCardId);
+  if (!studentUuid) throw new Error('No se encontró tu ficha de alumno.');
+  try {
+    return await db.insert('song_requests', { student_id: studentUuid, class_id: classId, song, artist, mood_id: moodId });
+  } catch (err) {
+    if (err.userMessage) throw err;
+    if (/5 canciones/.test(err.message)) throw new Error('Ya tienes 5 canciones esperando. Espera a que tu maestro las revise.');
+    if (/row-level security/i.test(err.message)) throw new Error('Esa clase no está en tu plan.');
+    if (/check constraint|violates/i.test(err.message)) throw new Error('Revisa la canción y el artista: máximo 120 letras cada uno.');
+    throw new Error('No se pudo enviar. Revisa tu conexión e intenta de nuevo.');
+  }
+}
+
+export async function reviewSongRequest(id, status, liked) {
+  return db.rpc('review_song_request', { p_id: id, p_status: status, p_liked: liked });
 }
 
 /**
