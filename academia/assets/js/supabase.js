@@ -872,6 +872,7 @@ export async function createSongRequest({ studentCardId, classId, song, artist, 
   try {
     return await db.insert('song_requests', { student_id: studentUuid, class_id: classId, song, artist, mood_id: moodId });
   } catch (err) {
+    if (err.userMessage) throw err;
     if (/5 canciones/.test(err.message)) throw new Error('Ya tienes 5 canciones esperando. Espera a que tu maestro las revise.');
     if (/row-level security/i.test(err.message)) throw new Error('Esa clase no está en tu plan.');
     if (/check constraint|violates/i.test(err.message)) throw new Error('Revisa la canción y el artista: máximo 120 letras cada uno.');

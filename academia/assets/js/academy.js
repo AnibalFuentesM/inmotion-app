@@ -2343,7 +2343,7 @@ function songClassesForStudent(studentId) {
   // Misma regla que student_can_attend: carné activo, y el plan de la última membresía no
   // cancelada (activePlan); quien solo tiene membresías canceladas no tiene clases por plan.
   const student = studentById(studentId);
-  if (!student || student.lifecycleStatus === 'suspended') return [];
+  if (!student || ['suspended', 'archived'].includes(student.lifecycleStatus)) return [];
   const own = classesForStudent(studentId);
   const planName = 'activePlan' in student ? student.activePlan : student.plan;
   const rule = PLAN_CLASS_RULES[(planName && planByName(planName))?.id];
@@ -2352,6 +2352,17 @@ function songClassesForStudent(studentId) {
   return scheduledClasses()
     .filter((item) => ids.has(item.id) && (!isSupabaseConnected || item.teacherId))
     .sort((a, b) => (((a.weekday + 6) % 7) - ((b.weekday + 6) % 7)) || (timeValue(a.time) - timeValue(b.time)));
+}
+
+// Por qué la Rockola no ofrece clases, en palabras del alumno.
+function songEmptyReason(student) {
+  if (!student || ['suspended', 'archived'].includes(student.lifecycleStatus)) return 'Tu carné no está activo. Pregunta en recepción.';
+  const planName = 'activePlan' in student ? student.activePlan : student.plan;
+  if (!classesForStudent(student.id).length) {
+    if (!planName) return 'Cuando la academia registre tu plan, aquí salen tus clases.';
+    if (!PLAN_CLASS_RULES[planByName(planName)?.id]) return 'Tu plan todavía no tiene clases en la app. Pregunta en recepción.';
+  }
+  return 'Tus clases todavía no tienen maestro en la app. Cuando lo tengan, aquí podrás pedirle canciones.';
 }
 
 // El botón «Canción» solo sale en las clases para las que el alumno puede pedir.
@@ -2395,9 +2406,7 @@ function studentMusicSection() {
 
       <div class="music-class-picker">
         <p class="music-picker-label">1. Elige tu clase para sugerir:</p>
-        ${enrolledClasses.length ? '' : `<div class="empty-state"><strong>Todavía no tienes clases para pedir</strong>${escapeHtml(student?.lifecycleStatus === 'suspended'
-          ? 'Tu carné no está activo. Pregunta en recepción.'
-          : 'Cuando la academia registre tu plan, aquí salen tus clases.')}</div>`}
+        ${enrolledClasses.length ? '' : `<div class="empty-state"><strong>Todavía no tienes clases para pedir</strong>${escapeHtml(songEmptyReason(student))}</div>`}
         <div class="music-picker-grid">
           ${enrolledClasses.map((c) => `
             <button type="button" class="music-class-btn" data-open-music-modal="${escapeHtml(c.id)}">
@@ -3613,7 +3622,7 @@ function teacherCards(limit = 4) {
     <article class="teacher-class">
       <div class="teacher-class-time">${escapeHtml(item.time).replace(' ', '<br/>')}</div>
       <div><span class="tag ${today ? 'tag--red' : ''}">${escapeHtml(today ? 'Hoy' : `${WEEKDAY_SHORT[item.startsAt.getDay()]} ${shortDate(item.startsAt)}`)}</span><h3>${escapeHtml(item.name)}</h3><p>${escapeHtml(item.room)} · ${count} alumno${count === 1 ? '' : 's'} en lista</p></div>
-      <button class="button button--small ${today ? 'button--red' : 'button--light'}" type="button" data-take-attendance="${escapeHtml(item.id)}" aria-label="${today ? 'Pasar lista' : 'Ver lista'} de ${escapeHtml(item.name)}">${today ? 'Pasar lista' : 'Ver lista'}</button>
+      <button class="button button--small ${today ? 'button--red' : 'button--light'}" type="button" data-take-attendance="${escapeHtml(item.id)}" aria-label="${today ? 'Pasar lista' : 'Ver alumnos'} de ${escapeHtml(item.name)}">${today ? 'Pasar lista' : 'Ver alumnos'}</button>
     </article>
   `;
   }).join('')}</div>`;
