@@ -941,3 +941,8 @@ body.dance-fs-locked {
   padding: 4px 10px;
   font-size: 12px;
 }
+
+.dance-step-chip[hidden],
+.dance-steps-head [hidden] {
+  display: none !important;
+}

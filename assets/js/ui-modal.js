@@ -67,7 +67,7 @@ function buildTagGroup(tags) {
  * @param {(player: any) => void} [onPlayerCreated]
  * @returns {HTMLElement}
  */
-function buildPlayer(videoUrl, record, onPlayerCreated) {
+function buildPlayer(videoUrl, record, onPlayerCreated, stepQuery = '') {
   const playerWrap = document.createElement('div');
   playerWrap.className = 'relative mb-5 overflow-hidden rounded-xl border border-white/10 bg-black';
 
@@ -88,6 +88,7 @@ function buildPlayer(videoUrl, record, onPlayerCreated) {
       style: record?.style || '',
       level: record?.level || '',
       steps: getStepsForVideoUrl(videoUrl),
+      stepQuery,
       onOrientationDetected: (isVertical) => {
         const modalPanel = playerWrap.closest('.modal-panel');
         if (modalPanel) {
@@ -154,7 +155,7 @@ const FOCUSABLE_SELECTOR =
  * @param {HTMLElement} modalElement
  * @param {{ onSaveToggle?: (record: import('./video-model.js').VideoRecord, isSaved: boolean) => void }} [options={}]
  */
-export function createVideoModal(modalElement, { onSaveToggle } = {}) {
+export function createVideoModal(modalElement, { onSaveToggle, getSearchText } = {}) {
   const modalBody = modalElement.querySelector('#modalBody');
   const modalTitle = modalElement.querySelector('#modalTitle');
   const modalPosition = modalElement.querySelector('#modalPosition');
@@ -272,9 +273,14 @@ export function createVideoModal(modalElement, { onSaveToggle } = {}) {
     modalBody.innerHTML = '';
     modalBody.scrollTop = 0;
     modalBody.appendChild(
-      buildPlayer(record.video_url, record, (player) => {
-        activeDancePlayer = player;
-      })
+      buildPlayer(
+        record.video_url,
+        record,
+        (player) => {
+          activeDancePlayer = player;
+        },
+        typeof getSearchText === 'function' ? getSearchText() || '' : ''
+      )
     );
 
     // Metadata pills

@@ -167,6 +167,7 @@ const state = {
 let currentEmptyAction = null;
 
 const modal = createVideoModal(elements.videoModal, {
+  getSearchText: () => state.filters.searchText,
   onSaveToggle: () => {
     updateBadgesAndTabState();
     if (state.filters.view === 'saved') {

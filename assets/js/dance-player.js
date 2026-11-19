@@ -48,6 +48,7 @@ export function escapeHtml(str) {
  * @property {string} [title]
  * @property {string[]} [tags]
  * @property {Array<{ t: number, name: string }>} [steps] Pasos del video con su segundo de inicio
+ * @property {string} [stepQuery] Texto buscado: si coincide con pasos, solo se muestran esos y el video empieza en el primero
  * @property {string} [style]
  * @property {string} [level]
  * @property {boolean} [initialMirror]
@@ -76,6 +77,10 @@ export function createDancePlayer(container, options = {}) {
   let tags = Array.isArray(options.tags) ? [...options.tags] : [];
   let steps = normalizeSteps(options.steps);
   let currentStepIndex = -1;
+  let stepQuery = String(options.stepQuery || '').trim();
+  let matchedSteps = findMatchingSteps(steps, stepQuery);
+  let showAllSteps = matchedSteps.length === 0;
+  let pendingStepSeek = matchedSteps.length ? steps[matchedSteps[0]].t : null;
 
   // Construir HTML del reproductor optimizado para celular y pantalla completa
   container.innerHTML = `
@@ -234,8 +239,9 @@ export function createDancePlayer(container, options = {}) {
             <div class="dance-steps-head">
               <div class="dance-loop-title">
                 <span class="material-symbols-outlined" style="font-size: 15px; color: #ed2630;">format_list_numbered</span>
-                <span>Pasos del video</span>
+                <span data-element="stepsTitle">Pasos del video</span>
               </div>
+              <button type="button" class="dance-btn" data-element="stepsToggleBtn" hidden></button>
               <button type="button" class="dance-btn dance-btn--loop" data-element="repeatStepBtn" title="Repetir en bucle el paso que estás viendo">
                 <span class="material-symbols-outlined" style="font-size: 16px;">repeat_one</span>
                 <span>Repetir este paso</span>
@@ -305,6 +311,8 @@ export function createDancePlayer(container, options = {}) {
   const stepsPanel = container.querySelector('[data-element="stepsPanel"]');
   const stepsList = container.querySelector('[data-element="stepsList"]');
   const repeatStepBtn = container.querySelector('[data-element="repeatStepBtn"]');
+  const stepsTitle = container.querySelector('[data-element="stepsTitle"]');
+  const stepsToggleBtn = container.querySelector('[data-element="stepsToggleBtn"]');
 
   // Inicializar audio y velocidad
   try {
@@ -334,6 +342,45 @@ export function createDancePlayer(container, options = {}) {
       .filter((step) => step && step.name && Number.isFinite(Number(step.t)))
       .map((step) => ({ t: Math.max(0, Number(step.t)), name: String(step.name) }))
       .sort((a, b) => a.t - b.t);
+  }
+
+  function normalizeStepText(text) {
+    return String(text || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  /** Índices de los pasos cuyo nombre contiene el texto buscado. */
+  function findMatchingSteps(list, query) {
+    const q = normalizeStepText(query);
+    if (!q) return [];
+    return list.reduce((acc, step, i) => {
+      if (normalizeStepText(step.name).includes(q)) acc.push(i);
+      return acc;
+    }, []);
+  }
+
+  /** Con una búsqueda que coincide, muestra solo esos pasos y un botón para ver todos. */
+  function applyStepFilter() {
+    if (!stepsList) return;
+    const filtering = matchedSteps.length > 0 && !showAllSteps;
+    stepsList.querySelectorAll('.dance-step-chip').forEach((chip, i) => {
+      chip.hidden = filtering && !matchedSteps.includes(i);
+    });
+    if (stepsTitle) {
+      stepsTitle.textContent = filtering
+        ? matchedSteps.length === 1
+          ? 'Paso que buscaste'
+          : 'Pasos que buscaste'
+        : 'Pasos del video';
+    }
+    if (stepsToggleBtn) {
+      stepsToggleBtn.hidden = matchedSteps.length === 0;
+      stepsToggleBtn.textContent = showAllSteps ? 'Solo lo que buscaste' : `Ver los ${steps.length} pasos`;
+    }
   }
 
   function renderStepsHtml(stepsList) {
@@ -780,6 +827,22 @@ export function createDancePlayer(container, options = {}) {
   });
 
   // Pasos del video
+  applyStepFilter();
+  // Si llegaste buscando un paso, el video empieza en ese paso.
+  function seekToSearchedStep() {
+    if (pendingStepSeek === null) return;
+    video.currentTime = pendingStepSeek;
+    pendingStepSeek = null;
+    updateActiveStep();
+  }
+  video.addEventListener('loadedmetadata', seekToSearchedStep);
+  if (video.readyState >= 1) seekToSearchedStep();
+  if (stepsToggleBtn) {
+    stepsToggleBtn.addEventListener('click', () => {
+      showAllSteps = !showAllSteps;
+      applyStepFilter();
+    });
+  }
   if (stepsList) {
     stepsList.addEventListener('click', (e) => {
       const chip = e.target.closest('.dance-step-chip');
@@ -933,6 +996,11 @@ export function createDancePlayer(container, options = {}) {
         currentStepIndex = -1;
         if (stepsList) stepsList.innerHTML = renderStepsHtml(steps);
         if (stepsPanel) stepsPanel.hidden = !steps.length;
+        stepQuery = String(meta.stepQuery || '').trim();
+        matchedSteps = findMatchingSteps(steps, stepQuery);
+        showAllSteps = matchedSteps.length === 0;
+        pendingStepSeek = matchedSteps.length ? steps[matchedSteps[0]].t : null;
+        applyStepFilter();
       }
       if (meta.initialLoopA !== undefined) pointA = meta.initialLoopA;
       if (meta.initialLoopB !== undefined) pointB = meta.initialLoopB;
