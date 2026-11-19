@@ -2219,7 +2219,8 @@ function showPromoIfDue() {
     layer.classList.add('is-hidden');
     layer.setAttribute('aria-hidden', 'true');
     document.removeEventListener('keydown', onKey, true);
-    if (previousFocus && document.contains(previousFocus)) previousFocus.focus({ preventScroll: true });
+    const target = previousFocus && previousFocus !== document.body && document.contains(previousFocus) ? previousFocus : elements.content;
+    target?.focus({ preventScroll: true });
   };
   const onKey = (event) => {
     if (event.key === 'Escape') { event.stopPropagation(); close(); }
