@@ -2185,6 +2185,58 @@ function enterDemo(role, route = 'inicio') {
   elements.app.classList.remove('is-hidden');
   history.replaceState(null, '', `#/${route}`);
   renderAndFocus();
+  showPromoIfDue();
+}
+
+// Anuncio emergente al entrar a la app: sale una vez al día por dispositivo y deja de
+// salir solo después de `until`. Para un anuncio nuevo, cambia id, imagen, texto alternativo
+// (en index.html) y fecha; con `PROMO = null` no sale nada.
+const PROMO = {
+  id: 'talleres-nov-dic-2026',
+  image: './assets/anuncios/talleres-nov-dic-2026.webp',
+  until: new Date('2026-12-08T22:00:00-06:00'), // fin del último taller (Merengue), hora de Guatemala
+  reserveUrl: 'https://wa.me/50252107432?text=' + encodeURIComponent('Hola, quiero reservar mi cupo para los talleres de baile de noviembre y diciembre.')
+};
+let promoCheckedThisLoad = false;
+
+function showPromoIfDue() {
+  if (promoCheckedThisLoad || !PROMO || studentPreviewId) return;
+  promoCheckedThisLoad = true;
+  if (new Date() > PROMO.until) return;
+  const seenKey = `inmotion_promo_seen_${PROMO.id}`;
+  const today = dayKey(new Date());
+  try {
+    if (localStorage.getItem(seenKey) === today) return;
+    localStorage.setItem(seenKey, today);
+  } catch {}
+  const layer = document.querySelector('#promoLayer');
+  if (!layer) return;
+  layer.querySelector('#promoImage').src = PROMO.image;
+  const reserve = layer.querySelector('#promoReserve');
+  reserve.href = PROMO.reserveUrl;
+  const previousFocus = document.activeElement;
+  const close = () => {
+    layer.classList.add('is-hidden');
+    layer.setAttribute('aria-hidden', 'true');
+    document.removeEventListener('keydown', onKey, true);
+    if (previousFocus && document.contains(previousFocus)) previousFocus.focus({ preventScroll: true });
+  };
+  const onKey = (event) => {
+    if (event.key === 'Escape') { event.stopPropagation(); close(); }
+    if (event.key === 'Tab') {
+      const items = [...layer.querySelectorAll('a[href], button:not([tabindex="-1"])')];
+      const index = items.indexOf(document.activeElement);
+      const next = event.shiftKey ? (index <= 0 ? items.length - 1 : index - 1) : (index + 1) % items.length;
+      event.preventDefault();
+      items[next].focus();
+    }
+  };
+  layer.querySelectorAll('[data-close-promo]').forEach((button) => { button.onclick = close; });
+  reserve.onclick = close;
+  document.addEventListener('keydown', onKey, true);
+  layer.classList.remove('is-hidden');
+  layer.setAttribute('aria-hidden', 'false');
+  layer.querySelector('.promo-close').focus({ preventScroll: true });
 }
 
 function leaveDemo() {

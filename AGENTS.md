@@ -121,7 +121,11 @@ Se trabaja **siempre sobre esta misma app**: `academia/`, dentro de
    (`db.getAll`, `db.rpcAll`): Supabase corta cada respuesta en 1000 sin avisar. Su inicio muestra
    la próxima clase, las listas que faltan, los pagos pendientes de sus alumnos, las canciones
    pedidas y el acceso a subir videos (`../index.html#subir-video` abre el panel del catálogo).
-13. **Nunca commitear** `.env*.local` ni `.vercel/` (ya están en `.gitignore`).
+13. **Anuncio emergente.** Al entrar a la app sale el anuncio de `PROMO` en `academy.js`
+   (imagen en `academia/assets/anuncios/`, texto alternativo en `#promoLayer` de `index.html`):
+   una vez al día por dispositivo, nunca en «Ver como alumno», y deja de salir solo después de
+   `PROMO.until`. Para otro anuncio se cambian id, imagen, texto alternativo y fecha.
+14. **Nunca commitear** `.env*.local` ni `.vercel/` (ya están en `.gitignore`).
 
 ## Convenciones
 

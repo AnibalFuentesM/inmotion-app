@@ -4294,3 +4294,69 @@ button.student-check > span:last-child { color: var(--red); font-size: .74rem; f
 .attendance-history { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 8px; }
 .attendance-history li { display: flex; justify-content: space-between; gap: 12px; align-items: center; }
 .attendance-history li > span:last-child { color: var(--muted); font-size: .85rem; }
+
+/* Anuncio emergente al entrar (showPromoIfDue en academy.js). */
+.promo-layer {
+  position: fixed;
+  z-index: 90;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+}
+.promo-layer.is-hidden { display: none; }
+.promo-backdrop {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  background: rgba(11,11,12,.8);
+  backdrop-filter: blur(6px);
+}
+.promo {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  max-width: min(100%, 440px);
+  animation: modal-in .25s ease both;
+}
+.promo-image {
+  display: block;
+  width: auto;
+  max-width: 100%;
+  height: auto;
+  max-height: calc(100vh - 110px);
+  max-height: calc(100dvh - 110px);
+  border-radius: 16px;
+  box-shadow: 0 30px 90px rgba(0,0,0,.5);
+}
+.promo-close {
+  position: absolute;
+  top: -10px;
+  right: -10px;
+  width: 44px;
+  height: 44px;
+  border: 0;
+  border-radius: 50%;
+  background: #fff;
+  color: #0b0b0c;
+  font-size: 28px;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: 0 6px 20px rgba(0,0,0,.4);
+}
+.promo-close:focus-visible { outline: 3px solid var(--brand-red); outline-offset: 2px; }
+.promo-actions {
+  display: flex;
+  gap: 10px;
+  width: 100%;
+  justify-content: center;
+}
+.promo-actions .button { flex: 1 1 0; max-width: 210px; justify-content: center; text-align: center; }
+@media (max-width: 420px) {
+  .promo-close { top: 6px; right: 6px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .promo { animation: none; }
+}
