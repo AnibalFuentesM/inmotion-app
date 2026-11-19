@@ -8914,6 +8914,7 @@ if (DEMO_MODE && state.role) {
     elements.access.classList.add('is-hidden');
     elements.app.classList.remove('is-hidden');
     renderApp();
+    showPromoIfDue();
   }, 2450);
 }
 
