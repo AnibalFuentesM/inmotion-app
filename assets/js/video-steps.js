@@ -1,0 +1,342 @@
+/**
+ * Pasos que aparecen en cada video del catálogo, con el segundo en que empieza cada uno.
+ * Sacados de los letreros que trae cada video (ver docs/pasos-por-video.json).
+ * La llave es el nombre del archivo .mp4, en minúsculas.
+ */
+export const VIDEO_STEPS = {
+  "salsa_enchufe.mp4": [
+    {
+      "t": 0,
+      "name": "Básico"
+    },
+    {
+      "t": 4.8,
+      "name": "Al lado"
+    },
+    {
+      "t": 9.6,
+      "name": "Enchufe"
+    },
+    {
+      "t": 14.6,
+      "name": "Al frente"
+    },
+    {
+      "t": 20.6,
+      "name": "Giro derecha"
+    },
+    {
+      "t": 28.6,
+      "name": "Giro izquierda"
+    },
+    {
+      "t": 38.6,
+      "name": "Suzy Q"
+    },
+    {
+      "t": 46.2,
+      "name": "Mambo"
+    },
+    {
+      "t": 53.6,
+      "name": "Cross"
+    },
+    {
+      "t": 61.4,
+      "name": "Meneaíto"
+    }
+  ],
+  "salsa_parejas_principiantes_1.mp4": [
+    {
+      "t": 0,
+      "name": "Enchufles"
+    },
+    {
+      "t": 14.2,
+      "name": "Vuelta al mundo"
+    },
+    {
+      "t": 27.0,
+      "name": "Vacílala"
+    },
+    {
+      "t": 34.6,
+      "name": "Cross con giro"
+    },
+    {
+      "t": 39.6,
+      "name": "Espiral"
+    },
+    {
+      "t": 47.2,
+      "name": "Colombiano"
+    },
+    {
+      "t": 57.8,
+      "name": "Adiós"
+    },
+    {
+      "t": 66.6,
+      "name": "Candado"
+    },
+    {
+      "t": 79.6,
+      "name": "Back to back"
+    },
+    {
+      "t": 86.6,
+      "name": "El saludo"
+    },
+    {
+      "t": 95.6,
+      "name": "Dile que sí"
+    }
+  ],
+  "salsa_parejas_principiantes_2.mp4": [
+    {
+      "t": 0,
+      "name": "Puente"
+    },
+    {
+      "t": 7.2,
+      "name": "Enrollado"
+    },
+    {
+      "t": 15.2,
+      "name": "Setenta"
+    },
+    {
+      "t": 24.6,
+      "name": "Prep y alardes"
+    },
+    {
+      "t": 39.8,
+      "name": "Danilo"
+    },
+    {
+      "t": 48.0,
+      "name": "Sombrero"
+    },
+    {
+      "t": 59.4,
+      "name": "Copas"
+    },
+    {
+      "t": 69.4,
+      "name": "Frisbee"
+    },
+    {
+      "t": 76.0,
+      "name": "Shines"
+    }
+  ],
+  "salsa_shine_lvl3.mp4": [
+    {
+      "t": 0,
+      "name": "Escalera"
+    },
+    {
+      "t": 10.0,
+      "name": "Suzy Q Plus"
+    },
+    {
+      "t": 22.2,
+      "name": "Paso doble"
+    },
+    {
+      "t": 34.0,
+      "name": "Espiral doble"
+    },
+    {
+      "t": 43.0,
+      "name": "Vaivén"
+    }
+  ],
+  "salsa_shine_principiantes_1.mp4": [
+    {
+      "t": 0,
+      "name": "Parabrisas"
+    },
+    {
+      "t": 15.0,
+      "name": "Picaditos"
+    },
+    {
+      "t": 25.4,
+      "name": "Media cajita"
+    },
+    {
+      "t": 40.6,
+      "name": "Espiral"
+    },
+    {
+      "t": 49.2,
+      "name": "Cruzadito"
+    },
+    {
+      "t": 57.6,
+      "name": "Medio giro"
+    },
+    {
+      "t": 66.0,
+      "name": "Con stop"
+    }
+  ],
+  "salsa_shine_principiantes_2.mp4": [
+    {
+      "t": 0,
+      "name": "Cruza en 3"
+    },
+    {
+      "t": 12.4,
+      "name": "Gancho"
+    },
+    {
+      "t": 20.0,
+      "name": "Tropiezo"
+    },
+    {
+      "t": 26.2,
+      "name": "Step out"
+    },
+    {
+      "t": 35.4,
+      "name": "Jala jala"
+    },
+    {
+      "t": 44.6,
+      "name": "Shimmy"
+    },
+    {
+      "t": 54.4,
+      "name": "Afro"
+    }
+  ],
+  "salsa_shine_lvl4.mp4": [
+    {
+      "t": 0,
+      "name": "Estrella"
+    },
+    {
+      "t": 8.6,
+      "name": "Core beat"
+    },
+    {
+      "t": 20.8,
+      "name": "Punta talón"
+    },
+    {
+      "t": 32.4,
+      "name": "Estilo casino"
+    },
+    {
+      "t": 41.4,
+      "name": "Palladium"
+    }
+  ],
+  "salsa_parejas_lvl0.mp4": [
+    {
+      "t": 0,
+      "name": "Básico"
+    },
+    {
+      "t": 4.6,
+      "name": "Básico abierto"
+    },
+    {
+      "t": 9.6,
+      "name": "Al lado"
+    },
+    {
+      "t": 14.8,
+      "name": "Cross"
+    },
+    {
+      "t": 21.8,
+      "name": "Para arriba"
+    },
+    {
+      "t": 29.2,
+      "name": "Giros de la mujer"
+    },
+    {
+      "t": 37.2,
+      "name": "Giros del hombre"
+    }
+  ],
+  "salsa_parejas_lvl3.mp4": [
+    {
+      "t": 0,
+      "name": "Kentucky"
+    },
+    {
+      "t": 10.8,
+      "name": "Abrazo"
+    },
+    {
+      "t": 24.0,
+      "name": "Sombrero por abajo"
+    },
+    {
+      "t": 34.4,
+      "name": "Látigo"
+    },
+    {
+      "t": 44.8,
+      "name": "Back door"
+    },
+    {
+      "t": 54.6,
+      "name": "Rodeo"
+    },
+    {
+      "t": 63.4,
+      "name": "Titanic"
+    }
+  ],
+  "salsa_parejas_lvl4.mp4": [
+    {
+      "t": 0,
+      "name": "Montaña"
+    },
+    {
+      "t": 16.4,
+      "name": "Paséala"
+    },
+    {
+      "t": 29.4,
+      "name": "Check"
+    },
+    {
+      "t": 38.8,
+      "name": "360"
+    },
+    {
+      "t": 46.0,
+      "name": "Kiwis"
+    },
+    {
+      "t": 58.6,
+      "name": "Vacílense los dos"
+    },
+    {
+      "t": 73.8,
+      "name": "Acuéstala"
+    }
+  ]
+};
+
+/**
+ * @param {string} url
+ * @returns {Array<{ t: number, name: string }>}
+ */
+export function getStepsForVideoUrl(url) {
+  if (!url) return [];
+  let file = String(url).split('?')[0].split('#')[0].split('/').pop() || '';
+  try {
+    file = decodeURIComponent(file);
+  } catch {
+    // nombre con caracteres raros: se usa tal cual
+  }
+  return VIDEO_STEPS[file.toLowerCase()] || [];
+}

@@ -1,3 +1,5 @@
+import { getStepsForVideoUrl } from './video-steps.js';
+
 /**
  * @typedef {Object} FilterState
  * @property {string} searchText
@@ -37,7 +39,13 @@ export function normalizeSearchText(text) {
  */
 function searchBlob(record) {
   return normalizeSearchText(
-    [record.step_name, record.style, record.level, (record.tags || []).join(' ')].join(' ')
+    [
+      record.step_name,
+      record.style,
+      record.level,
+      (record.tags || []).join(' '),
+      getStepsForVideoUrl(record.video_url).map((step) => step.name).join(' ')
+    ].join(' ')
   );
 }
 

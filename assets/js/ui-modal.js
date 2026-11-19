@@ -1,6 +1,7 @@
 import { formatDisplayDate, getDriveFileId } from './video-model.js';
 import { isVideoSaved, toggleSavedVideo, addRecentVideo } from './storage.js';
 import { createDancePlayer } from './dance-player.js';
+import { getStepsForVideoUrl } from './video-steps.js';
 
 /**
  * @param {string} url
@@ -86,6 +87,7 @@ function buildPlayer(videoUrl, record, onPlayerCreated) {
       tags: record?.tags || [],
       style: record?.style || '',
       level: record?.level || '',
+      steps: getStepsForVideoUrl(videoUrl),
       onOrientationDetected: (isVertical) => {
         const modalPanel = playerWrap.closest('.modal-panel');
         if (modalPanel) {

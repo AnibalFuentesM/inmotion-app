@@ -47,6 +47,7 @@ export function escapeHtml(str) {
  * @property {string} videoUrl
  * @property {string} [title]
  * @property {string[]} [tags]
+ * @property {Array<{ t: number, name: string }>} [steps] Pasos del video con su segundo de inicio
  * @property {string} [style]
  * @property {string} [level]
  * @property {boolean} [initialMirror]
@@ -73,6 +74,8 @@ export function createDancePlayer(container, options = {}) {
   let isLoopActive = Boolean(options.initialLoopActive || (pointA !== null && pointB !== null));
   let isScrubbing = false;
   let tags = Array.isArray(options.tags) ? [...options.tags] : [];
+  let steps = normalizeSteps(options.steps);
+  let currentStepIndex = -1;
 
   // Construir HTML del reproductor optimizado para celular y pantalla completa
   container.innerHTML = `
@@ -226,6 +229,23 @@ export function createDancePlayer(container, options = {}) {
             </div>
           </div>
 
+          <!-- Fila 2b: Pasos del video (toca uno para ir a ese momento) -->
+          <div class="dance-steps-panel" data-element="stepsPanel" ${steps.length ? '' : 'hidden'}>
+            <div class="dance-steps-head">
+              <div class="dance-loop-title">
+                <span class="material-symbols-outlined" style="font-size: 15px; color: #ed2630;">format_list_numbered</span>
+                <span>Pasos del video</span>
+              </div>
+              <button type="button" class="dance-btn dance-btn--loop" data-element="repeatStepBtn" title="Repetir en bucle el paso que estás viendo">
+                <span class="material-symbols-outlined" style="font-size: 16px;">repeat_one</span>
+                <span>Repetir este paso</span>
+              </button>
+            </div>
+            <div class="dance-steps-list" data-element="stepsList" role="list">
+              ${renderStepsHtml(steps)}
+            </div>
+          </div>
+
           <!-- Fila 3: Etiquetas del Paso (Ocultas en pantalla completa) -->
           <div class="dance-tags-row" data-element="tagsRow">
             ${renderTagsHtml(tags)}
@@ -282,6 +302,9 @@ export function createDancePlayer(container, options = {}) {
   const loopTimesDisplay = container.querySelector('[data-element="loopTimesDisplay"]');
   const tagsRow = container.querySelector('[data-element="tagsRow"]');
   const speedButtons = container.querySelectorAll('.dance-speed-btn');
+  const stepsPanel = container.querySelector('[data-element="stepsPanel"]');
+  const stepsList = container.querySelector('[data-element="stepsList"]');
+  const repeatStepBtn = container.querySelector('[data-element="repeatStepBtn"]');
 
   // Inicializar audio y velocidad
   try {
@@ -303,6 +326,82 @@ export function createDancePlayer(container, options = {}) {
           )}</span>`
       )
       .join('');
+  }
+
+  function normalizeSteps(list) {
+    if (!Array.isArray(list)) return [];
+    return list
+      .filter((step) => step && step.name && Number.isFinite(Number(step.t)))
+      .map((step) => ({ t: Math.max(0, Number(step.t)), name: String(step.name) }))
+      .sort((a, b) => a.t - b.t);
+  }
+
+  function renderStepsHtml(stepsList) {
+    return stepsList
+      .map(
+        (step, i) =>
+          `<button type="button" class="dance-step-chip" role="listitem" data-step-index="${i}" title="Ir a ${escapeHtml(step.name)}">` +
+          `<span class="dance-step-time">${formatTime(step.t)}</span>` +
+          `<span class="dance-step-name">${escapeHtml(step.name)}</span>` +
+          `</button>`
+      )
+      .join('');
+  }
+
+  function getStepIndexAt(time) {
+    let index = -1;
+    for (let i = 0; i < steps.length; i++) {
+      if (time + 0.05 >= steps[i].t) index = i;
+      else break;
+    }
+    return index;
+  }
+
+  function getStepEnd(index) {
+    if (index + 1 < steps.length) return steps[index + 1].t;
+    const dur = video.duration;
+    return dur && !isNaN(dur) && dur > 0 ? dur : steps[index].t + 10;
+  }
+
+  function updateActiveStep() {
+    if (!steps.length || !stepsList) return;
+    const index = getStepIndexAt(video.currentTime || 0);
+    if (index === currentStepIndex) return;
+    currentStepIndex = index;
+    stepsList.querySelectorAll('.dance-step-chip').forEach((chip, i) => {
+      const isCurrent = i === index;
+      chip.classList.toggle('is-current', isCurrent);
+      if (isCurrent) chip.setAttribute('aria-current', 'true');
+      else chip.removeAttribute('aria-current');
+    });
+    const chip = stepsList.querySelector(`[data-step-index="${index}"]`);
+    if (chip && typeof chip.scrollIntoView === 'function' && stepsList.scrollWidth > stepsList.clientWidth) {
+      const left = chip.offsetLeft - (stepsList.clientWidth - chip.offsetWidth) / 2;
+      stepsList.scrollTo({ left: Math.max(0, left), behavior: 'smooth' });
+    }
+  }
+
+  function loopStep(index) {
+    if (index < 0 || index >= steps.length) return;
+    pointA = steps[index].t;
+    pointB = Math.max(pointA + 0.2, getStepEnd(index));
+    isLoopActive = true;
+    updateLoopState();
+    video.currentTime = pointA;
+    updateActiveStep();
+  }
+
+  function goToStep(index) {
+    if (index < 0 || index >= steps.length) return;
+    // Si ya estás repitiendo un paso, el nuevo paso también se repite.
+    if (isLoopActive) {
+      loopStep(index);
+    } else {
+      video.currentTime = steps[index].t;
+      updateActiveStep();
+    }
+    const playing = video.play();
+    if (playing && typeof playing.catch === 'function') playing.catch(() => {});
   }
 
   function flashCenterIcon(iconName) {
@@ -677,7 +776,25 @@ export function createDancePlayer(container, options = {}) {
       }
     }
     checkLoopBounds();
+    updateActiveStep();
   });
+
+  // Pasos del video
+  if (stepsList) {
+    stepsList.addEventListener('click', (e) => {
+      const chip = e.target.closest('.dance-step-chip');
+      if (!chip) return;
+      goToStep(Number(chip.dataset.stepIndex));
+    });
+  }
+  if (repeatStepBtn) {
+    repeatStepBtn.addEventListener('click', () => {
+      const index = Math.max(0, getStepIndexAt(video.currentTime || 0));
+      loopStep(index);
+      const playing = video.play();
+      if (playing && typeof playing.catch === 'function') playing.catch(() => {});
+    });
+  }
 
   // Clic en el video reproduce/pausa o despierta controles en móvil
   stage.addEventListener('click', (e) => {
@@ -810,6 +927,12 @@ export function createDancePlayer(container, options = {}) {
       if (meta.tags) {
         tags = [...meta.tags];
         tagsRow.innerHTML = renderTagsHtml(tags);
+      }
+      if (meta.steps !== undefined) {
+        steps = normalizeSteps(meta.steps);
+        currentStepIndex = -1;
+        if (stepsList) stepsList.innerHTML = renderStepsHtml(steps);
+        if (stepsPanel) stepsPanel.hidden = !steps.length;
       }
       if (meta.initialLoopA !== undefined) pointA = meta.initialLoopA;
       if (meta.initialLoopB !== undefined) pointB = meta.initialLoopB;

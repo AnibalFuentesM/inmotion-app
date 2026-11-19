@@ -837,3 +837,107 @@ body.dance-fs-locked {
   cursor: none !important;
 }
 
+/* Pasos del video: toca uno para ir a ese momento */
+.dance-steps-panel {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.dance-steps-panel[hidden] {
+  display: none !important;
+}
+
+.dance-steps-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.dance-steps-list {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x proximity;
+  padding-bottom: 4px;
+  scrollbar-width: thin;
+  -webkit-overflow-scrolling: touch;
+}
+
+.dance-step-chip {
+  flex: 0 0 auto;
+  scroll-snap-align: start;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 40px;
+  padding: 6px 12px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 9999px;
+  color: #e2e8f0;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.dance-step-chip:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.dance-step-chip:focus-visible {
+  outline: 2px solid #ed2630;
+  outline-offset: 2px;
+}
+
+.dance-step-chip.is-current {
+  background: rgba(237, 38, 48, 0.18);
+  border-color: rgba(237, 38, 48, 0.6);
+  color: #fff;
+}
+
+.dance-step-time {
+  font-size: 11px;
+  font-weight: 700;
+  color: #94a3b8;
+  font-variant-numeric: tabular-nums;
+}
+
+.dance-step-chip.is-current .dance-step-time {
+  color: #ff9da1;
+}
+
+/* En pantalla completa: solo la fila de pasos, compacta */
+.dance-player.is-fullscreen .dance-steps-panel,
+.dance-player:fullscreen .dance-steps-panel,
+.dance-player:-webkit-full-screen .dance-steps-panel {
+  background: rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  padding: 4px 8px;
+  gap: 4px;
+}
+
+.dance-player.is-fullscreen .dance-steps-head .dance-loop-title,
+.dance-player:fullscreen .dance-steps-head .dance-loop-title,
+.dance-player:-webkit-full-screen .dance-steps-head .dance-loop-title {
+  display: none !important;
+}
+
+.dance-player.is-fullscreen .dance-step-chip,
+.dance-player:fullscreen .dance-step-chip,
+.dance-player:-webkit-full-screen .dance-step-chip {
+  min-height: 32px;
+  padding: 4px 10px;
+  font-size: 12px;
+}
