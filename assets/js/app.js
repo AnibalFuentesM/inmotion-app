@@ -153,6 +153,18 @@ export const PRACTICE_PRESET_RECORDS = [
     thumbnail_url: './assets/thumbnails/thumb-salsa-shine-principiantes-2.webp',
     tags: ['salsa', 'shines', 'footwork', 'principiante', 'nivel-2', 'pasos-libres'],
     notes: 'Secuencia de pasos libres (shines) para principiantes nivel 2. Usa el Modo Espejo para coordinar la pisada y el conteo de tiempos.'
+  },
+  {
+    id: 'salsa-parejas-intermedios-1',
+    stableId: 'salsa-parejas-intermedios-1',
+    step_name: 'Salsa en Parejas · Intermedio Nivel 1',
+    style: 'Salsa',
+    level: 'Intermedio · Nivel 1',
+    date: '2026-11-24',
+    video_url: 'https://qwjlixqtbcchyiwynfmv.supabase.co/storage/v1/object/public/dance-videos/Salsa_parejas_intermedios_1.mp4',
+    thumbnail_url: './assets/thumbnails/thumb-salsa-parejas-intermedios-1.webp',
+    tags: ['salsa', 'parejas', 'intermedio', 'intermedios', 'nivel-1', 'figura', 'giro'],
+    notes: 'Combinaciones en pareja de Intermedios 1. Repite cada paso con la lista de pasos y usa el bucle A-B para pulir la vuelta.'
   }
 ];
 
