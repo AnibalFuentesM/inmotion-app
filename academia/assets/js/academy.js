@@ -52,6 +52,10 @@ let authenticatedUser = null;
 let authenticatedProfile = null;
 // Administración puede mirar la app como la ve un alumno real (solo lectura).
 let studentPreviewId = null;
+// Una cuenta de administración que también da clases (Majo) puede abrir su portal de
+// maestro sin otra cuenta: «Mi portal de maestro» en el menú. El rol en la base sigue
+// siendo admin, así que la base le permite todo lo que el maestro hace con sus clases.
+let adminTeacherView = false;
 const pendingLocalStudentEdits = new Set();
 
 const STORAGE_KEY = 'inmotion-academy-demo-v1';
@@ -507,7 +511,8 @@ const TEACHER_NAME = 'Alex Aquino';
 
 function currentTeacher() {
   if (isSupabaseConnected) {
-    if (authenticatedProfile?.role !== 'teacher') return null;
+    const role = authenticatedProfile?.role;
+    if (!(role === 'teacher' || (role === 'admin' && adminTeacherView))) return null;
     const name = `${authenticatedProfile.first_name || ''} ${authenticatedProfile.last_name || ''}`.trim() || 'Maestro';
     return {
       id: authenticatedProfile.id,
@@ -532,6 +537,14 @@ function teacherClasses() {
     );
   }
   return scheduledClasses().filter((item) => item.teacher === TEACHER_NAME);
+}
+
+// ¿La cuenta de administración tiene clases asignadas como maestra? (Completar datos →
+// Maestros y staff → «Maestro de cada clase»).
+function adminHasOwnClasses() {
+  const profile = authenticatedProfile;
+  if (!isSupabaseConnected || profile?.role !== 'admin') return false;
+  return classData.some((item) => item.teacherId && item.teacherId === profile.id);
 }
 
 function weekRange() {
@@ -2108,6 +2121,11 @@ function updateShell() {
     previewLink.hidden = !(isSupabaseConnected && (activeRole === 'admin' || studentPreviewId));
     previewLink.innerHTML = studentPreviewId ? 'Volver a administración <span>↩</span>' : 'Ver como alumno <span>◐</span>';
   }
+  const teacherViewLink = document.querySelector('#teacherViewLink');
+  if (teacherViewLink) {
+    teacherViewLink.hidden = !(adminTeacherView || (activeRole === 'admin' && !studentPreviewId && adminHasOwnClasses()));
+    teacherViewLink.innerHTML = adminTeacherView ? 'Volver a administración <span>↩</span>' : 'Mi portal de maestro <span>♪</span>';
+  }
   const userInitials = studentPreviewId
     ? (initials(currentStudent()?.name || '') || config.initials)
     : (isSupabaseConnected && authenticatedProfile)
@@ -2173,6 +2191,33 @@ function endStudentPreview(route = 'alumnos') {
   activeRole = 'admin';
   activeRoute = route;
   history.replaceState(null, '', `#/${route}`);
+  renderAndFocus();
+}
+
+async function startAdminTeacherView() {
+  if (activeRole !== 'admin' || studentPreviewId || !adminHasOwnClasses()) return;
+  adminTeacherView = true;
+  activeRole = 'teacher';
+  activeRoute = 'inicio';
+  history.replaceState(null, '', '#/inicio');
+  renderAndFocus();
+  // La Rockola de sus clases: administración no la carga al entrar.
+  const songs = await fetchSongRequests('teacher');
+  if (!adminTeacherView) return;
+  MUSIC_ENABLED = Array.isArray(songs);
+  if (songs) state.musicSuggestions = songs.map(decorateSongRequest);
+  renderApp();
+}
+
+function endAdminTeacherView() {
+  if (!adminTeacherView) return;
+  adminTeacherView = false;
+  // Administración no carga la Rockola: que no se cuele a «Ver como alumno».
+  MUSIC_ENABLED = DEMO_MODE;
+  state.musicSuggestions = [];
+  activeRole = 'admin';
+  activeRoute = 'inicio';
+  history.replaceState(null, '', '#/inicio');
   renderAndFocus();
 }
 
@@ -8848,6 +8893,11 @@ document.querySelector('#studentPreviewLink')?.addEventListener('click', () => {
   if (studentPreviewId) return endStudentPreview();
   openStudentPreviewPicker();
 });
+document.querySelector('#teacherViewLink')?.addEventListener('click', () => {
+  setMenuOpen(false);
+  if (adminTeacherView) return endAdminTeacherView();
+  startAdminTeacherView();
+});
 
 elements.roleSwitcher.addEventListener('change', (event) => {
   if (isSupabaseConnected) {
@@ -8906,6 +8956,9 @@ window.addEventListener('popstate', () => {
   const route = window.location.hash.replace('#/', '') || 'inicio';
   activeRoute = route;
   if (!elements.app.classList.contains('is-hidden')) renderApp();
+  // En «Mi portal de maestro», volver atrás a una ruta de administración muestra el inicio
+  // de maestro: que la dirección diga lo mismo que la pantalla.
+  if (adminTeacherView && activeRoute !== route) history.replaceState(null, '', `#/${activeRoute}`);
 });
 
 if (DEMO_MODE && state.role) {
@@ -8937,6 +8990,7 @@ if (recoveryReport) {
 
 async function handleSignOut() {
   studentPreviewId = null;
+  adminTeacherView = false;
   setReadOnlyPreview(false);
   hideNewPasswordStep();
   await signOut();
@@ -8983,6 +9037,7 @@ async function applyAuthenticatedSession(res) {
   authenticatedUser = res.user;
   authenticatedProfile = res.profile;
   isSupabaseConnected = true;
+  adminTeacherView = false;
   if (roleConfig[role]) activeRole = role;
   rememberRoleForCatalog(role);
   state = loadState();
