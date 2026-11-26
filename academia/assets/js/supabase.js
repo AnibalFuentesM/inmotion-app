@@ -885,6 +885,57 @@ export async function reviewSongRequest(id, status, liked) {
 }
 
 /**
+ * Autorización para la asistencia con cámara (migración 014). La última fila del alumno
+ * es su decisión vigente. Devuelve la fila, null si nunca decidió, o undefined si la
+ * base todavía no tiene la tabla (la app entonces no muestra nada de esto).
+ */
+export async function fetchMyFaceConsent() {
+  if (!authenticatedProfile?.id) return undefined;
+  try {
+    const rows = await db.get('face_consents', `select=*&student_id=eq.${authenticatedProfile.id}&order=created_at.desc&limit=1`);
+    return Array.isArray(rows) && rows.length ? rows[0] : null;
+  } catch (err) {
+    console.warn('[In Motion] Autorización de cámara no disponible (¿falta la migración 014?):', err.message);
+    return undefined;
+  }
+}
+
+export async function setMyFaceConsent({ accept, version, isMinor = false, guardianName = '', guardianRelationship = '' }) {
+  try {
+    return await db.rpc('set_my_face_consent', {
+      p_accept: Boolean(accept),
+      p_version: version,
+      p_is_minor: Boolean(isMinor),
+      p_guardian_name: guardianName || null,
+      p_guardian_relationship: guardianRelationship || null
+    });
+  } catch (err) {
+    throw new Error(friendlyError(err, 'No se pudo guardar tu respuesta. Revisa tu conexión e intenta de nuevo.'));
+  }
+}
+
+/**
+ * Administración: estado vigente de cada alumno activo. null = sin migración 014.
+ */
+export async function fetchFaceConsentStatus() {
+  try {
+    const rows = await db.rpc('face_consent_status', {});
+    return (rows || []).map((r) => ({
+      name: `${r.first_name || ''} ${r.last_name || ''}`.trim() || 'Alumno',
+      decision: r.decision || null,
+      version: r.consent_version || null,
+      isMinor: Boolean(r.is_minor),
+      guardianName: r.guardian_name || '',
+      guardianRelationship: r.guardian_relationship || '',
+      decidedAt: r.decided_at || null
+    }));
+  } catch (err) {
+    console.warn('[In Motion] Autorizaciones de cámara no disponibles (¿falta la migración 014?):', err.message);
+    return null;
+  }
+}
+
+/**
  * Registra un pago en Supabase con período e idempotencia vía RPC.
  * Valida período e importe en servidor y rechaza reutilización de clave con datos alterados.
  */

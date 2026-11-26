@@ -125,7 +125,17 @@ Se trabaja **siempre sobre esta misma app**: `academia/`, dentro de
    (imagen en `academia/assets/anuncios/`, texto alternativo en `#promoLayer` de `index.html`):
    una vez al día por dispositivo, nunca en «Ver como alumno», y deja de salir solo después de
    `PROMO.until`. Para otro anuncio se cambian id, imagen, texto alternativo y fecha.
-14. **Nunca commitear** `.env*.local` ni `.vercel/` (ya están en `.gitignore`).
+14. **Autorización de cámara (migración 014).** Antes de usar reconocimiento facial para la
+   asistencia, cada alumno acepta o no en la app (tarjeta en su Inicio y «Mis datos y
+   contraseña»; `openFaceConsentModal`). El texto vive en `FACE_CONSENT_POINTS` y su versión en
+   `FACE_CONSENT_VERSION`: si cambia lo que promete el texto, se sube la versión y se vuelve a
+   preguntar a quien había aceptado. La base guarda solo el historial de decisiones
+   (`face_consents`, escribe únicamente `set_my_face_consent`); nunca fotos ni plantillas de
+   rostro, que viven en la computadora de la academia. Menores (fecha de nacimiento, plan Teens
+   In Motion o la casilla) necesitan nombre y parentesco de quien autoriza. Administración ve el
+   estado en Asistencia (`face_consent_status`). Sin 014 nada de esto aparece. La cámara todavía
+   no marca asistencia.
+15. **Nunca commitear** `.env*.local` ni `.vercel/` (ya están en `.gitignore`).
 
 ## Convenciones
 

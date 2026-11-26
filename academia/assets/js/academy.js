@@ -35,6 +35,9 @@ import {
   fetchSongRequests,
   createSongRequest,
   reviewSongRequest,
+  fetchMyFaceConsent,
+  setMyFaceConsent,
+  fetchFaceConsentStatus,
   friendlyError
 } from './supabase.js';
 
@@ -91,6 +94,8 @@ function clearCurrentSessionState() {
   activeSessionKey = null;
   listClassId = null;
   MUSIC_ENABLED = DEMO_MODE;
+  myFaceConsent = undefined;
+  faceConsentStatus = null;
 }
 let TODAY = new Date();
 const WEEKDAY_SHORT = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
@@ -1950,6 +1955,12 @@ const PASSES_ENABLED = DEMO_MODE;
 // La Rockola: en la demo con canciones ficticias; con datos reales se enciende cuando
 // la base tiene la tabla song_requests (migración 013, ver loadRemoteData).
 let MUSIC_ENABLED = DEMO_MODE;
+// Autorización para la asistencia con cámara (migración 014). Solo con datos reales:
+// myFaceConsent es la última decisión del alumno (null = nunca decidió; undefined = la
+// base aún no tiene la tabla y no se muestra nada). La cámara todavía no marca
+// asistencia: por ahora solo se recogen las autorizaciones.
+let myFaceConsent = undefined;
+let faceConsentStatus = null;
 
 // Lo que todavía no funciona va en una sola línea al pie del inicio del alumno,
 // en vez de tres tarjetas o botones desactivados repartidos por la pantalla.
@@ -2388,6 +2399,12 @@ function nextMusicSuggestionId() {
   return `sug-${nextNum}`;
 }
 
+// Plan vigente: el de la última membresía no cancelada (activePlan) cuando la base lo
+// trae; en la demo, el plan guardado.
+function currentPlanName(student) {
+  return ('activePlan' in student ? student.activePlan : student.plan) || null;
+}
+
 // Clases para las que el alumno puede pedir canción, con la regla de student_can_attend
 // en la base: las que eligió, más las de su plan si el plan no tiene límite de clases o si
 // todavía no eligió ninguna. Con datos reales solo las que tienen maestro (si no, nadie
@@ -2398,7 +2415,7 @@ function songClassesForStudent(studentId) {
   const student = studentById(studentId);
   if (!student || ['suspended', 'archived'].includes(student.lifecycleStatus)) return [];
   const own = classesForStudent(studentId);
-  const planName = 'activePlan' in student ? student.activePlan : student.plan;
+  const planName = currentPlanName(student);
   const rule = PLAN_CLASS_RULES[(planName && planByName(planName))?.id];
   const byPlan = rule && (rule.maxGroups === null || !own.length) ? scheduledClasses().filter((item) => rule.covers(item)) : [];
   const ids = new Set([...own, ...byPlan].map((item) => item.id));
@@ -2410,7 +2427,7 @@ function songClassesForStudent(studentId) {
 // Por qué la Rockola no ofrece clases, en palabras del alumno.
 function songEmptyReason(student) {
   if (!student || ['suspended', 'archived'].includes(student.lifecycleStatus)) return 'Tu carné no está activo. Pregunta en recepción.';
-  const planName = 'activePlan' in student ? student.activePlan : student.plan;
+  const planName = currentPlanName(student);
   if (!classesForStudent(student.id).length) {
     if (!planName) return 'Cuando la academia registre tu plan, aquí salen tus clases.';
     if (!PLAN_CLASS_RULES[planByName(planName)?.id]) return 'Tu plan todavía no tiene clases en la app. Pregunta en recepción.';
@@ -2820,6 +2837,15 @@ function renderStudentHome() {
         <p class="eyebrow">Completa tus datos</p>
         <p class="payment-meta">Agrega tu correo, tu fecha de nacimiento y un contacto de emergencia. Así la academia puede avisarte de cambios de horario y eventos.</p>
         <div class="form-actions"><button class="button button--red" type="button" data-open-my-data>Completar mis datos</button></div>
+      </article>
+    </section>` : ''}
+    ${faceConsentPending() ? `
+    <section class="section">
+      <article class="surface-card face-consent-card">
+        <p class="eyebrow">Asistencia con cámara</p>
+        <h2>¿Nos das permiso?</h2>
+        <p class="payment-meta">Queremos marcar tu asistencia con la cámara de la entrada, reconociendo tu rostro. Es voluntario: si no aceptas, te seguimos pasando lista como siempre.</p>
+        <div class="form-actions"><button class="button button--red" type="button" data-open-face-consent>Leer y decidir</button></div>
       </article>
     </section>` : ''}
 
@@ -4756,6 +4782,7 @@ function renderAdminAttendance() {
       <td data-label="Acción"><button class="table-action" type="button" data-take-attendance="${escapeHtml(row.item.id)}" data-session-date="${escapeHtml(dayKey(row.date))}">${row.taken ? 'Ver lista' : 'Pasar lista'}</button></td>
     </tr>`).join('')}</tbody></table></div>
     <p class="modal-note">La lista de cada clase son los alumnos activos que la eligieron o cuyo plan la cubre. El maestro asignado puede pasarla o corregirla hasta dos semanas después; administración, cualquier fecha.</p>
+    ${adminFaceConsentSection()}
   `;
 }
 
@@ -7342,6 +7369,170 @@ async function handleChangePassword(event) {
   }
 }
 
+// ── Autorización para la asistencia con cámara (migración 014) ─────────────────
+// Si cambia lo que dice el texto (qué se guarda, cuánto tiempo, quién lo procesa),
+// sube la versión: a quien aceptó una versión anterior se le vuelve a preguntar.
+const FACE_CONSENT_VERSION = '2026-11-v1';
+const FACE_CONSENT_POINTS = [
+  ['Para qué', 'Solo para marcar tu asistencia a clase. Cuando la activemos, la cámara de la entrada reconocerá tu rostro al llegar y la app registrará que viniste. Todavía no está funcionando: hoy solo pedimos tu permiso. No se usa para publicidad ni para nada más.'],
+  ['Qué se guarda', 'Para reconocerte, la academia toma una vez unas fotos de tu rostro en recepción y las convierte en un código numérico. Las fotos se borran después; el código se guarda solo en la computadora de la academia, no en internet ni en la app. En la app quedan tu respuesta a esta autorización (con el nombre de quien autoriza, si eres menor) y la fecha y la clase a la que viniste.'],
+  ['Quién lo ve', 'Solo administración de In Motion. No se vende ni se comparte con nadie.'],
+  ['Es voluntario', 'Si no aceptas, nada cambia: tu maestro te pasa lista como siempre, con las mismas clases y los mismos pagos.'],
+  ['Puedes retirarlo', 'Cuando quieras, desde «Mis datos y contraseña». Al retirarlo, o si dejas la academia, borramos tu código en un máximo de 7 días.'],
+  ['Menores de edad', 'Si tienes menos de 18 años, tu papá, mamá o encargado es quien autoriza y escribe su nombre aquí.']
+];
+
+function faceConsentPending() {
+  if (!isSupabaseConnected || studentPreviewId || activeRole !== 'student' || myFaceConsent === undefined) return false;
+  // Quien ya respondió esta versión no vuelve a ver la tarjeta; quien aceptó una versión
+  // anterior sí, porque lo que aceptó ya no es lo que dice el texto.
+  if (!myFaceConsent) return true;
+  return myFaceConsent.decision === 'accepted' && myFaceConsent.consent_version !== FACE_CONSENT_VERSION;
+}
+
+function faceConsentSummary(row) {
+  if (!row) return 'Todavía no has respondido si autorizas que la cámara registre tu asistencia.';
+  const when = row.created_at ? faceConsentDate(row.created_at) : '';
+  if (row.decision === 'accepted') {
+    if (row.consent_version !== FACE_CONSENT_VERSION) return 'Cambiamos el texto de la autorización. Léelo de nuevo y decide.';
+    return `Autorizaste el ${when}${row.is_minor && row.guardian_name ? ` (autorizó ${row.guardian_name})` : ''}. Puedes retirarla cuando quieras.`;
+  }
+  if (row.decision === 'revoked') return `Retiraste tu autorización el ${when}. Te pasan lista como siempre.`;
+  return `Respondiste que no el ${when}. Te pasan lista como siempre.`;
+}
+
+function faceConsentDate(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleDateString('es-GT', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'America/Guatemala' });
+}
+
+// El alumno es menor si su fecha de nacimiento o su plan lo dicen; la base aplica la
+// misma regla (set_my_face_consent) y además respeta la casilla que él marque.
+function studentLooksMinor() {
+  const birth = authenticatedProfile?.birth_date;
+  if (birth) {
+    const [y, m, d] = String(birth).split('-').map(Number);
+    const adult = new Date(y + 18, m - 1, d);
+    if (TODAY < adult) return true;
+  }
+  const student = currentStudent();
+  return student ? currentPlanName(student) === 'Teens In Motion' : false;
+}
+
+function openFaceConsentModal() {
+  if (studentPreviewId) {
+    return showToast('Vista de alumno', 'Aquí el alumno lee y responde la autorización de cámara. En la vista previa no se abre.');
+  }
+  const minorKnown = studentLooksMinor();
+  const accepted = myFaceConsent?.decision === 'accepted' && myFaceConsent.consent_version === FACE_CONSENT_VERSION;
+  openModal({
+    title: 'Asistencia con cámara',
+    eyebrow: 'Autorización',
+    body: `
+      <form id="faceConsentForm" class="modal-form" novalidate>
+        <p class="payment-meta">In Motion Dance Academy te pide permiso para registrar tu asistencia con reconocimiento facial. Léelo con calma.</p>
+        <dl class="face-consent-points">
+          ${FACE_CONSENT_POINTS.map(([title, text]) => `<div><dt>${escapeHtml(title)}</dt><dd>${escapeHtml(text)}</dd></div>`).join('')}
+        </dl>
+        ${accepted ? `<p class="payment-meta"><strong>${escapeHtml(faceConsentSummary(myFaceConsent))}</strong></p>` : `
+        ${minorKnown
+          ? '<p class="payment-meta"><strong>Según tus datos eres menor de edad: tu papá, mamá o encargado debe autorizar.</strong></p><input type="hidden" name="is_minor" value="1" />'
+          : `<label class="field field-check"><input type="checkbox" name="is_minor" value="1" /> <span>Tengo menos de 18 años</span></label>`}
+        <div class="face-consent-guardian" ${minorKnown ? '' : 'hidden'}>
+          <label class="field">
+            <span>Nombre de quien autoriza</span>
+            <input class="input" type="text" name="guardian_name" maxlength="120" autocomplete="off" placeholder="Nombre y apellido" />
+          </label>
+          <label class="field">
+            <span>Parentesco</span>
+            <input class="input" type="text" name="guardian_relationship" maxlength="60" autocomplete="off" placeholder="Mamá, papá, encargado…" />
+          </label>
+        </div>`}
+        <p class="payment-meta" id="faceConsentMessage" role="status"></p>
+        <div class="form-actions">
+          ${accepted
+            ? '<button class="button button--light" type="button" data-close-modal>Cerrar</button><button class="button button--red" type="button" data-face-consent="no">Retirar mi autorización</button>'
+            : '<button class="button button--light" type="button" data-face-consent="no">No acepto</button><button class="button button--red" type="button" data-face-consent="yes">Acepto</button>'}
+        </div>
+      </form>
+    `
+  });
+  const form = document.querySelector('#faceConsentForm');
+  const minorBox = form?.querySelector('input[type="checkbox"][name="is_minor"]');
+  minorBox?.addEventListener('change', () => {
+    form.querySelector('.face-consent-guardian').hidden = !minorBox.checked;
+  });
+  form?.addEventListener('submit', (event) => event.preventDefault());
+  form?.querySelectorAll('[data-face-consent]').forEach((button) => {
+    button.addEventListener('click', () => submitFaceConsent(form, button.dataset.faceConsent === 'yes'));
+  });
+}
+
+async function submitFaceConsent(form, accept) {
+  const message = form.querySelector('#faceConsentMessage');
+  const buttons = [...form.querySelectorAll('[data-face-consent]')];
+  const minorField = form.querySelector('[name="is_minor"]');
+  const isMinor = minorField ? (minorField.type === 'checkbox' ? minorField.checked : true) : false;
+  // Solo un menor lleva encargado: si desmarcó la casilla, lo escrito no se envía.
+  const guardianName = isMinor ? String(form.guardian_name?.value || '').trim() : '';
+  const guardianRelationship = isMinor ? String(form.guardian_relationship?.value || '').trim() : '';
+  message.style.color = 'var(--red)';
+  if (accept && isMinor && guardianName.length < 3) {
+    message.textContent = 'Escribe el nombre de tu papá, mamá o encargado que autoriza.';
+    return form.guardian_name?.focus();
+  }
+  if (accept && isMinor && guardianRelationship.length < 2) {
+    message.textContent = 'Escribe el parentesco de quien autoriza.';
+    return form.guardian_relationship?.focus();
+  }
+  buttons.forEach((b) => { b.disabled = true; });
+  message.textContent = '';
+  try {
+    myFaceConsent = await setMyFaceConsent({ accept, version: FACE_CONSENT_VERSION, isMinor, guardianName, guardianRelationship });
+  } catch (err) {
+    buttons.forEach((b) => { b.disabled = false; });
+    message.textContent = err.message;
+    return;
+  }
+  closeModal();
+  showToast(
+    accept ? 'Gracias, quedó tu autorización' : myFaceConsent?.decision === 'revoked' ? 'Autorización retirada' : 'Respuesta guardada',
+    accept ? 'Cuando activemos la cámara te avisaremos para registrar tu rostro en recepción.' : 'Te seguimos pasando lista como siempre.'
+  );
+  renderAndFocus();
+}
+
+// Administración: quién autorizó la cámara (va debajo de la tabla de Asistencia).
+function adminFaceConsentSection() {
+  if (!Array.isArray(faceConsentStatus)) return '';
+  const current = (row) => row.decision === 'accepted' && row.version === FACE_CONSENT_VERSION;
+  const outdated = (row) => row.decision === 'accepted' && row.version !== FACE_CONSENT_VERSION;
+  const accepted = faceConsentStatus.filter(current);
+  const reconfirm = faceConsentStatus.filter(outdated);
+  const declined = faceConsentStatus.filter((row) => row.decision === 'declined' || row.decision === 'revoked');
+  const pending = faceConsentStatus.length - accepted.length - reconfirm.length - declined.length;
+  const label = (row) => {
+    if (current(row)) return '<span class="status-pill is-paid">Autorizó</span>';
+    if (outdated(row)) return '<span class="status-pill">Debe reconfirmar (texto nuevo)</span>';
+    if (row.decision === 'revoked') return '<span class="status-pill is-mora">Retiró</span>';
+    if (row.decision === 'declined') return '<span class="status-pill">No aceptó</span>';
+    return '<span class="status-pill">Sin responder</span>';
+  };
+  const rows = [...faceConsentStatus].sort((a, b) => Number(current(b)) - Number(current(a)) || a.name.localeCompare(b.name, 'es'));
+  return `
+    <section class="section">
+      <div class="section-head"><div><h2>Autorizaciones para la cámara</h2><p>${accepted.length} ${accepted.length === 1 ? 'autorizó' : 'autorizaron'} · ${declined.length} no · ${pending} sin responder${reconfirm.length ? ` · ${reconfirm.length} ${reconfirm.length === 1 ? 'debe' : 'deben'} reconfirmar el texto nuevo` : ''}. La cámara todavía no marca asistencia: por ahora solo se recogen las respuestas.</p></div></div>
+      <div class="table-wrap table-wrap--stack"><table class="data-table"><thead><tr><th scope="col">Alumno</th><th scope="col">Respuesta</th><th scope="col">Fecha</th><th scope="col">Autorizó (menores)</th></tr></thead><tbody>${rows.map((row) => `<tr>
+        <td data-label="Alumno"><strong>${escapeHtml(row.name)}</strong></td>
+        <td data-label="Respuesta">${label(row)}</td>
+        <td data-label="Fecha">${escapeHtml(row.decidedAt ? faceConsentDate(row.decidedAt) : '—')}</td>
+        <td data-label="Autorizó">${row.isMinor && row.guardianName ? `${escapeHtml(row.guardianName)} (${escapeHtml(row.guardianRelationship)})` : '—'}</td>
+      </tr>`).join('')}</tbody></table></div>
+    </section>
+  `;
+}
+
 function openProfile() {
   if (studentPreviewId) {
     return showToast('Vista de alumno', 'Aquí el alumno ve y cambia sus datos y su contraseña. En la vista previa no se abre para no mezclarlo con tu cuenta.');
@@ -7399,6 +7590,12 @@ function openProfile() {
             <button class="button button--light" type="submit">Guardar mis datos</button>
           </div>
         </form>
+        ${activeRole === 'student' && myFaceConsent !== undefined ? `
+        <section class="modal-form face-consent-profile">
+          <p class="eyebrow">Asistencia con cámara</p>
+          <p class="payment-meta" id="myFaceConsentSummary">${escapeHtml(faceConsentSummary(myFaceConsent))}</p>
+          <div class="form-actions"><button class="button button--light" type="button" id="profileFaceConsent">${myFaceConsent?.decision === 'accepted' && myFaceConsent.consent_version === FACE_CONSENT_VERSION ? 'Ver o retirar mi autorización' : 'Leer y decidir'}</button></div>
+        </section>` : ''}
         <form id="changePasswordForm" class="modal-form" style="margin-top:18px">
           <p class="eyebrow">Cambiar contraseña</p>
           <label class="field">
@@ -7422,6 +7619,7 @@ function openProfile() {
       await handleSignOut();
     });
     document.querySelector('#changePasswordForm')?.addEventListener('submit', handleChangePassword);
+    document.querySelector('#profileFaceConsent')?.addEventListener('click', openFaceConsentModal);
     return;
   }
 
@@ -8481,12 +8679,13 @@ function handleContentClick(event) {
   if (find('[data-end-preview]')) return endStudentPreview();
   const previewBtn = find('[data-preview-student]');
   if (previewBtn) return startStudentPreview(previewBtn.dataset.previewStudent);
-  if (studentPreviewId && find('[data-open-my-data], [data-open-scan], [data-student-payment], [data-register-for], [data-open-payment], [data-open-music-modal], [data-toggle-music-status], [data-toggle-music-like]')) {
+  if (studentPreviewId && find('[data-open-my-data], [data-open-face-consent], [data-open-scan], [data-student-payment], [data-register-for], [data-open-payment], [data-open-music-modal], [data-toggle-music-status], [data-toggle-music-like]')) {
     return showToast('Vista de alumno', 'Aquí el alumno podría usar este botón. En la vista previa no se abre para no tocar datos reales.');
   }
 
   if (find('[data-open-my-classes]')) return openMyClassesModal();
   if (find('[data-open-my-data]')) return openProfile();
+  if (find('[data-open-face-consent]')) return openFaceConsentModal();
 
   const scheduleClassBtn = find('[data-toggle-schedule-class]');
   if (scheduleClassBtn) {
@@ -9244,7 +9443,11 @@ async function loadRemoteData() {
     extraPayments = await fetchRemoteExtraPayments(state.students);
   }
 
-  // 6. Rockola: se enciende solo si la base ya tiene la tabla (migración 013).
+  // 6. Autorización de cámara (migración 014): sin la tabla no se muestra nada.
+  myFaceConsent = activeRole === 'student' && !studentPreviewId ? await fetchMyFaceConsent() : undefined;
+  faceConsentStatus = activeRole === 'admin' ? await fetchFaceConsentStatus() : null;
+
+  // 7. Rockola: se enciende solo si la base ya tiene la tabla (migración 013).
   const songs = ['student', 'teacher'].includes(activeRole) ? await fetchSongRequests(activeRole) : null;
   MUSIC_ENABLED = Array.isArray(songs);
   if (songs) state.musicSuggestions = songs.map(decorateSongRequest);

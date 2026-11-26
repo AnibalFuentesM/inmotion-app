@@ -4360,3 +4360,11 @@ button.student-check > span:last-child { color: var(--red); font-size: .74rem; f
 @media (prefers-reduced-motion: reduce) {
   .promo { animation: none; }
 }
+
+/* Autorización para la asistencia con cámara (migración 014) */
+.face-consent-points { display: grid; gap: 12px; margin: 16px 0; }
+.face-consent-points div { border-left: 3px solid var(--brand-red); padding-left: 12px; }
+.face-consent-points dt { font-weight: 700; margin-bottom: 2px; }
+.face-consent-points dd { margin: 0; line-height: 1.45; }
+.face-consent-guardian[hidden] { display: none; }
+.face-consent-profile { margin-top: 18px; }
