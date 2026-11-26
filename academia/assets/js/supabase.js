@@ -541,7 +541,7 @@ export async function fetchRemoteStudents() {
 
   const profiles = await db.get('profiles', 'select=*');
   const enrollments = await db.get('enrollments', 'select=*&status=eq.active');
-  const memberships = await db.get('memberships', 'select=*');
+  const memberships = await db.getAll('memberships', 'select=*&order=id.asc');
 
   const profileMap = new Map((profiles || []).map((p) => [p.id, p]));
   const studentMembershipsMap = new Map();
@@ -946,7 +946,7 @@ function withMigrationHint(err) {
 export async function fetchRemoteExtraPayments(students = []) {
   let rows;
   try {
-    rows = await db.get('payments', 'concept=neq.mensualidad&select=*&order=recorded_at.desc');
+    rows = await db.getAll('payments', 'concept=neq.mensualidad&select=*&order=recorded_at.desc,id.asc');
   } catch {
     return []; // Sin la migración 012 la columna no existe: no hay otros cobros.
   }
@@ -1041,7 +1041,7 @@ export function formatShortDate(dateOrStr) {
  * Recupera el listado de membresías registradas en Supabase
  */
 export async function fetchRemoteMemberships() {
-  const rows = await db.get('memberships', 'select=*&order=created_at.desc');
+  const rows = await db.getAll('memberships', 'select=*&order=created_at.desc,id.asc');
   return Array.isArray(rows) ? rows : [];
 }
 
@@ -1053,9 +1053,10 @@ export async function fetchRemoteMemberships() {
  * @returns {Promise<Array>} Listado conciliado de pagos y obligaciones
  */
 export async function fetchRemotePayments(students = []) {
+  // Supabase corta cada respuesta en 1000 filas: se pagina con un orden estable.
   const [rows, membershipRows] = await Promise.all([
-    db.get('payments', 'select=*&order=recorded_at.asc'),
-    db.get('memberships', 'select=*&order=created_at.desc')
+    db.getAll('payments', 'select=*&order=recorded_at.asc,id.asc'),
+    db.getAll('memberships', 'select=*&order=created_at.desc,id.asc')
   ]);
 
   const cardFor = (uuid) => profileUuidToCard.get(uuid) || students.find((s) => s.profileId === uuid)?.id;

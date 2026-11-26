@@ -139,6 +139,26 @@ begin
     for update;
   end if;
 
+  -- Con el mes bloqueado, otra llamada con la misma clave ya pudo terminar: se revisa otra vez.
+  if p_idempotency_key is not null then
+    select p.id, p.student_id, p.period, p.amount, p.payment_method, p.receipt_number, p.notes, p.recorded_at
+    into v_existing
+    from public.payments p
+    where p.idempotency_key = p_idempotency_key
+    limit 1;
+    if v_existing.id is not null then
+      if v_existing.student_id = p_student_id and v_existing.period = p_period and v_existing.amount = p_amount
+         and v_existing.payment_method = v_effective_method and coalesce(v_existing.notes, '') = coalesce(p_notes, '')
+         and (p_receipt_number is null or coalesce(v_existing.receipt_number, '') = p_receipt_number) then
+        return query select v_existing.id, v_existing.student_id, v_existing.period, v_existing.amount,
+          v_existing.payment_method, v_existing.receipt_number, v_existing.notes, v_existing.recorded_at, true;
+        return;
+      end if;
+      raise exception 'Este pago ya se había registrado con otros datos (alumno, mes, monto o método). Revisa los pagos del alumno antes de volver a intentarlo.'
+        using errcode = '22023';
+    end if;
+  end if;
+
   if v_membership_id is null then
     select m.plan_name, m.price into v_plan_name, v_plan_price
     from public.memberships m
@@ -180,15 +200,33 @@ begin
       to_char(v_balance, 'FM999999990.00') using errcode = '22023';
   end if;
 
-  insert into public.payments (
-    student_id, membership_id, period, amount, payment_method, receipt_number, notes,
-    idempotency_key, recorded_by, recorded_at, concept
-  )
-  values (
-    p_student_id, v_membership_id, p_period, p_amount, v_effective_method, p_receipt_number, p_notes,
-    p_idempotency_key, public.current_profile_id(), now(), 'mensualidad'
-  )
-  returning payments.id, payments.recorded_at into v_new_id, v_recorded_at;
+  begin
+    insert into public.payments (
+      student_id, membership_id, period, amount, payment_method, receipt_number, notes,
+      idempotency_key, recorded_by, recorded_at, concept
+    )
+    values (
+      p_student_id, v_membership_id, p_period, p_amount, v_effective_method, p_receipt_number, p_notes,
+      p_idempotency_key, public.current_profile_id(), now(), 'mensualidad'
+    )
+    returning payments.id, payments.recorded_at into v_new_id, v_recorded_at;
+  exception when unique_violation then
+    -- Dos envíos simultáneos con la misma clave para otro mes o alumno: se devuelve el original.
+    select p.id, p.student_id, p.period, p.amount, p.payment_method, p.receipt_number, p.notes, p.recorded_at
+    into v_existing
+    from public.payments p
+    where p.idempotency_key = p_idempotency_key
+    limit 1;
+    if v_existing.id is not null and v_existing.student_id = p_student_id and v_existing.period = p_period
+       and v_existing.amount = p_amount and v_existing.payment_method = v_effective_method
+       and coalesce(v_existing.notes, '') = coalesce(p_notes, '') then
+      return query select v_existing.id, v_existing.student_id, v_existing.period, v_existing.amount,
+        v_existing.payment_method, v_existing.receipt_number, v_existing.notes, v_existing.recorded_at, true;
+      return;
+    end if;
+    raise exception 'Este pago ya se había registrado con otros datos (alumno, mes, monto o método). Revisa los pagos del alumno antes de volver a intentarlo.'
+      using errcode = '22023';
+  end;
 
   -- Con la cuota cubierta, la mensualidad deja de estar pendiente.
   if v_paid + p_amount >= v_price then
