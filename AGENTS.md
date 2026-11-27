@@ -112,6 +112,10 @@ Se trabaja **siempre sobre esta misma app**: `academia/`, dentro de
    En el inicio del alumno lo pendiente va en una sola línea (`comingSoonStrip`).
    El catálogo muestra «Gestión del catálogo» solo si la academia guardó un rol de equipo en
    `localStorage['inmotion_catalog_role']`.
+   Una cuenta de administración con clases propias (`classes.teacher_id` = su perfil, se asigna
+   en Completar datos → «Maestro de cada clase») ve «Mi portal de maestro» en el menú lateral
+   (`adminTeacherView`): abre el portal de maestro con sus clases, su lista y su Rockola sin otra
+   cuenta; al volver a administración la Rockola se apaga. El rol en la base sigue siendo admin.
 12. **Pasar lista (migración 013).** El maestro pasa lista de sus clases en «Pasar lista»
    (`renderTeacherAttendance`, `CLASS_LIST_ENABLED`); administración ve la última lista de cada
    clase en Asistencia y abre la misma pantalla en la ruta oculta `lista` (`HIDDEN_ROUTES`).
