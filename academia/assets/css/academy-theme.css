@@ -4368,6 +4368,51 @@ button.student-check > span:last-child { color: var(--red); font-size: .74rem; f
 .face-consent-points dd { margin: 0; line-height: 1.45; }
 .face-consent-guardian[hidden] { display: none; }
 .face-consent-profile { margin-top: 18px; }
+/* Abonos y Conciliar listados (26/11/2026) */
+.payment-abono {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted, #8a8a8f);
+  font-size: 12px;
+  font-weight: 500;
+}
+.abono-list {
+  margin: 14px 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 8px;
+}
+.abono-list li {
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(127, 127, 127, .08);
+  overflow-wrap: anywhere;
+}
+.reconcile-mapping { grid-template-columns: repeat(auto-fit, minmax(min(160px, 100%), 1fr)); }
+.reconcile-table td small {
+  display: block;
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--muted, #8a8a8f);
+  overflow-wrap: anywhere;
+}
+.reconcile-table select {
+  width: 100%;
+  min-width: 0;
+  max-width: 260px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  font: inherit;
+  font-size: 13px;
+}
+.reconcile-table input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--brand-red); }
+.reconcile-table td { vertical-align: top; }
+.reconcile-missing { line-height: 1.6; overflow-wrap: anywhere; }
+@media (max-width: 780px) {
+  .reconcile-table select { max-width: none; }
+}
 /* Cumpleaños: tarjeta del inicio que lo pide mientras falte */
 .birthday-prompt-section { margin-bottom: 24px; }
 .birthday-prompt { border-color: var(--brand-red); }

@@ -321,8 +321,12 @@ const membershipPlans = [
 const DEFAULT_PLAN = membershipPlans[0];
 const PLAN_NAMES = membershipPlans.map((plan) => plan.planName);
 
+// Montos enteros sin decimales (Q 450); con centavos, siempre dos (Q 194.50).
 function formatAmount(value) {
-  return Number(value).toLocaleString('es-GT', { maximumFractionDigits: 2 });
+  const amount = Number(value);
+  return Number.isInteger(amount)
+    ? amount.toLocaleString('es-GT', { maximumFractionDigits: 0 })
+    : amount.toLocaleString('es-GT', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 function planByName(name) {
@@ -556,12 +560,14 @@ function nextMonthDate() {
 // Solo los correlativos con forma P-<numero> entran en la cuenta: un id de
 // recuperacion como P-2026-09-IM-0241 disparaba el correlativo a millones.
 function nextPaymentId() {
-  const highest = state.payments.reduce((acc, item) => {
-    const match = /^P-(\d+)$/.exec(String(item.id));
+  // Los abonos llevan su propio número: también cuentan para el siguiente.
+  const ids = state.payments.flatMap((item) => [item.id, ...(Array.isArray(item.abonos) ? item.abonos.map((abono) => abono.id) : [])]);
+  const highest = ids.reduce((acc, id) => {
+    const match = /^P-(\d+)$/.exec(String(id));
     return match ? Math.max(acc, Number(match[1])) : acc;
   }, 1000);
   let number = highest + 1;
-  while (state.payments.some((item) => item.id === `P-${number}`)) number += 1;
+  while (ids.includes(`P-${number}`)) number += 1;
   return `P-${number}`;
 }
 
@@ -662,6 +668,61 @@ function monthKey(date) {
   return dayKey(date).slice(0, 7);
 }
 
+// ---------------------------------------------------------------------------
+// Abonos (Mariano, 26/11/2026). Un mes se puede pagar en partes: cada item de
+// state.payments es la mensualidad de un alumno en un mes; amount es la cuota,
+// abonos la lista de pagos y paidAmount su suma. El mes pasa a «Pagado» cuando lo
+// abonado llega a la cuota. Un registro viejo sin abonos y «Pagado» cuenta como
+// un solo pago por el total.
+// ---------------------------------------------------------------------------
+function toCents(value) {
+  return Math.round(Number(value) * 100);
+}
+
+function roundMoney(value) {
+  return toCents(value) / 100;
+}
+
+function abonosOf(payment) {
+  if (!payment) return [];
+  if (Array.isArray(payment.abonos)) return payment.abonos;
+  if (payment.status !== 'Pagado') return [];
+  return [{ id: payment.id, amount: Number(payment.amount) || 0, method: payment.method, paidAt: payment.paidAt, date: payment.date, reference: payment.reference || '' }];
+}
+
+function paidAmountOf(payment) {
+  if (!payment) return 0;
+  if (Number.isFinite(payment.paidAmount)) return payment.paidAmount;
+  return payment.status === 'Pagado' ? Number(payment.amount) || 0 : 0;
+}
+
+// Lo que falta del mes. Un mes pagado no debe nada aunque se haya abonado de más antes.
+function balanceOf(payment) {
+  if (!payment || payment.status === 'Pagado') return 0;
+  return Math.max(0, roundMoney((Number(payment.amount) || 0) - paidAmountOf(payment)));
+}
+
+// Monto que se muestra del mes: lo pagado si está pagado, el saldo si hay abonos, la cuota si no.
+function shownMonthAmount(payment) {
+  if (!payment) return null;
+  if (payment.status === 'Pagado') return paidAmountOf(payment);
+  return paidAmountOf(payment) ? balanceOf(payment) : Number(payment.amount) || 0;
+}
+
+// «Abonado Q200 · saldo Q250» para un mes pendiente con abonos; vacío si no hay abonos.
+function abonoSummary(payment) {
+  if (!payment || payment.status === 'Pagado') return '';
+  const paid = paidAmountOf(payment);
+  if (!paid) return '';
+  return `Abonado Q ${formatAmount(paid)} · saldo Q ${formatAmount(balanceOf(payment))}`;
+}
+
+// Método que se muestra para el mes: el del pago, o «Varios» si se pagó con más de uno.
+function abonosMethodLabel(abonos) {
+  const methods = [...new Set(abonos.map((item) => item.method).filter(Boolean))];
+  return methods.length > 1 ? 'Varios' : (methods[0] || 'Pendiente');
+}
+
 function paymentStatus(payment) {
   if (!payment) return 'Sin registro';
   if (payment.status === 'Pagado') return 'Pagado';
@@ -673,7 +734,7 @@ function paymentStatus(payment) {
 function studentPaymentLabel(studentId, payment) {
   const status = paymentStatus(payment);
   if (DEMO_MODE || !['Pendiente', 'En mora'].includes(status)) return status;
-  const hasAnyPayment = state.payments.some((item) => item.studentId === studentId && item.status === 'Pagado');
+  const hasAnyPayment = state.payments.some((item) => item.studentId === studentId && paidAmountOf(item) > 0);
   return hasAnyPayment ? status : 'Por confirmar en recepción';
 }
 
@@ -789,7 +850,7 @@ function canDeleteStudent(studentId) {
   const reasons = [];
   const hasPayments = state.payments.some((item) => {
     if (item.studentId !== studentId) return false;
-    if (item.status === 'Pagado' || Boolean(item.paidAt)) return true;
+    if (item.status === 'Pagado' || Boolean(item.paidAt) || paidAmountOf(item) > 0) return true;
     if (item.method && item.method !== 'Pendiente') return true;
     if (item.dueDate) return true;
     return false;
@@ -874,7 +935,8 @@ function buildWhatsAppUrl(phone, message) {
   return `https://wa.me/${normalized}?text=${encodeURIComponent(message)}`;
 }
 
-function generatePaymentReminderMessage({ firstName, month, amount }) {
+function generatePaymentReminderMessage({ firstName, month, amount, partial = false }) {
+  if (partial) return `Hola, ${firstName} 👋 Te recordamos que de tu mensualidad de ${month} queda un saldo pendiente de Q${amount}. Si ya lo pagaste, puedes enviarnos el comprobante por este medio. ¡Gracias! — In Motion Dance Academy`;
   return `Hola, ${firstName} 👋 Te recordamos que tu mensualidad de ${month} por Q${amount} está pendiente. Si ya realizaste el pago, puedes enviarnos el comprobante por este medio. ¡Gracias! — In Motion Dance Academy`;
 }
 
@@ -882,7 +944,7 @@ function generateAbsenceFollowupMessage({ isGuardian, tutorName, studentName, fi
   if (isGuardian) {
     return `Hola, ${tutorName} 👋 Vimos que ${studentName} faltó a sus últimas dos clases. ¿Está todo bien? Si tuvieron algún problema con el horario, escríbanos y con gusto les ayudamos. — In Motion Dance Academy`;
   }
-  return `Hola, ${firstName} 👋 Vimos que faltaste a tus últimas dos clases. ¿Todo bien? Si tuviste algún problema con el horario, escribinos y con gusto te ayudamos. — In Motion Dance Academy`;
+  return `Hola, ${firstName} 👋 Vimos que faltaste a tus últimas dos clases. ¿Todo bien? Si tuviste algún problema con el horario, escríbenos y con gusto te ayudamos. — In Motion Dance Academy`;
 }
 
 function guardianForStudent(student, guardiansList = guardians) {
@@ -1040,7 +1102,7 @@ function exportTableToCsv(type) {
     csvContent = [headers.join(','), ...rows.map((r) => r.join(','))].join('\r\n');
   } else if (type === 'payments') {
     filename = `inmotion_pagos_${dayKey(TODAY)}.csv`;
-    const headers = ['ID', 'ID Alumno', 'Alumno', 'Periodo', 'Monto', 'Metodo', 'Estado', 'Fecha Pago'];
+    const headers = ['ID', 'ID Alumno', 'Alumno', 'Periodo', 'Cuota', 'Abonado', 'Saldo', 'Metodo', 'Estado', 'Fecha Pago'];
     const rows = state.payments.map((p) => {
       const student = studentById(p.studentId);
       return [
@@ -1049,7 +1111,9 @@ function exportTableToCsv(type) {
         `"${(student?.name || '').replace(/"/g, '""')}"`,
         p.period,
         p.amount,
-        `"${p.method || ''}"`,
+        paidAmountOf(p),
+        balanceOf(p),
+        `"${(abonoSummary(p) ? `Abono · ${abonosMethodLabel(abonosOf(p))}` : p.method || '').replace(/"/g, '""')}"`,
         `"${paymentStatus(p)}"`,
         p.paidAt || ''
       ];
@@ -1143,7 +1207,7 @@ function createBasePayments() {
     { id: 'P-1044', studentId: 'IM-0241', method: 'Pendiente', paid: false, offset: 2 },
     { id: 'P-1043', studentId: 'IM-0218', method: 'Tarjeta', paid: true, offset: -1 },
     { id: 'P-1042', studentId: 'IM-0194', method: 'Transferencia', paid: true, offset: -3 },
-    { id: 'P-1041', studentId: 'IM-0250', method: 'Pendiente', paid: false, offset: -6 },
+    { id: 'P-1041', studentId: 'IM-0250', method: 'Pendiente', paid: false, offset: -6, abono: 200 },
     { id: 'P-1040', studentId: 'IM-0207', method: 'Efectivo', paid: true, offset: -8 },
     { id: 'P-1039', studentId: 'IM-0262', method: 'Efectivo', paid: true, offset: -9 }
   ];
@@ -1164,7 +1228,9 @@ function createBasePayments() {
       status: row.paid ? 'Pagado' : 'Pendiente',
       paidAt: row.paid ? dayKey(date) : null,
       dueDate: row.paid ? null : dayKey(date),
-      reference: ''
+      reference: '',
+      // Un abono de ejemplo: el mes sigue pendiente con su saldo.
+      ...(row.abono ? { paidAmount: row.abono, abonos: [{ id: `${row.id}-A1`, amount: row.abono, method: 'Transferencia', paidAt: dayKey(addDays(TODAY, row.offset - 2)), date: shortDate(addDays(TODAY, row.offset - 2)), reference: 'Abono de ejemplo' }] } : {})
     };
   });
 }
@@ -1669,7 +1735,9 @@ function migratePayment(payment) {
 
 const DAY_KEY_PATTERN = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
 const PERIOD_PATTERN = /^\d{4}-(0[1-9]|1[0-2])$/;
-const PAYMENT_METHODS = ['Transferencia', 'Efectivo', 'Tarjeta'];
+// «Débito automático» y «VisaLink» se agregaron el 26/11/2026 (prueba con Majo):
+// VisaLink y las transferencias llegan en los listados del día 5 (Conciliar listados).
+const PAYMENT_METHODS = ['Transferencia', 'Efectivo', 'Tarjeta', 'VisaLink', 'Débito automático'];
 // La mensualidad vence el día 5 de cada mes (Mariano, 16/11/2026). Pasada esa fecha
 // el pago pendiente sale «En mora». Lo usa «Abrir cobros del mes» (migración 012).
 const PAYMENT_DUE_DAY = 5;
@@ -1764,15 +1832,33 @@ function sanitizePayment(raw, studentIds) {
     month: cleanText(payment.month, 40) || monthLabel(parseDayKey(`${payment.period}-01`)),
     period: payment.period,
     amount,
-    method: PAYMENT_METHODS.includes(payment.method)
+    method: PAYMENT_METHODS.includes(payment.method) || (isPaid && payment.method === 'Varios')
       ? payment.method
       : (payment.method === 'POS' ? 'Tarjeta' : (payment.method === 'Depósito' ? 'Transferencia' : (isPaid ? 'Efectivo' : 'Pendiente'))),
     date: cleanText(payment.date, 60),
     paidAt: isPaid ? paidAt : null,
     dueDate: isPaid ? null : (isValidDayKey(payment.dueDate) ? payment.dueDate : null),
     status: isPaid ? 'Pagado' : 'Pendiente',
-    reference: cleanText(payment.reference, 120)
+    reference: cleanText(payment.reference, 120),
+    ...sanitizeAbonos(payment, isPaid, amount)
   };
+}
+
+// Abonos guardados de un mes: se descartan los ilegibles y lo abonado se recalcula
+// de los que quedan, nunca se confía en el total guardado.
+function sanitizeAbonos(payment, isPaid, amount) {
+  if (!Array.isArray(payment.abonos)) return {};
+  const abonos = payment.abonos.filter(isPlainObject).map((item) => ({
+    id: cleanText(item.id, 60),
+    amount: Number(item.amount),
+    method: cleanText(item.method, 40) || 'Efectivo',
+    paidAt: isValidDayKey(item.paidAt) ? item.paidAt : null,
+    date: cleanText(item.date, 60),
+    reference: cleanText(item.reference, 200),
+    key: cleanText(item.key, 160) || undefined
+  })).filter((item) => item.id && Number.isFinite(item.amount) && item.amount > 0 && item.paidAt);
+  const paidAmount = roundMoney(abonos.reduce((sum, item) => sum + item.amount, 0));
+  return { abonos, paidAmount };
 }
 
 function sanitizeAttendance(raw, studentIds) {
@@ -2074,7 +2160,7 @@ function navMarkup(config, { mobile = false } = {}) {
     ? config.routes.filter(([, , , options = {}]) => routeFeatureEnabled(options) && !(options.sidebarOnly === true || (options.sidebarOnly === 'demo' && DEMO_MODE)))
     : config.routes;
   // La lista de una clase (ruta oculta «lista») se ve dentro de Asistencia.
-  const current = activeRoute === 'lista' ? 'asistencia' : activeRoute;
+  const current = activeRoute === 'lista' ? 'asistencia' : activeRoute === 'conciliar' ? 'pagos' : activeRoute;
   const items = routes.map(([route, label, iconName, options = {}], index) => `
     <a class="nav-item ${current === route ? 'is-active' : ''}" href="#/${escapeHtml(route)}" ${current === route ? 'aria-current="page"' : ''} data-route="${escapeHtml(route)}">
       <span class="nav-icon">${icon(iconName)}</span>
@@ -2095,8 +2181,8 @@ function navMarkup(config, { mobile = false } = {}) {
 }
 
 // Pantallas que no van en el menú pero tienen ruta propia (la lista de una clase,
-// que administración abre desde Asistencia).
-const HIDDEN_ROUTES = { admin: ['lista'] };
+// que administración abre desde Asistencia, y Conciliar listados, desde Pagos).
+const HIDDEN_ROUTES = { admin: ['lista', 'conciliar'] };
 
 function updateShell() {
   const config = roleConfig[activeRole];
@@ -2893,7 +2979,7 @@ function renderStudentHome() {
       <article class="surface-card">
         <p class="eyebrow">Mensualidad · ${escapeHtml(monthName(TODAY))}</p>
         <div class="payment-status">
-          <div><p class="payment-amount">Q ${escapeHtml(payment ? formatAmount(payment.amount) : '—')}</p><p class="payment-meta">${escapeHtml(studentPaymentLabel(studentId, payment))} · ${escapeHtml(paymentDateText(payment))}<br/>${plan.noPlan ? 'Tu plan se confirma en recepción' : `${escapeHtml(plan.planName)} · ${escapeHtml(priceText(plan.price))}${plan.needsReview ? '' : ' al mes'}`}</p></div>
+          <div><p class="payment-amount">Q ${escapeHtml(payment ? formatAmount(shownMonthAmount(payment)) : '—')}</p><p class="payment-meta">${escapeHtml(studentPaymentLabel(studentId, payment))} · ${escapeHtml(paymentDateText(payment))}${abonoSummary(payment) ? `<br/>${escapeHtml(abonoSummary(payment))}` : ''}<br/>${plan.noPlan ? 'Tu plan se confirma en recepción' : `${escapeHtml(plan.planName)} · ${escapeHtml(priceText(plan.price))}${plan.needsReview ? '' : ' al mes'}`}</p></div>
           <button class="button ${paid ? 'button--light' : ''}" type="button" data-student-payment>${paid ? 'Ver comprobante' : 'Ver detalle'}</button>
         </div>
       </article>
@@ -3573,8 +3659,8 @@ function membershipStatusMarkup(student) {
       </div>
       <article class="surface-card">
         <p class="eyebrow">${escapeHtml(currentPeriodLabel())}</p>
-        <p class="payment-amount">${escapeHtml(payment ? `Q ${formatAmount(payment.amount)}` : priceText(plan.price))}</p>
-        <p class="payment-meta">${escapeHtml(status)} · ${escapeHtml(paymentDateText(payment))}<br/>${escapeHtml(plan.planName)}${planReviewTag(plan)} · ${escapeHtml(priceText(plan.price))}${plan.needsReview ? '' : ' al mes'}${payment ? '' : ' · cuota del plan, sin registro para este mes'}</p>
+        <p class="payment-amount">${escapeHtml(payment ? `Q ${formatAmount(shownMonthAmount(payment))}` : priceText(plan.price))}</p>
+        <p class="payment-meta">${escapeHtml(status)} · ${escapeHtml(paymentDateText(payment))}${abonoSummary(payment) ? `<br/>${escapeHtml(abonoSummary(payment))}` : ''}<br/>${escapeHtml(plan.planName)}${planReviewTag(plan)} · ${escapeHtml(priceText(plan.price))}${plan.needsReview ? '' : ' al mes'}${payment ? '' : ' · cuota del plan, sin registro para este mes'}</p>
         ${plan.needsReview ? '<p class="payment-meta">El plan guardado no figura en el catálogo de la demo. Se conserva tal cual y no se le asigna una cuota: corrígelo desde administración antes de registrar un pago.</p>' : ''}
       </article>
     </section>`;
@@ -4006,6 +4092,7 @@ function adminPaymentRows(payments = state.payments, empty = null) {
     const isPaid = item.status === 'Pagado';
 
     let actionMarkup = '';
+    const abonoText = abonoSummary(item);
     if (isPaid) {
       actionMarkup = `<button class="table-action" type="button" data-receipt="${escapeHtml(item.id)}" aria-label="Comprobante de ${escapeHtml(item.student)}, ${escapeHtml(item.month)}">Comprobante</button>`;
     } else {
@@ -4014,7 +4101,8 @@ function adminPaymentRows(payments = state.payments, empty = null) {
         : `<button class="table-action is-disabled" type="button" disabled aria-disabled="true" title="Sin teléfono válido" aria-label="Sin teléfono válido para ${escapeHtml(item.student)}">Sin teléfono válido</button>`;
       actionMarkup = `
         <div class="table-actions-cell">
-          <button class="table-action" type="button" data-register-for="${escapeHtml(item.studentId)}" data-payment-period="${escapeHtml(item.period)}" aria-label="Registrar pago de ${escapeHtml(item.student)}, ${escapeHtml(item.month)}">Registrar</button>
+          <button class="table-action" type="button" data-register-for="${escapeHtml(item.studentId)}" data-payment-period="${escapeHtml(item.period)}" aria-label="Registrar pago de ${escapeHtml(item.student)}, ${escapeHtml(item.month)}">${abonoText ? 'Registrar abono' : 'Registrar'}</button>
+          ${abonoText ? `<button class="table-action" type="button" data-receipt="${escapeHtml(item.id)}" aria-label="Abonos de ${escapeHtml(item.student)}, ${escapeHtml(item.month)}">Ver abonos</button>` : ''}
           ${waButton}
         </div>
       `;
@@ -4024,8 +4112,8 @@ function adminPaymentRows(payments = state.payments, empty = null) {
     <tr data-payment-row="${escapeHtml(item.id)}">
       <td data-label="Alumno"><div class="person-cell"><span class="avatar" aria-hidden="true">${escapeHtml(initials(item.student))}</span><span><strong>${escapeHtml(item.student)}</strong><small>${escapeHtml(item.studentId)}</small></span></div></td>
       <td data-label="Mes">${escapeHtml(item.month)}</td>
-      <td data-label="Monto"><strong>Q ${escapeHtml(formatAmount(item.amount))}</strong></td>
-      <td data-label="Método">${escapeHtml(item.method)}</td>
+      <td data-label="Monto"><strong>Q ${escapeHtml(formatAmount(isPaid ? paidAmountOf(item) : item.amount))}</strong>${abonoText ? `<small class="payment-abono">${escapeHtml(abonoText)}</small>` : ''}</td>
+      <td data-label="Método">${escapeHtml(abonoText ? `Abono · ${abonosMethodLabel(abonosOf(item))}` : item.method)}</td>
       <td data-label="Estado"><span class="status-pill ${item.status === 'Pagado' ? 'is-paid' : (paymentStatus(item) === 'En mora' ? 'is-mora' : 'is-due')}">${escapeHtml(paymentStatus(item))}</span></td>
       <td data-label="Acción">${actionMarkup}</td>
     </tr>
@@ -4731,25 +4819,710 @@ function extraPaymentsSection() {
 
 function renderAdminPayments() {
   const extrasThisMonth = extraPayments.filter((item) => item.paidAt?.startsWith(monthKey(TODAY))).reduce((sum, item) => sum + item.amount, 0);
-  const paid = state.payments.filter((item) => item.status === 'Pagado' && item.paidAt?.startsWith(monthKey(TODAY))).reduce((sum, item) => sum + item.amount, 0) + extrasThisMonth;
-  const due = pendingPayments().reduce((sum, item) => sum + item.amount, 0);
+  // Lo registrado en el mes son los abonos con fecha de este mes, aunque el mes al que se
+  // aplican siga pendiente; lo pendiente es el saldo de cada mensualidad.
+  const paid = roundMoney(state.payments.flatMap((item) => abonosOf(item)).filter((item) => item.paidAt?.startsWith(monthKey(TODAY))).reduce((sum, item) => sum + item.amount, 0) + extrasThisMonth);
+  const due = roundMoney(pendingPayments().reduce((sum, item) => sum + balanceOf(item), 0));
   return `
     <header class="page-heading">
       <div><p class="eyebrow">Control de pagos</p><h1>Registrar.<br/>Conciliar. Listo.</h1><p>Solo registra cobros realizados fuera del sistema. No procesa tarjetas ni emite FEL.</p></div>
       <div class="heading-actions">
         <button class="button button--light" type="button" data-admin-export="payments">Exportar CSV ⤓</button>
+        <button class="button button--light" type="button" data-go="conciliar">Conciliar listados</button>
         <button class="button button--red" type="button" data-open-payment>+ Registrar pago</button>
       </div>
     </header>
     ${monthOpenNotice()}
     <section class="split-grid" style="margin-bottom:28px">
-      <article class="surface-card"><p class="eyebrow">Registrado en ${escapeHtml(monthName(TODAY))}</p><p class="payment-amount">Q ${escapeHtml(paid.toLocaleString('es-GT'))}</p><p class="payment-meta">${DEMO_MODE ? 'Monto visible en esta demo local.' : 'Pagos registrados en la app este mes.'}${extrasThisMonth ? ` Incluye Q ${escapeHtml(formatAmount(extrasThisMonth))} de inscripciones.` : ''}</p></article>
-      <article class="surface-card"><p class="eyebrow">Pendiente / mora</p><p class="payment-amount">Q ${escapeHtml(due.toLocaleString('es-GT'))}</p><p class="payment-meta">Mensualidades de planes cargados sin pago registrado.</p></article>
+      <article class="surface-card"><p class="eyebrow">Registrado en ${escapeHtml(monthName(TODAY))}</p><p class="payment-amount">Q ${escapeHtml(formatAmount(paid))}</p><p class="payment-meta">${DEMO_MODE ? 'Monto visible en esta demo local.' : 'Pagos registrados en la app este mes.'}${extrasThisMonth ? ` Incluye Q ${escapeHtml(formatAmount(extrasThisMonth))} de inscripciones.` : ''}</p></article>
+      <article class="surface-card"><p class="eyebrow">Pendiente / mora</p><p class="payment-amount">Q ${escapeHtml(formatAmount(due))}</p><p class="payment-meta">Saldo de las mensualidades sin pagar completas (descuenta los abonos).</p></article>
     </section>
     <div class="filter-row" id="paymentFilters" role="group" aria-label="Filtrar pagos por estado"><button class="filter-chip is-active" type="button" aria-pressed="true" data-payment-filter="all">Todos</button><button class="filter-chip" type="button" aria-pressed="false" data-payment-filter="Pagado">Pagados</button><button class="filter-chip" type="button" aria-pressed="false" data-payment-filter="Pendiente">Pendientes</button><button class="filter-chip" type="button" aria-pressed="false" data-payment-filter="En mora">En mora</button></div>
     <div class="table-wrap table-wrap--stack"><table class="data-table"><thead><tr><th scope="col">Alumno</th><th scope="col">Mes</th><th scope="col">Monto</th><th scope="col">Método</th><th scope="col">Estado</th><th scope="col">Acción</th></tr></thead><tbody id="paymentTableBody">${adminPaymentRows()}</tbody></table></div>
     ${extraPaymentsSection()}
   `;
+}
+
+// ---------------------------------------------------------------------------
+// Conciliar listados (Mariano, 26/11/2026). El día 5 la academia comparte el listado
+// de pagos por VisaLink y el de transferencias. Se pega (copiado de Excel) o se sube
+// como CSV; la app busca a cada alumno por carné, teléfono o nombre, propone el mes y
+// registra como pago o abono solo las filas que administración confirma. Cada fila
+// lleva una clave fija (referencia o huella del nombre, monto y fecha): volver a cargar
+// el mismo listado no duplica nada. Sin dependencias: un .xlsx se guarda como CSV o se
+// copia y pega.
+// ---------------------------------------------------------------------------
+const RECONCILE_SOURCES = ['VisaLink', 'Transferencia', 'Débito automático'];
+const RECONCILE_FIELDS = [
+  ['amount', 'Monto'],
+  ['name', 'Nombre'],
+  ['date', 'Fecha'],
+  ['reference', 'Referencia'],
+  ['phone', 'Teléfono']
+];
+const RECONCILE_HEADER_HINTS = {
+  amount: /\b(monto|importe|valor|total|credito|creditos|abono|abonos|cantidad|deposito|depositos)\b/,
+  name: /\b(nombre|cliente|titular|tarjetahabiente|ordenante|pagador|remitente|alumno|descripcion|concepto|detalle|observaciones?|comentario)\b/,
+  date: /\b(fecha|date)\b/,
+  reference: /\b(referencia|ref|autorizacion|documento|boleta|transaccion|comprobante|numero|no|id|codigo)\b/,
+  strongReference: /\b(referencia|ref|autorizacion|aprobacion|documento|boleta|transaccion|comprobante|operacion|voucher)\b/,
+  phone: /\b(telefono|tel|celular|movil|whatsapp)\b/
+};
+let reconcile = null;
+
+function reconcileState() {
+  if (!reconcile) reconcile = { source: 'VisaLink', period: monthKey(TODAY), raw: '', table: null, mapping: {}, items: [], done: false, busy: false, note: '' };
+  return reconcile;
+}
+
+// Separa el texto en filas y celdas: tabulador (pegado de Excel), punto y coma o coma,
+// con comillas como en un CSV.
+function parseDelimitedText(text) {
+  const clean = String(text || '').replace(/^﻿/, '').replace(/\r\n?/g, '\n');
+  // Lo pegado de Excel trae tabuladores; un CSV, punto y coma o coma (se mira en las
+  // primeras filas, porque la primera suele ser un título).
+  const sample = clean.split('\n').slice(0, 12).join('\n');
+  const delimiter = sample.includes('\t') ? '\t'
+    : ((sample.match(/;/g) || []).length > (sample.match(/,/g) || []).length ? ';' : ',');
+  const rows = [];
+  let row = [];
+  let cell = '';
+  let quoted = false;
+  for (let i = 0; i < clean.length; i += 1) {
+    const char = clean[i];
+    if (quoted) {
+      if (char === '"' && clean[i + 1] === '"') { cell += '"'; i += 1; }
+      else if (char === '"') quoted = false;
+      else cell += char;
+    } else if (char === '"' && !cell.trim()) {
+      quoted = true;
+      cell = '';
+    } else if (char === delimiter) {
+      row.push(cell.trim());
+      cell = '';
+    } else if (char === '\n') {
+      row.push(cell.trim());
+      rows.push(row);
+      row = [];
+      cell = '';
+    } else {
+      cell += char;
+    }
+  }
+  row.push(cell.trim());
+  rows.push(row);
+  return rows.filter((cells) => cells.some((value) => value !== ''));
+}
+
+// «Q1,250.00», «1.250,00», «450» → número. Vacío o texto → NaN.
+function parseMoney(value) {
+  let text = String(value ?? '').replace(/[^\d.,-]/g, '');
+  if (!/\d/.test(text)) return NaN;
+  const lastComma = text.lastIndexOf(',');
+  const lastDot = text.lastIndexOf('.');
+  if (lastComma > -1 && lastDot > -1) {
+    text = lastComma > lastDot ? text.replace(/\./g, '').replace(',', '.') : text.replace(/,/g, '');
+  } else if (lastComma > -1) {
+    text = /^-?\d{1,3}(,\d{3})+$/.test(text) ? text.replace(/,/g, '') : text.replace(',', '.');
+  }
+  return Number(text);
+}
+
+function headerKind(header) {
+  const text = normalizeSearchText(header).replace(/[^a-z0-9 ]/g, ' ');
+  for (const [field] of RECONCILE_FIELDS) {
+    if (RECONCILE_HEADER_HINTS[field].test(text)) return field;
+  }
+  return null;
+}
+
+// Una columna 1, 2, 3… es el número de fila del reporte, no una referencia del pago.
+function isRowNumberColumn(table, index) {
+  const values = table.rows.map((cells) => String(cells[index] || '').trim()).filter(Boolean);
+  if (values.length < 2 || !values.every((value) => /^\d{1,4}$/.test(value))) return false;
+  return values.every((value, position) => position === 0 || Number(value) === Number(values[position - 1]) + 1);
+}
+
+function columnValuesUnique(table, index) {
+  const values = table.rows.map((cells) => normalizeSearchText(cells[index]).replace(/[^a-z0-9]/g, '')).filter(Boolean);
+  return values.length > 0 && new Set(values).size === values.length;
+}
+
+// Primera fila (de las 10 primeras) que parece encabezado: dos o más nombres de columna
+// conocidos. Los bancos suelen poner títulos arriba; esas filas se saltan.
+function buildReconcileTable(text) {
+  const rows = parseDelimitedText(text);
+  if (!rows.length) return null;
+  const width = Math.max(...rows.map((cells) => cells.length));
+  let headerIndex = -1;
+  for (let i = 0; i < Math.min(rows.length, 10); i += 1) {
+    if (rows[i].filter((value) => value && headerKind(value)).length >= 2) { headerIndex = i; break; }
+  }
+  const headers = Array.from({ length: width }, (_, index) => (headerIndex >= 0 && rows[headerIndex][index]) || `Columna ${index + 1}`);
+  const data = (headerIndex >= 0 ? rows.slice(headerIndex + 1) : rows).map((cells) => headers.map((_, index) => cells[index] || ''));
+  return { headers, rows: data };
+}
+
+function guessReconcileMapping(table) {
+  const mapping = {};
+  table.headers.forEach((header, index) => {
+    const kind = headerKind(header);
+    if (!kind) return;
+    const text = normalizeSearchText(header);
+    // En un estado de cuenta con débito y crédito, el dinero que entra es el crédito.
+    if (kind === 'amount' && mapping.amount !== undefined && !/credito|abono|deposito/.test(text)) return;
+    // «Nombre» manda sobre «Descripción» si están las dos.
+    if (kind === 'name' && mapping.name !== undefined && !/nombre|cliente|titular|tarjetahabiente|ordenante|pagador|remitente|alumno/.test(text)) return;
+    if (kind === 'reference') {
+      // Solo una columna que identifique a cada pago: autorización, boleta o referencia, con
+      // un valor distinto en cada fila. «No.», «#», «ID» o el número de tarjeta se repiten
+      // entre meses o entre pagos del mismo pagador; si hace falta, se eligen a mano.
+      const plain = text.replace(/[^a-z0-9 ]/g, ' ');
+      if (!RECONCILE_HEADER_HINTS.strongReference.test(plain) || /\b(tarjeta|cuenta)\b/.test(plain)) return;
+      if (isRowNumberColumn(table, index) || !columnValuesUnique(table, index)) return;
+      const rank = /\b(referencia|ref)\b/.test(plain) ? 1 : 2;
+      if (mapping.reference !== undefined && rank <= mapping.referenceRank) return;
+      mapping.reference = index;
+      mapping.referenceRank = rank;
+      return;
+    }
+    if (mapping[kind] === undefined || kind === 'amount' || kind === 'name') mapping[kind] = index;
+  });
+  delete mapping.referenceRank;
+  if (mapping.amount === undefined) {
+    // Sin encabezado de monto: la columna donde más filas tienen un monto con decimales.
+    let best = -1;
+    let bestScore = 0;
+    table.headers.forEach((_, index) => {
+      const score = table.rows.filter((cells) => /\d[.,]\d{2}\s*$/.test(cells[index]) && parseMoney(cells[index]) > 0).length;
+      if (score > bestScore) { best = index; bestScore = score; }
+    });
+    if (best >= 0) mapping.amount = best;
+  }
+  return mapping;
+}
+
+function phoneDigitsIn(text) {
+  const joined = String(text || '').replace(/(\d)[\s-](?=\d)/g, '$1');
+  return (joined.match(/\d{8,11}/g) || []).map((digits) => digits.slice(-8));
+}
+
+// Busca al alumno de una fila: carné, teléfono o nombre (palabras en común, sin tildes).
+// «alta» se preselecciona y se marca; «media» se preselecciona sin marcar.
+function matchReconcileStudent(item) {
+  const students = state.students;
+  const allText = normalizeSearchText(item.cells.join(' '));
+  const card = allText.match(/\bim[\s-]?(\d{3,6})\b/);
+  if (card) {
+    const found = students.find((student) => student.id.replace(/\D/g, '').replace(/^0+/, '') === card[1].replace(/^0+/, ''));
+    if (found) return { studentId: found.id, confidence: 'alta', why: 'carné' };
+  }
+  // Celda por celda: juntas, un teléfono y el número de la celda de al lado se pegarían.
+  const phones = new Set([...phoneDigitsIn(item.phone), ...item.cells.flatMap((value) => phoneDigitsIn(value))]);
+  if (phones.size) {
+    const byPhone = students.filter((student) => {
+      const digits = String(student.phone || '').replace(/\D/g, '').slice(-8);
+      return digits.length === 8 && phones.has(digits);
+    });
+    if (byPhone.length === 1) return { studentId: byPhone[0].id, confidence: 'alta', why: 'teléfono' };
+  }
+  const source = normalizeSearchText(item.name || item.cells.join(' '));
+  const words = new Set(source.split(/[^a-z]+/).filter((word) => word.length >= 3));
+  if (!words.size) return { studentId: '', confidence: 'ninguna', why: '' };
+  const scored = students.map((student) => {
+    const tokens = [...new Set(normalizeSearchText(student.name).split(/[^a-z]+/).filter((word) => word.length >= 3))];
+    const hits = tokens.filter((word) => words.has(word)).length;
+    const balance = balanceOf(state.payments.find((pay) => pay.studentId === student.id && pay.period === item.period));
+    return { student, hits, all: tokens.length > 0 && hits === tokens.length, sameAmount: balance > 0 && sameAmount(balance, item.amount) };
+  }).filter((entry) => entry.hits > 0)
+    .sort((a, b) => (b.hits - a.hits) || (Number(b.all) - Number(a.all)) || (Number(b.sameAmount) - Number(a.sameAmount)));
+  if (!scored.length) return { studentId: '', confidence: 'ninguna', why: '' };
+  const [top, second] = scored;
+  const tied = second && second.hits === top.hits && second.all === top.all && second.sameAmount === top.sameAmount;
+  if (tied) return { studentId: '', confidence: 'ninguna', why: '', candidates: scored.slice(0, 5).map((entry) => entry.student.id) };
+  // Si solo el monto separa a dos alumnos con el mismo nombre, se propone pero no se marca.
+  const byAmountOnly = second && second.hits === top.hits && second.all === top.all;
+  const confidence = top.hits >= 2 && !byAmountOnly ? 'alta' : 'media';
+  const why = byAmountOnly ? 'homonimo' : (top.hits < 2 ? 'una_palabra' : 'nombre');
+  return { studentId: top.student.id, confidence, why, candidates: scored.slice(0, 5).map((entry) => entry.student.id) };
+}
+
+function reconcileHash(text) {
+  let hash = 5381;
+  for (const char of text) hash = ((hash * 33) ^ char.charCodeAt(0)) >>> 0;
+  return hash.toString(36);
+}
+
+function reconcileReference(item) {
+  return normalizeSearchText(item.reference).replace(/[^a-z0-9]/g, '').slice(0, 60);
+}
+
+// La fecha de la fila como AAAAMMDD (o sus dígitos). Sin fecha, el mes del listado
+// («M202611»), para que el pago de un mes no choque con el del mes siguiente.
+function reconcileDatePart(item, period) {
+  const text = String(item.date || '').trim();
+  let parts = text.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})/);
+  if (parts) return `${parts[1]}${parts[2].padStart(2, '0')}${parts[3].padStart(2, '0')}`;
+  parts = text.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{2}|\d{4})\b/);
+  if (parts) return `${parts[3].length === 2 ? `20${parts[3]}` : parts[3]}${parts[2].padStart(2, '0')}${parts[1].padStart(2, '0')}`;
+  return text.replace(/\D/g, '').slice(0, 14) || `M${String(period).replace(/\D/g, '')}`;
+}
+
+// Clave fija de cada pago del listado, sin depender del origen elegido en pantalla:
+// referencia (o huella del nombre) + monto + fecha, y cuántas filas iguales van antes.
+// Dos pagos con la misma referencia genérica no comparten clave, y el mismo pagador en
+// el listado de otro mes tampoco.
+function reconcileKey(item, seen, period) {
+  const reference = reconcileReference(item);
+  const body = reference ? `R${reference}` : `H${reconcileHash(normalizeSearchText(item.name || item.cells.join(' ')))}`;
+  const base = `CONC-${body}-${toCents(item.amount)}-${reconcileDatePart(item, period)}`;
+  const count = (seen.get(base) || 0) + 1;
+  seen.set(base, count);
+  return count > 1 ? `${base}-${count}` : base;
+}
+
+// Partes de la clave CONC-…: [cuerpo, centavos, fecha, n].
+function reconcileKeyParts(key) {
+  const parts = String(key || '').split('-');
+  return parts[0] === 'CONC' ? parts.slice(1) : null;
+}
+
+// Palabras de una referencia guardada («VisaLink · 02/11/2026 · ref 771201 · «Nico»» →
+// visalink, 771201, nico…), para comparar referencias completas y no pedazos de una fecha.
+function referenceTokens(text) {
+  const raw = String(text || '');
+  const clean = (value) => normalizeSearchText(value).replace(/[^a-z0-9]/g, '');
+  const tokens = raw.split(/[\s·,;:|/«»()]+/).map(clean).filter((token) => token.length >= 5);
+  const whole = clean(raw);
+  return whole.length >= 3 ? [whole, ...tokens] : tokens;
+}
+
+// La fila de totales del reporte («Total», «Totales: 4,670.00») no es un pago; una
+// descripción como «PAGO TOTAL NOVIEMBRE» sí lo es.
+function isReconcileTotalRow(item) {
+  const label = (value) => normalizeSearchText(value).replace(/[q\d.,:\s-]+$/, '').trim();
+  const totals = ['total', 'totales', 'subtotal', 'sub total', 'total general', 'gran total', 'suma'];
+  const isLabel = (value) => totals.includes(label(value));
+  if (!item.cells.some(isLabel)) return false;
+  return (!item.reference || isLabel(item.reference)) && (!item.name || isLabel(item.name));
+}
+
+function reconcileNotes(source, item) {
+  return [source, item.date, item.reference ? `ref ${item.reference}` : '', item.name ? `«${item.name}»` : '']
+    .filter(Boolean).join(' · ').slice(0, 200);
+}
+
+function buildReconcileItems() {
+  const r = reconcileState();
+  const { table, mapping } = r;
+  if (!table) { r.items = []; return; }
+  const seen = new Map();
+  // Misma tabla: lo que administración ya eligió (o registró) en cada fila se conserva.
+  const previous = new Map(r.items.map((item) => [item.index, item]));
+  r.items = table.rows.map((cells, index) => {
+    const pick = (field) => (mapping[field] === undefined ? '' : String(cells[mapping[field]] || '').trim());
+    const item = { index, cells, amount: parseMoney(pick('amount')), name: pick('name'), date: pick('date'), reference: pick('reference'), phone: pick('phone'), period: r.period };
+    if (!(item.amount > 0) || isReconcileTotalRow(item)) return { ...item, skip: true };
+    item.amount = roundMoney(item.amount);
+    item.key = reconcileKey(item, seen, r.period);
+    item.notes = reconcileNotes(r.source, item);
+    const before = previous.get(index);
+    if (before?.result?.ok && !before.skip) return { ...before };
+    if (before?.manual && !before.skip) return { ...item, studentId: before.studentId, period: before.manualPeriod ? before.period : item.period, manualPeriod: before.manualPeriod, include: before.include, manual: true, confidence: before.confidence, candidates: before.candidates, result: before.result };
+    const match = matchReconcileStudent(item);
+    return { ...item, ...match, include: null, result: before?.result || null };
+  });
+  evaluateReconcileItems();
+}
+
+// Estado de cada fila contra los pagos ya registrados y las filas de arriba (dos pagos
+// del mismo alumno y mes en el mismo listado se suman).
+function evaluateReconcileItems() {
+  const r = reconcileState();
+  const running = new Map();
+  const allAbonos = state.payments.flatMap((pay) => abonosOf(pay).map((abono) => ({ pay, abono })));
+  const byKey = new Map(allAbonos.filter(({ abono }) => abono.key).map((entry) => [entry.abono.key, entry]));
+  // Una referencia que sale en varias filas de este listado no identifica a un pago.
+  const refCount = new Map();
+  r.items.forEach((item) => {
+    const reference = !item.skip && reconcileReference(item);
+    if (reference) refCount.set(reference, (refCount.get(reference) || 0) + 1);
+  });
+  for (const item of r.items) {
+    if (item.skip) continue;
+    // La misma fila ya registrada (misma clave), aunque fuera con otro origen o a otro
+    // alumno elegido a mano. Se avisa dónde quedó, sin cambiar el alumno ni el mes de la fila.
+    // Si la clave está en otro alumno o mes (una línea igual de otro listado), la fila no se
+    // bloquea: sale como posible repetido y, si se marca, se registra con su propia clave.
+    const sameAs = (entry) => Boolean(entry && entry.pay.studentId === item.studentId && entry.pay.period === item.period);
+    const primary = byKey.get(item.key);
+    // La misma nota (origen, fecha, referencia y pagador) es la recarga del mismo listado,
+    // aunque esta vez se proponga otro alumno o mes: sigue «Ya cargado».
+    const sameLineAgain = Boolean(primary && primary.abono.reference === item.notes);
+    const elsewhere = Boolean(primary && !sameAs(primary) && !sameLineAgain);
+    item.submitKey = elsewhere ? `${item.key}-x` : item.key;
+    const loaded = elsewhere ? (byKey.get(item.submitKey) || primary) : primary;
+    item.loadedSame = sameAs(loaded);
+    if (loaded && (item.loadedSame || sameLineAgain || !item.studentId)) {
+      const registered = item.result?.ok && item.loadedSame;
+      item.status = registered ? 'registrado' : 'ya_cargado';
+      item.detail = registered ? 'Registrado.' : `Ya se registró: ${loaded.pay.student} · ${loaded.pay.studentId}, ${loaded.pay.month}.`;
+      item.include = false;
+      continue;
+    }
+    if (item.result?.ok) { item.status = 'registrado'; item.detail = 'Registrado.'; item.include = false; continue; }
+    const student = studentById(item.studentId);
+    if (!student) {
+      item.status = 'sin_alumno';
+      item.detail = item.candidates?.length ? 'Varios alumnos coinciden: elige uno.' : 'No se encontró al alumno: elígelo.';
+      item.include = false;
+      continue;
+    }
+    const required = requiredPaymentFor(student.id, item.period);
+    const existing = required.existing;
+    const month = monthLabel(parseDayKey(`${item.period}-01`));
+    let status;
+    let detail;
+    if (existing?.status === 'Pagado') {
+      status = 'pagado';
+      detail = `${month} ya está pagado.`;
+    } else if (required.amount === null) {
+      status = 'sin_cuota';
+      detail = student.plan ? 'Su plan no tiene cuota conocida.' : 'No tiene plan cargado (Completar datos).';
+    } else {
+      const runKey = `${student.id}|${item.period}`;
+      const paidBefore = roundMoney(paidAmountOf(existing) + (running.get(runKey) || 0));
+      const balance = roundMoney(required.amount - paidBefore);
+      // Un abono del mismo monto ya registrado (por ejemplo, a mano en recepción) puede ser este
+      // mismo pago; y la misma referencia en un pago de cualquier alumno, también (comparada
+      // completa; de otro listado, solo si es de la misma fecha).
+      const reference = reconcileReference(item);
+      const datePart = reconcileDatePart(item, r.period);
+      // Sin fecha ni referencia: la misma línea (nombre y monto) de un listado de otro mes.
+      const keyParts = reconcileKeyParts(item.key);
+      const sameLine = !reference && datePart.startsWith('M') && allAbonos.find(({ abono }) => {
+        const parts = reconcileKeyParts(abono.key);
+        return parts && abono.key !== item.key && parts[0] === keyParts[0] && parts[1] === keyParts[1] && String(parts[2]).startsWith('M');
+      });
+      const sameRef = reference && refCount.get(reference) === 1 && allAbonos.find(({ abono }) => {
+        const keyParts = reconcileKeyParts(abono.key);
+        if (keyParts) return keyParts[0] === `R${reference}` && keyParts[2] === datePart;
+        return referenceTokens(abono.reference).includes(reference);
+      });
+      const other = elsewhere ? primary : sameLine;
+      const twin = other
+        ? { amount: other.abono.amount, method: other.abono.method, date: `${other.pay.student} · ${other.pay.studentId}, ${other.pay.month}`, sameLine: true }
+        : sameRef
+        ? { amount: sameRef.abono.amount, method: sameRef.abono.method, date: `${sameRef.abono.date || sameRef.abono.paidAt}, ${sameRef.pay.student}, ${sameRef.pay.month}`, sameRef: true }
+        : abonosOf(existing).find((abono) => sameAmount(abono.amount, item.amount));
+      if (balance <= 0) {
+        status = 'pagado';
+        detail = `${month} queda cubierto con las filas de arriba.`;
+      } else if (toCents(item.amount) > toCents(balance)) {
+        status = 'excede';
+        detail = `Pasa del saldo de ${month} (Q ${formatAmount(balance)}). Regístralo a mano repartido.`;
+      } else if (twin) {
+        status = 'duplicado';
+        detail = twin.sameLine
+          ? `Esta misma línea ya se registró: Q ${formatAmount(twin.amount)} a ${twin.date}. Márcalo solo si es otro pago.`
+          : twin.sameRef
+          ? `La referencia ${item.reference} ya está en un pago de Q ${formatAmount(twin.amount)} (${twin.date}). Márcalo solo si es otro pago.`
+          : `Ya tiene un abono igual: Q ${formatAmount(twin.amount)} por ${twin.method} (${twin.date || twin.paidAt}). Márcalo solo si es otro pago.`;
+      } else if (sameAmount(item.amount, balance)) {
+        status = 'completo';
+        detail = paidBefore ? `Completa ${month}.` : `Cubre ${month}.`;
+      } else {
+        status = 'abono';
+        detail = `Abono: quedan Q ${formatAmount(roundMoney(balance - item.amount))} de ${month}.`;
+      }
+      if (required.source === 'abrir_mes' && ['completo', 'abono', 'duplicado'].includes(status)) detail += ` Abre el cobro de ${month}.`;
+    }
+    item.status = status;
+    item.detail = detail;
+    // Un posible repetido se puede registrar, pero nunca va marcado de entrada.
+    const ready = ['completo', 'abono', 'duplicado'].includes(status);
+    if (!ready) item.include = false;
+    else if (item.include === null) item.include = status !== 'duplicado' && item.confidence === 'alta';
+    if (item.include) {
+      const runKey = `${student.id}|${item.period}`;
+      running.set(runKey, roundMoney((running.get(runKey) || 0) + item.amount));
+    }
+  }
+}
+
+const RECONCILE_STATUS = {
+  completo: ['Listo', 'is-paid'],
+  abono: ['Abono', 'is-paid'],
+  registrado: ['Registrado', 'is-paid'],
+  sin_alumno: ['Sin alumno', 'is-due'],
+  duplicado: ['¿Repetido?', 'is-mora'],
+  excede: ['Revisar monto', 'is-mora'],
+  pagado: ['Ya pagado', ''],
+  ya_cargado: ['Ya cargado', ''],
+  sin_cuota: ['Sin plan', 'is-mora']
+};
+
+function reconcilePeriodOptions(selected) {
+  const base = new Date(TODAY.getFullYear(), TODAY.getMonth(), 1);
+  const periods = [-2, -1, 0, 1].map((offset) => monthKey(new Date(base.getFullYear(), base.getMonth() + offset, 1)));
+  if (!periods.includes(selected)) periods.push(selected);
+  return periods.sort().map((value) => `<option value="${escapeHtml(value)}" ${value === selected ? 'selected' : ''}>${escapeHtml(monthLabel(parseDayKey(`${value}-01`)))}</option>`).join('');
+}
+
+function reconcileStudentOptions(item) {
+  const sorted = [...state.students].sort((a, b) => a.name.localeCompare(b.name, 'es'));
+  const suggested = (item.candidates || []).map((id) => studentById(id)).filter(Boolean);
+  const option = (student) => `<option value="${escapeHtml(student.id)}" ${student.id === item.studentId ? 'selected' : ''}>${escapeHtml(student.name)} · ${escapeHtml(student.id)}</option>`;
+  return `<option value="">— Elige al alumno —</option>${suggested.length ? `<optgroup label="Sugeridos">${suggested.map(option).join('')}</optgroup><optgroup label="Todos">` : ''}${sorted.filter((student) => !suggested.includes(student)).map(option).join('')}${suggested.length ? '</optgroup>' : ''}`;
+}
+
+function countLabel(value, one, many) {
+  return `${value} ${value === 1 ? one : many}`;
+}
+
+function reconcileResultsMarkup() {
+  const r = reconcileState();
+  if (!r.table) return '';
+  const items = r.items.filter((item) => !item.skip);
+  const skipped = r.items.length - items.length;
+  const chosen = items.filter((item) => item.include);
+  const total = roundMoney(chosen.reduce((sum, item) => sum + item.amount, 0));
+  const count = (status) => items.filter((item) => item.status === status).length;
+  const mappingMarkup = RECONCILE_FIELDS.map(([field, label]) => `
+    <label class="field"><span>${escapeHtml(label)}</span><select data-reconcile-map="${field}"><option value="">${field === 'amount' ? '— Elige la columna —' : '(ninguna)'}</option>${r.table.headers.map((header, index) => `<option value="${index}" ${r.mapping[field] === index ? 'selected' : ''}>${escapeHtml(header)}</option>`).join('')}</select></label>`).join('');
+  const rows = items.map((item) => {
+    const [label, pill] = RECONCILE_STATUS[item.status] || ['Revisar', 'is-due'];
+    const ready = ['completo', 'abono', 'duplicado'].includes(item.status);
+    return `<tr data-reconcile-row="${item.index}">
+      <td data-label="Registrar"><input type="checkbox" data-reconcile-include="${item.index}" ${item.include ? 'checked' : ''} ${ready && !r.busy ? '' : 'disabled'} aria-label="Registrar la fila ${item.index + 1}" /></td>
+      <td data-label="Del listado"><strong>${escapeHtml(item.name || item.cells.filter(Boolean).slice(0, 2).join(' · ') || `Fila ${item.index + 1}`)}</strong><small>${escapeHtml([item.date, item.reference ? `ref ${item.reference}` : ''].filter(Boolean).join(' · '))}</small></td>
+      <td data-label="Monto"><strong>Q ${escapeHtml(formatAmount(item.amount))}</strong></td>
+      <td data-label="Alumno"><select data-reconcile-student="${item.index}" ${item.status === 'registrado' || r.busy ? 'disabled' : ''} aria-label="Alumno de la fila ${item.index + 1}">${reconcileStudentOptions(item)}</select>${item.studentId && item.confidence === 'media' && !item.manual ? `<small>${item.why === 'homonimo' ? 'Hay otro alumno con el mismo nombre: revisa que sea este.' : 'Coincide solo una palabra del nombre: revísalo.'}</small>` : ''}</td>
+      <td data-label="Mes"><select data-reconcile-period="${item.index}" ${item.status === 'registrado' || r.busy ? 'disabled' : ''} aria-label="Mes de la fila ${item.index + 1}">${reconcilePeriodOptions(item.period)}</select></td>
+      <td data-label="Estado"><span class="status-pill ${pill}">${escapeHtml(label)}</span><small>${escapeHtml(item.detail || '')}</small></td>
+    </tr>`;
+  }).join('');
+  const matchedIds = new Set(items.filter((item) => item.studentId && (item.include || item.status === 'registrado')).map((item) => `${item.studentId}|${item.period}`));
+  const stillDue = state.payments.filter((pay) => pay.period === r.period && pay.status !== 'Pagado' && !matchedIds.has(`${pay.studentId}|${pay.period}`));
+  return `
+    <section class="section">
+      <div class="section-head"><div><h2>Columnas del listado</h2><p>La app las adivina por el encabezado. Si alguna no es, cámbiala.</p></div></div>
+      <div class="form-grid reconcile-mapping">${mappingMarkup}</div>
+    </section>
+    <section class="section">
+      <div class="section-head"><div><h2>${items.length === 1 ? '1 pago en el listado' : `${items.length} pagos en el listado`}</h2><p>${[
+        countLabel(count('completo') + count('abono'), 'listo', 'listos'),
+        count('sin_alumno') ? `${count('sin_alumno')} sin alumno` : '',
+        count('duplicado') ? countLabel(count('duplicado'), 'posible repetido', 'posibles repetidos') : '',
+        count('pagado') + count('ya_cargado') ? `${count('pagado') + count('ya_cargado')} ${count('pagado') + count('ya_cargado') === 1 ? 'ya estaba' : 'ya estaban'}` : '',
+        count('registrado') ? countLabel(count('registrado'), 'registrado ahora', 'registrados ahora') : '',
+        skipped ? (skipped === 1 ? '1 fila sin monto (o de totales) se ignora' : `${skipped} filas sin monto (o de totales) se ignoran`) : ''
+      ].filter(Boolean).join(' · ')}.</p></div></div>
+      ${r.mapping.amount === undefined ? '<p class="modal-note">Elige arriba la columna del monto para ver los pagos.</p>' : `<div class="table-wrap table-wrap--stack reconcile-table"><table class="data-table"><thead><tr><th scope="col"><span class="sr-only">Registrar</span></th><th scope="col">Del listado</th><th scope="col">Monto</th><th scope="col">Alumno</th><th scope="col">Mes</th><th scope="col">Estado</th></tr></thead><tbody>${rows || '<tr><td colspan="6"><div class="empty-state"><strong>Sin pagos</strong>Ninguna fila tiene un monto mayor que cero.</div></td></tr>'}</tbody></table></div>`}
+      <p class="payment-meta" id="reconcileMessage" role="status">${escapeHtml(r.note || '')}</p>
+      <div class="form-actions"><button class="button button--light" type="button" data-reconcile-reset ${r.busy ? 'disabled' : ''}>Empezar otro listado</button><button class="button button--red" type="button" data-reconcile-register ${chosen.length && !r.busy ? '' : 'disabled'}>${r.busy ? 'Registrando…' : chosen.length ? `Registrar ${chosen.length === 1 ? '1 pago' : `${chosen.length} pagos`} · Q ${escapeHtml(formatAmount(total))}` : 'Marca los pagos a registrar'}</button></div>
+    </section>
+    ${stillDue.length ? `<section class="section">
+      <div class="section-head"><div><h2>Pendientes de ${escapeHtml(monthLabel(parseDayKey(`${r.period}-01`)))} que no salen en este listado</h2><p>${stillDue.length === 1 ? '1 alumno' : `${stillDue.length} alumnos`}. Puede que hayan pagado por otro medio: revísalos en Pagos.</p></div></div>
+      <p class="payment-meta reconcile-missing">${stillDue.slice(0, 40).map((pay) => `${escapeHtml(pay.student)} (Q ${escapeHtml(formatAmount(balanceOf(pay)))})`).join(' · ')}${stillDue.length > 40 ? ` y ${stillDue.length - 40} más` : ''}</p>
+    </section>` : ''}`;
+}
+
+function renderAdminReconcile() {
+  const r = reconcileState();
+  return `
+    <header class="page-heading">
+      <div><p class="eyebrow">Pagos · Conciliación</p><h1>Conciliar<br/>listados.</h1><p>Pega el listado de VisaLink, de transferencias o de débitos automáticos que te comparten el día ${PAYMENT_DUE_DAY}. La app busca a cada alumno y registra solo los pagos que marques.</p></div>
+      <div class="heading-actions"><button class="button button--light" type="button" data-go="pagos">← Volver a Pagos</button></div>
+    </header>
+    <section class="section">
+      <form id="reconcileForm" class="surface-card">
+        <div class="form-grid">
+          <label class="field"><span>Origen del listado</span><select name="source" ${r.busy ? 'disabled' : ''}>${RECONCILE_SOURCES.map((value) => `<option ${value === r.source ? 'selected' : ''}>${escapeHtml(value)}</option>`).join('')}</select></label>
+          <label class="field"><span>Mes que pagan</span><select name="period" ${r.busy ? 'disabled' : ''}>${reconcilePeriodOptions(r.period)}</select></label>
+          <label class="field field--wide"><span>Filas del listado</span><textarea name="raw" rows="6" placeholder="Copia las filas en Excel (con la fila de títulos) y pégalas aquí." ${r.busy ? 'disabled' : ''}>${escapeHtml(r.raw)}</textarea></label>
+          <label class="field field--wide"><span>O sube el archivo en CSV</span><input type="file" name="file" accept=".csv,.txt,.tsv,text/csv,text/plain" ${r.busy ? 'disabled' : ''} /></label>
+        </div>
+        <p class="modal-note">Un Excel (.xlsx) se guarda como «CSV» desde Excel, o se copian y pegan sus filas. El mes se puede cambiar en cada fila.</p>
+        <div class="form-actions"><button class="button button--red" type="submit" ${r.busy ? 'disabled' : ''}>Revisar listado</button></div>
+      </form>
+    </section>
+    <div id="reconcileResults">${reconcileResultsMarkup()}</div>
+  `;
+}
+
+function refreshReconcileResults(focusSelector = null) {
+  const container = elements.content.querySelector('#reconcileResults');
+  if (!container) return;
+  container.innerHTML = reconcileResultsMarkup();
+  if (focusSelector) container.querySelector(focusSelector)?.focus();
+}
+
+function loadReconcileText(text) {
+  const r = reconcileState();
+  r.raw = text;
+  r.table = buildReconcileTable(text);
+  r.note = '';
+  if (!r.table) {
+    r.items = [];
+    r.note = 'No se encontraron filas. Copia las filas del listado (con la fila de títulos) y pégalas.';
+  } else {
+    r.mapping = guessReconcileMapping(r.table);
+    r.items = [];
+    buildReconcileItems();
+  }
+  renderAndFocus();
+}
+
+function handleReconcileSubmit(event) {
+  event.preventDefault();
+  const form = event.target;
+  const r = reconcileState();
+  r.source = form.elements.source.value;
+  r.period = form.elements.period.value;
+  loadReconcileText(form.elements.raw.value);
+}
+
+function handleReconcileFile(input) {
+  const file = input.files?.[0];
+  if (!file) return;
+  if (/\.xlsx?$/i.test(file.name)) {
+    reconcileState().note = '';
+    showToast('Guárdalo como CSV', 'La app no lee archivos de Excel. En Excel: Archivo › Guardar como › CSV. O copia las filas y pégalas.');
+    input.value = '';
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = () => {
+    const form = input.closest('form');
+    const r = reconcileState();
+    r.source = form.elements.source.value;
+    r.period = form.elements.period.value;
+    loadReconcileText(String(reader.result || ''));
+  };
+  reader.onerror = () => showToast('No se pudo leer el archivo', 'Intenta de nuevo o copia y pega las filas.');
+  reader.readAsText(file);
+}
+
+function handleReconcileChange(target) {
+  const r = reconcileState();
+  if (target.matches('#reconcileForm select[name="source"]')) {
+    r.source = target.value;
+    if (r.table) { buildReconcileItems(); refreshReconcileResults(); }
+    return;
+  }
+  if (target.matches('#reconcileForm select[name="period"]')) {
+    // El mes general vale para las filas que nadie cambió a mano.
+    r.period = target.value;
+    if (r.table) buildReconcileItems();
+    refreshReconcileResults();
+    return;
+  }
+  if (target.matches('[data-reconcile-map]')) {
+    const field = target.dataset.reconcileMap;
+    if (target.value === '') delete r.mapping[field];
+    else r.mapping[field] = Number(target.value);
+    buildReconcileItems();
+    refreshReconcileResults(`[data-reconcile-map="${field}"]`);
+    return;
+  }
+  const index = Number(target.dataset.reconcileStudent ?? target.dataset.reconcilePeriod ?? target.dataset.reconcileInclude);
+  const item = r.items.find((entry) => entry.index === index);
+  if (!item) return;
+  item.manual = true;
+  if (target.matches('[data-reconcile-student]')) {
+    // Elegido a mano: cuenta como seguro y se marca si está listo.
+    item.studentId = target.value;
+    item.confidence = target.value ? 'alta' : 'ninguna';
+    item.include = null;
+  } else if (target.matches('[data-reconcile-period]')) {
+    item.period = target.value;
+    item.manualPeriod = true;
+    item.include = null;
+  } else {
+    item.include = target.checked;
+  }
+  evaluateReconcileItems();
+  const attr = target.dataset.reconcileStudent !== undefined ? 'data-reconcile-student' : target.dataset.reconcilePeriod !== undefined ? 'data-reconcile-period' : 'data-reconcile-include';
+  refreshReconcileResults(`[${attr}="${index}"]`);
+}
+
+async function registerReconcileItems() {
+  const r = reconcileState();
+  const chosen = r.items.filter((item) => !item.skip && item.include);
+  if (!chosen.length || r.busy) return;
+  r.busy = true;
+  r.note = '';
+  refreshReconcileResults();
+  let ok = 0;
+  let failed = 0;
+  for (const item of chosen) {
+    try {
+      const prepared = preparePaymentRecord({ studentId: item.studentId, period: item.period, amount: item.amount, method: r.source, reference: item.notes });
+      const key = item.submitKey || item.key;
+      prepared.abono.key = key;
+      if (isSupabaseConnected) {
+        const server = await syncRemotePayment({
+          studentCardId: item.studentId,
+          amount: item.amount,
+          method: r.source,
+          period: item.period,
+          receiptNumber: null,
+          notes: item.notes,
+          idempotencyKey: key
+        });
+        const confirmed = server.recordedAt ? new Date(server.recordedAt) : TODAY;
+        Object.assign(prepared.abono, { id: server.id, amount: server.amount, method: server.method, reference: server.reference ?? item.notes, paidAt: dayKey(confirmed), date: shortDate(confirmed) });
+      }
+      const record = buildMonthRecord(prepared);
+      try {
+        commitPaymentRecord({ ...prepared, record });
+      } catch (error) {
+        if (!isSupabaseConnected) throw error;
+        state.payments = [record, ...state.payments.filter((pay) => !(pay.studentId === record.studentId && pay.period === record.period))];
+      }
+      item.result = { ok: true };
+      ok += 1;
+    } catch (err) {
+      item.result = { ok: false, error: isSupabaseConnected ? paymentErrorText(err) : err.message };
+      failed += 1;
+    }
+  }
+  r.busy = false;
+  if (isSupabaseConnected) {
+    try {
+      const remotePayments = await fetchRemotePayments(state.students);
+      if (Array.isArray(remotePayments)) {
+        state.payments = remotePayments;
+        persistOrWarn(state);
+      }
+    } catch (err) {
+      console.warn('[In Motion] No se pudieron recargar los pagos:', err.message);
+    }
+  }
+  // Las filas con error quedan como estaban para corregirlas y reintentar. Si la base sí
+  // la guardó (se perdió la respuesta), al recargar sale como ya registrada y cuenta como hecha.
+  r.items.forEach((item) => { if (item.result && !item.result.ok) item.include = null; });
+  evaluateReconcileItems();
+  ok = 0;
+  failed = 0;
+  // Una fila cuenta como registrada si su propio pago quedó en la base: su llamada salió
+  // bien, o su clave está en un abono de ese mismo alumno y mes (se perdió la respuesta).
+  for (const item of chosen) {
+    if (item.status === 'registrado' || (item.status === 'ya_cargado' && item.loadedSame)) {
+      ok += 1;
+      item.status = 'registrado';
+      item.detail = 'Registrado.';
+    } else {
+      failed += 1;
+      if (item.result && !item.result.ok) item.detail = item.result.error;
+    }
+  }
+  r.note = failed
+    ? `${ok === 1 ? 'Se registró' : 'Se registraron'} ${ok} de ${chosen.length}. ${failed === 1 ? '1 fila no se pudo registrar' : `${failed} filas no se pudieron registrar`}: mira el estado de cada una.`
+    : `Listo: ${ok === 1 ? 'se registró 1 pago' : `se registraron ${ok} pagos`}. Puedes volver a cargar este listado sin duplicar nada.`;
+  refreshReconcileResults();
+  showToast(failed ? 'Conciliación con pendientes' : 'Conciliación lista', r.note);
 }
 
 function renderAdminAttendance() {
@@ -5066,7 +5839,7 @@ function childCardMarkup(child) {
       <p class="eyebrow" style="margin-top:20px">Última asistencia</p>
       <p class="payment-meta">${last ? `${escapeHtml(last.label)} · ${escapeHtml(last.className)}` : 'Sin registros todavía.'}</p>
       <p class="eyebrow" style="margin-top:20px">Mensualidad · ${escapeHtml(monthName(TODAY))}</p>
-      <h3>${payment ? escapeHtml(`Q ${formatAmount(payment.amount)}`) : escapeHtml(priceText(planForStudent(child.id).price))} <span class="status-pill ${paid ? 'is-paid' : (paymentStatus(payment) === 'En mora' ? 'is-mora' : 'is-due')}">${escapeHtml(paymentStatus(payment))}</span></h3>
+      <h3>${payment ? escapeHtml(`Q ${formatAmount(shownMonthAmount(payment))}`) : escapeHtml(priceText(planForStudent(child.id).price))} <span class="status-pill ${paid ? 'is-paid' : (paymentStatus(payment) === 'En mora' ? 'is-mora' : 'is-due')}">${escapeHtml(paymentStatus(payment))}</span></h3>
       <p class="payment-meta">${escapeHtml(planForStudent(child.id).planName)}${planReviewTag(planForStudent(child.id))}${payment ? '' : ' · cuota del plan, sin registro este mes'}</p>
       <div class="form-actions">
         <button class="button button--light button--small" type="button" data-child-payment="${escapeHtml(child.id)}" aria-label="Ver mensualidad de ${escapeHtml(child.name)}">Ver mensualidad</button>
@@ -6169,6 +6942,7 @@ const renderers = {
   'admin:inicio': renderAdminHome,
   'admin:alumnos': renderAdminStudents,
   'admin:pagos': renderAdminPayments,
+  'admin:conciliar': renderAdminReconcile,
   'admin:datos': renderAdminAcademyData,
   'admin:asistencia': () => (CLASS_LIST_ENABLED ? renderAdminAttendance() : attendanceComingSoon()),
   'admin:lista': () => (CLASS_LIST_ENABLED ? renderTeacherAttendance() : attendanceComingSoon()),
@@ -6506,13 +7280,13 @@ function openPaymentModal(studentId = null, period = monthKey(TODAY)) {
         <div class="form-grid">
           <label class="field field--wide"><span>Alumno</span><select name="studentId" required data-student-search>${[...state.students].sort((a, b) => a.name.localeCompare(b.name, 'es')).map((item) => `<option value="${escapeHtml(item.id)}" data-search="${studentSearchText(item)}" ${item.id === student.id ? 'selected' : ''}>${escapeHtml(item.name)} · ${escapeHtml(item.id)}</option>`).join('')}</select></label>
           <label class="field"><span>Concepto</span><select name="concept"><option value="mensualidad">Mensualidad</option>${Object.entries(EXTRA_PAYMENT_CONCEPTS).map(([value, item]) => `<option value="${escapeHtml(value)}">${escapeHtml(item.label)} · Q ${escapeHtml(formatAmount(item.amount()))}</option>`).join('')}</select></label>
-          <label class="field"><span>Monto (Q) · liquidación completa</span><input name="amount" type="number" min="0.01" step="0.01" required readonly /></label>
+          <label class="field"><span>Monto (Q)</span><input name="amount" type="number" inputmode="decimal" min="0.01" step="0.01" required /></label>
           <label class="field"><span>Método</span><select name="method" required>${PAYMENT_METHODS.map((value) => `<option>${escapeHtml(value)}</option>`).join('')}</select></label>
           <label class="field"><span>Mes aplicado</span><select name="period">${periods.map((value) => `<option value="${escapeHtml(value)}" ${value === period ? 'selected' : ''}>${escapeHtml(monthLabel(parseDayKey(`${value}-01`)))}</option>`).join('')}</select></label>
           <label class="field"><span>Referencia</span><input name="reference" placeholder="Ej. voucher 1842" /></label>
           <label class="field field--wide field-check" data-promo-field hidden><input type="checkbox" name="promo" /> <span>Promoción alumno nuevo: primer mes a Q ${escapeHtml(formatAmount(SCHEDULE_FEES.newStudentFirstMonth))}</span></label>
         </div>
-        <p class="modal-note">Este registro no realiza ningún cobro, no procesa tarjetas y no genera factura FEL. El importe sale de la deuda del mes o, si no hay ninguna registrada, de la cuota del plan del alumno.</p>
+        <p class="modal-note">Este registro no realiza ningún cobro, no procesa tarjetas y no genera factura FEL. Pon el monto que la persona pagó: si es menor que el saldo del mes, queda como abono y el resto sigue pendiente.</p>
         <p class="payment-meta" id="paymentFormMessage" role="status"></p>
         <div class="form-actions"><button class="button button--light" type="button" data-close-modal>Cancelar</button><button class="button button--red" type="submit">Guardar pago</button></div>
       </form>
@@ -6523,7 +7297,7 @@ function openPaymentModal(studentId = null, period = monthKey(TODAY)) {
 
 // Nunca pagó una mensualidad: puede llevar la promoción de alumno nuevo.
 function isNewStudentForPromo(studentId) {
-  return !state.payments.some((item) => item.studentId === studentId && item.status === 'Pagado');
+  return !state.payments.some((item) => item.studentId === studentId && paidAmountOf(item) > 0);
 }
 
 function extraPaymentFor(studentId, concept, period) {
@@ -6545,6 +7319,8 @@ function updatePaymentForm() {
     if (promoField) promoField.hidden = true;
     form.elements.amount.value = extra.amount();
     form.elements.amount.readOnly = true;
+    form.elements.amount.removeAttribute('max');
+    delete form.dataset.amountFor;
     submitButton.disabled = Boolean(done);
     message.textContent = done
       ? `${extra.label} de ${monthLabel(parseDayKey(`${period}-01`))} ya está registrada (${done.date}).`
@@ -6554,31 +7330,59 @@ function updatePaymentForm() {
   const required = requiredPaymentFor(studentId, period);
   const existing = required.existing;
   const paid = existing?.status === 'Pagado';
-  const promoAvailable = !paid && required.amount !== null && isNewStudentForPromo(studentId) && required.amount > SCHEDULE_FEES.newStudentFirstMonth;
+  const paidBefore = paidAmountOf(existing);
+  const monthText = monthLabel(parseDayKey(`${period}-01`));
+  // La promo cambia la cuota de una mensualidad ya abierta y sin abonos (apply_new_student_promo).
+  const promoAvailable = !paid && !paidBefore && required.amount !== null && required.source !== 'abrir_mes'
+    && isNewStudentForPromo(studentId) && required.amount > SCHEDULE_FEES.newStudentFirstMonth;
   if (promoField) promoField.hidden = !promoAvailable;
   if (!promoAvailable && form.elements.promo) form.elements.promo.checked = false;
   const usePromo = promoAvailable && form.elements.promo?.checked;
-  form.elements.amount.value = required.amount === null ? '' : (usePromo ? SCHEDULE_FEES.newStudentFirstMonth : required.amount);
-  // El importe es derivado en los dos casos: queda visible pero no editable,
-  // porque un valor distinto solo puede ser un abono o un descuento y la demo
-  // no los admite. registerPayment igual lo revalida.
-  form.elements.amount.readOnly = true;
-  submitButton.disabled = paid || required.amount === null;
-  if (usePromo) {
-    message.textContent = `Primer mes de alumno nuevo: Q ${formatAmount(SCHEDULE_FEES.newStudentFirstMonth)} en lugar de Q ${formatAmount(required.amount)}.`;
+  const fee = required.amount === null ? null : (usePromo ? SCHEDULE_FEES.newStudentFirstMonth : required.amount);
+  const balance = fee === null ? null : Math.max(0, roundMoney(fee - paidBefore));
+  const amountInput = form.elements.amount;
+  amountInput.readOnly = false;
+  if (balance) amountInput.max = String(balance);
+  else amountInput.removeAttribute('max');
+  // El monto se propone con el saldo del mes solo al cambiar de alumno, mes o promo:
+  // lo que la persona escribió se respeta.
+  const amountFor = `${studentId}|${period}|${usePromo ? 'promo' : ''}|${balance}`;
+  if (form.dataset.amountFor !== amountFor) {
+    amountInput.value = balance ? balance : '';
+    form.dataset.amountFor = amountFor;
+  }
+  const typed = Number(amountInput.value);
+  const typedValid = amountInput.value !== '' && Number.isFinite(typed) && typed > 0 && Math.abs(typed * 100 - Math.round(typed * 100)) < 1e-6;
+  const overBalance = typedValid && balance !== null && toCents(typed) > toCents(balance);
+  submitButton.disabled = paid || !balance || overBalance || (amountInput.value !== '' && !typedValid);
+  if (paid) {
+    message.textContent = 'Este mes ya está pagado. El registro existente se conserva y no se puede reemplazar desde este formulario.';
     return;
   }
-  document.querySelector('#paymentFormMessage').textContent = paid
-    ? 'Este mes ya está pagado. El registro existente se conserva y no se puede reemplazar desde este formulario.'
-    : required.amount === null
-    ? (required.source === 'sin_cuota'
-        ? (isSupabaseConnected && !studentById(studentId)?.plan
-            ? 'Este alumno todavía no tiene su plan cargado, así que no hay mensualidad que registrar. Se habilita en cuanto se cargue su plan.'
-            : `Este alumno no tiene mensualidad registrada para ${monthLabel(parseDayKey(`${period}-01`))}. Elige otro mes o revisa su plan.`)
-        : `El plan guardado de este alumno (${required.plan.planName}) no figura en el catálogo de la demo. No se le asigna una cuota: corrige el plan del alumno antes de registrar el pago.`)
-    : existing
-      ? `Se registrará la mensualidad completa de ${monthLabel(parseDayKey(`${period}-01`))}: Q ${formatAmount(required.amount)}.`
-      : `Mensualidad de ${monthLabel(parseDayKey(`${period}-01`))}: Q ${formatAmount(required.amount)}. No cancela deudas de otros meses.`;
+  if (required.amount === null) {
+    message.textContent = required.source === 'sin_cuota'
+      ? (isSupabaseConnected && !studentById(studentId)?.plan
+          ? 'Este alumno todavía no tiene su plan cargado, así que no hay mensualidad que registrar. Cárgalo en «Completar datos» y vuelve a intentarlo.'
+          : `Este alumno no tiene mensualidad registrada para ${monthText}. Elige otro mes o revisa su plan.`)
+      : `El plan guardado de este alumno (${studentById(studentId)?.plan || 'sin nombre'}) no figura en el catálogo. No se le asigna una cuota: corrige el plan del alumno antes de registrar el pago.`;
+    return;
+  }
+  if (!balance) {
+    message.textContent = `La mensualidad de ${monthText} ya está cubierta.`;
+    return;
+  }
+  const parts = [];
+  parts.push(paidBefore
+    ? `${monthText}: cuota Q ${formatAmount(fee)}, ya abonó Q ${formatAmount(paidBefore)}. Saldo: Q ${formatAmount(balance)}.`
+    : usePromo
+      ? `Primer mes de alumno nuevo: Q ${formatAmount(fee)} en lugar de Q ${formatAmount(required.amount)}.`
+      : `Mensualidad de ${monthText}: Q ${formatAmount(fee)}.`);
+  if (required.source === 'abrir_mes') parts.push(`El cobro de ${monthText} todavía no estaba abierto para este alumno: se abre al guardar, con su plan (${required.plan.planName}).`);
+  if (amountInput.value !== '' && !typedValid) parts.push('Escribe un monto mayor que cero, con dos decimales como máximo.');
+  else if (overBalance) parts.push(`El monto no puede pasar del saldo (Q ${formatAmount(balance)}). Lo que sobre va en otro mes o en otro concepto.`);
+  else if (typedValid && toCents(typed) < toCents(balance)) parts.push(`Queda como abono: el mes sigue pendiente con saldo de Q ${formatAmount(roundMoney(balance - typed))}.`);
+  else if (!paidBefore && !usePromo) parts.push('No cancela deudas de otros meses.');
+  message.textContent = parts.join(' ');
 }
 
 function openNewStudentModal() {
@@ -6659,7 +7463,7 @@ function openStudentPayment() {
     title: paid ? 'Comprobante interno' : payment ? (studentPaymentLabel(student.id, payment) === 'Pendiente' ? 'Mensualidad pendiente' : 'Mensualidad') : 'Mensualidad sin registro',
     eyebrow: monthLabel(TODAY),
     body: `
-      <article class="surface-card"><p class="eyebrow">${escapeHtml(studentPaymentLabel(student.id, payment))}</p><p class="payment-amount">Q ${escapeHtml(payment ? formatAmount(payment.amount) : '—')}</p><p class="payment-meta">${paid ? `${escapeHtml(payment.method)} · ` : ''}${escapeHtml(paymentDateText(payment))}<br/>${escapeHtml(plan.planName)}${planReviewTag(plan)} · ${escapeHtml(priceText(plan.price))}${plan.needsReview ? '' : ' al mes'}</p></article>
+      <article class="surface-card"><p class="eyebrow">${escapeHtml(studentPaymentLabel(student.id, payment))}</p><p class="payment-amount">Q ${escapeHtml(payment ? formatAmount(shownMonthAmount(payment)) : '—')}</p><p class="payment-meta">${paid ? `${escapeHtml(payment.method)} · ` : ''}${escapeHtml(paymentDateText(payment))}${abonoSummary(payment) ? `<br/>${escapeHtml(abonoSummary(payment))}` : ''}<br/>${escapeHtml(plan.planName)}${planReviewTag(plan)} · ${escapeHtml(priceText(plan.price))}${plan.needsReview ? '' : ' al mes'}</p></article>
       <p class="modal-note" style="margin-top:16px">La academia cobra por sus medios habituales. La app solo refleja el registro interno; no hay pasarela ni pago con tarjeta.</p>
     `
   });
@@ -6718,8 +7522,8 @@ function openChildPayment(studentId) {
     body: `
       <article class="surface-card">
         <p class="eyebrow">${escapeHtml(paymentStatus(payment))}</p>
-        <p class="payment-amount">Q ${payment ? escapeHtml(formatAmount(payment.amount)) : '—'}</p>
-        <p class="payment-meta">${paid ? `${escapeHtml(payment.method)} · ` : ''}${escapeHtml(paymentDateText(payment))}<br/>${escapeHtml(planForStudent(child.id).planName)}${planReviewTag(planForStudent(child.id))} · ${escapeHtml(priceText(planForStudent(child.id).price))}${planForStudent(child.id).needsReview ? '' : ' al mes'}</p>
+        <p class="payment-amount">Q ${payment ? escapeHtml(formatAmount(shownMonthAmount(payment))) : '—'}</p>
+        <p class="payment-meta">${paid ? `${escapeHtml(payment.method)} · ` : ''}${escapeHtml(paymentDateText(payment))}${abonoSummary(payment) ? `<br/>${escapeHtml(abonoSummary(payment))}` : ''}<br/>${escapeHtml(planForStudent(child.id).planName)}${planReviewTag(planForStudent(child.id))} · ${escapeHtml(priceText(planForStudent(child.id).price))}${planForStudent(child.id).needsReview ? '' : ' al mes'}</p>
       </article>
       <p class="modal-note" style="margin-top:16px">La academia cobra por sus medios habituales. La app solo refleja el registro interno; no hay pasarela ni pago con tarjeta.</p>
     `
@@ -6731,13 +7535,20 @@ function openChildPayment(studentId) {
 function openReceipt(paymentId) {
   const payment = state.payments.find((item) => item.id === paymentId);
   if (!payment) return;
-  const recordedAt = payment.paidAt ? `${shortDate(parseDayKey(payment.paidAt))} ${parseDayKey(payment.paidAt).getFullYear()}` : payment.date || 'Sin fecha registrada';
+  const abonos = abonosOf(payment);
+  const fullDate = (key, fallback) => (key ? `${shortDate(parseDayKey(key))} ${parseDayKey(key).getFullYear()}` : fallback || 'Sin fecha registrada');
+  const paid = payment.status === 'Pagado';
+  // Un solo pago: el comprobante de siempre. Varios: la lista de abonos del mes.
+  const body = abonos.length <= 1 && paid
+    ? `<article class="surface-card"><p class="eyebrow">Pago registrado</p><p class="payment-amount">Q ${escapeHtml(formatAmount(paidAmountOf(payment)))}</p><h3>${escapeHtml(payment.student)}</h3><p class="payment-meta">Mes aplicado · ${escapeHtml(payment.month)}<br/>Registrado el · ${escapeHtml(fullDate(payment.paidAt, payment.date))}<br/>Método · ${escapeHtml(payment.method)}${payment.reference ? `<br/>Referencia · ${escapeHtml(payment.reference)}` : ''}</p></article>`
+    : `<article class="surface-card"><p class="eyebrow">${paid ? 'Mes pagado en abonos' : 'Abonos del mes'}</p><p class="payment-amount">Q ${escapeHtml(formatAmount(paidAmountOf(payment)))} <small>de Q ${escapeHtml(formatAmount(payment.amount))}</small></p><h3>${escapeHtml(payment.student)}</h3><p class="payment-meta">Mes aplicado · ${escapeHtml(payment.month)}${paid ? '' : `<br/>Saldo pendiente · Q ${escapeHtml(formatAmount(balanceOf(payment)))}`}</p>
+        <ul class="abono-list">${abonos.map((item) => `<li><strong>Q ${escapeHtml(formatAmount(item.amount))}</strong> · ${escapeHtml(item.method)} · ${escapeHtml(fullDate(item.paidAt, item.date))}${item.reference ? `<br/><small>${escapeHtml(item.reference)}</small>` : ''}</li>`).join('')}</ul></article>`;
   openModal({
-    title: 'Comprobante interno',
-    eyebrow: `Registro ${payment.id}`,
+    title: paid ? 'Comprobante interno' : 'Abonos',
+    eyebrow: `${payment.student} · ${payment.month}`,
     body: `
-      <article class="surface-card"><p class="eyebrow">Pago registrado</p><p class="payment-amount">Q ${escapeHtml(formatAmount(payment.amount))}</p><h3>${escapeHtml(payment.student)}</h3><p class="payment-meta">Mes aplicado · ${escapeHtml(payment.month)}<br/>Registrado el · ${escapeHtml(recordedAt)}<br/>Método · ${escapeHtml(payment.method)}${payment.reference ? `<br/>Referencia · ${escapeHtml(payment.reference)}` : ''}</p></article>
-      <p class="modal-note" style="margin-top:16px">Documento de demostración. No es factura FEL ni comprobante tributario.</p>
+      ${body}
+      <p class="modal-note" style="margin-top:16px">Registro interno de la academia. No es factura FEL ni comprobante tributario.</p>
     `
   });
 }
@@ -7863,11 +8674,13 @@ function openWhatsAppPaymentModal(paymentId) {
   if (!payment) return;
   const student = studentById(payment.studentId);
   const firstName = student?.name ? student.name.trim().split(/\s+/)[0] : 'Alumno';
-  const amountStr = formatAmount(payment.amount);
+  // Con abonos se recuerda solo el saldo.
+  const amountStr = formatAmount(balanceOf(payment) || payment.amount);
   const message = generatePaymentReminderMessage({
     firstName,
     month: payment.month,
-    amount: amountStr
+    amount: amountStr,
+    partial: paidAmountOf(payment) > 0
   });
   const rawPhone = student?.phone || '';
   const normalized = normalizePhoneNumber(rawPhone);
@@ -8092,7 +8905,16 @@ function requiredPaymentFor(studentId, period) {
         period
       };
     }
-    if (!mem || !Number.isFinite(Number(mem.price))) {
+    if (!mem) {
+      // Sin mensualidad del mes: el pago la abre con el último plan no cancelado
+      // (migración 015, igual que «Abrir cobros»). Sin plan no hay cuota que inventar.
+      const openPlan = planByName(student?.activePlan === undefined ? student?.plan : student.activePlan);
+      if (openPlan && Number.isFinite(openPlan.price) && openPlan.price > 0) {
+        return { existing, plan: openPlan, source: 'abrir_mes', amount: openPlan.price, period };
+      }
+      return { existing, plan, source: student?.plan && !openPlan ? 'plan_desconocido' : 'sin_cuota', amount: null, period };
+    }
+    if (!Number.isFinite(Number(mem.price))) {
       return {
         existing,
         plan,
@@ -8122,113 +8944,124 @@ function requiredPaymentFor(studentId, period) {
     };
   }
 
-  // Si no hay deuda previa y se consulta el mes en curso, se usa el plan vigente
-  if (period === monthKey(TODAY)) {
-    return {
-      existing: null,
-      plan,
-      source: 'plan',
-      amount: Number.isFinite(plan.price) ? plan.price : null,
-      period
-    };
-  }
-
-  // Para períodos sin información suficiente, no inventar importes
+  // Si no hay deuda previa, se usa el plan vigente (igual que la base desde la 015).
+  // Un plan fuera del catálogo no tiene cuota conocida: no se inventa.
   return {
     existing: null,
     plan,
-    source: 'sin_cuota',
-    amount: null,
+    source: Number.isFinite(plan.price) ? 'plan' : (student?.plan ? 'plan_desconocido' : 'sin_cuota'),
+    amount: Number.isFinite(plan.price) ? plan.price : null,
     period
   };
 }
 
-function requiredPaymentText(required) {
-  if (required.amount === null) {
-    if (required.source === 'sin_cuota') {
-      return `la cuota del período solicitado (${required.period}), pero no existe información suficiente de cuota registrada para ese mes. La academia debe registrar la membresía u obligación antes de procesar el pago`;
-    }
-    return `la cuota del plan guardado (${required.plan.planName}), que no figura en el catálogo de la demo y debe corregirse desde administración antes de registrar un pago`;
-  }
-  return required.source === 'deuda'
-    ? `la mensualidad correspondiente registrada de Q ${formatAmount(required.amount)}`
-    : required.source === 'membresia'
-    ? `la cuota de membresía de Q ${formatAmount(required.amount)} registrada para el período ${required.period}`
-    : `la cuota del ${required.plan.planName}, Q ${formatAmount(required.amount)}`;
-}
-
 // Comparacion en centavos: 450 y 450.00 son el mismo importe.
 function sameAmount(a, b) {
-  return Math.round(Number(a) * 100) === Math.round(Number(b) * 100);
+  return toCents(a) === toCents(b);
 }
 
+function unpayableMonthMessage(required, student) {
+  if (required.source === 'sin_cuota') {
+    return student?.plan
+      ? `Este alumno no tiene mensualidad registrada para ${monthLabel(parseDayKey(`${required.period}-01`))} y su plan no tiene cuota conocida. Revisa su plan en «Completar datos».`
+      : 'Este alumno todavía no tiene su plan cargado, así que no hay mensualidad que registrar. Cárgalo en «Completar datos» y vuelve a intentarlo.';
+  }
+  return `El plan guardado de este alumno (${student?.plan || 'sin nombre'}) no figura en el catálogo, así que no hay cuota que registrar. Corrige el plan del alumno antes de registrar el pago.`;
+}
+
+// Valida un pago o abono de mensualidad sin guardarlo. El monto puede ser menor que el
+// saldo del mes (abono), nunca mayor: lo que sobre va en otro mes o en otro concepto.
 function preparePaymentRecord({ studentId, period, amount, method, reference = '' }) {
   TODAY = new Date();
   const student = studentById(studentId);
   if (!student) throw new Error('Alumno no encontrado.');
-  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(period)) throw new Error('Elige un período válido.');
+  if (!PERIOD_PATTERN.test(String(period))) throw new Error('Elige un período válido.');
   if (!Number.isFinite(amount) || amount <= 0) throw new Error('El monto debe ser mayor que cero.');
+  if (Math.abs(amount * 100 - Math.round(amount * 100)) > 1e-6) throw new Error('El monto puede tener como máximo dos decimales.');
   if (!PAYMENT_METHODS.includes(method)) throw new Error('Método de pago no válido.');
   const required = requiredPaymentFor(student.id, period);
   const existing = required.existing;
   if (existing?.status === 'Pagado') throw new Error('Este mes ya está pagado. El registro existente no se reemplazó.');
-  if (required.amount === null) {
-    if (required.source === 'sin_cuota') {
-      throw new Error(`No existe información suficiente de cuota para el período ${period} y este alumno. No se pueden inventar importes; define la membresía u obligación correspondiente antes de registrar el pago.`);
-    }
-    throw new Error(`El plan guardado de este alumno (${required.plan.planName}) no figura en el catálogo de la demo, así que no hay cuota que registrar. Corrige el plan del alumno antes de registrar el pago.`);
+  if (required.amount === null) throw new Error(unpayableMonthMessage(required, student));
+  const balance = roundMoney(required.amount - paidAmountOf(existing));
+  const month = monthLabel(parseDayKey(`${period}-01`));
+  if (balance <= 0) throw new Error(`La mensualidad de ${month} ya está cubierta.`);
+  if (toCents(amount) > toCents(balance)) {
+    throw new Error(`El saldo de ${month} es Q ${formatAmount(balance)}. Registra hasta ese monto: lo que sobre va en otro mes o en otro concepto.`);
   }
-  if (!sameAmount(amount, required.amount)) {
-    throw new Error(`El registro debe cubrir ${requiredPaymentText(required)}. La demo solo admite liquidaciones completas: no registra abonos, descuentos ni cargos adicionales.`);
-  }
-  const record = {
-    id: existing?.id || nextPaymentId(),
+  const abono = {
+    id: nextPaymentId(),
+    amount: roundMoney(amount),
+    method,
+    paidAt: dayKey(TODAY),
+    date: shortDate(TODAY),
+    reference: String(reference)
+  };
+  return { student, required, existing, abono };
+}
+
+// La mensualidad del mes con un abono más. Queda «Pagado» cuando lo abonado llega a la cuota.
+function buildMonthRecord({ student, required, existing, abono }) {
+  const previous = abonosOf(existing);
+  const abonos = abono.key && previous.some((item) => item.key === abono.key) ? previous : [...previous, abono];
+  const paidAmount = roundMoney(abonos.reduce((sum, item) => sum + item.amount, 0));
+  const complete = toCents(paidAmount) >= toCents(required.amount);
+  const period = required.period;
+  const last = abonos[abonos.length - 1];
+  return {
+    ...(existing || {}),
+    id: existing?.id || abono.id,
     studentId: student.id,
     student: student.name,
     month: monthLabel(parseDayKey(`${period}-01`)),
     period,
-    amount,
-    method,
-    date: shortDate(TODAY),
-    paidAt: dayKey(TODAY),
-    dueDate: existing?.dueDate || null,
-    status: 'Pagado',
-    reference: String(reference)
+    amount: required.amount,
+    paidAmount,
+    abonos,
+    method: complete ? abonosMethodLabel(abonos) : 'Pendiente',
+    date: complete ? last.date : (existing?.date || ''),
+    paidAt: complete ? last.paidAt : null,
+    dueDate: complete ? null : (existing?.dueDate || (required.source === 'abrir_mes' ? `${period}-${String(PAYMENT_DUE_DAY).padStart(2, '0')}` : null)),
+    status: complete ? 'Pagado' : 'Pendiente',
+    reference: complete ? last.reference : (existing?.reference || '')
   };
-  return { student, record, existing };
 }
 
-function commitPaymentRecord({ student, record, existing }) {
-  const nextPayments = existing
+function commitPaymentRecord({ student, required, record }) {
+  const exists = state.payments.some((item) => item.studentId === record.studentId && item.period === record.period);
+  const nextPayments = exists
     ? state.payments.map((item) => (item.studentId === record.studentId && item.period === record.period ? record : item))
     : [record, ...state.payments];
 
-  // Actualizar únicamente la obligación de este período pagado en memoria local
+  // La mensualidad del mes en memoria: se completa al cubrir la cuota y, si el pago
+  // abrió el mes (migración 015), se agrega para que el siguiente abono la encuentre.
   const nextStudents = state.students.map((item) => {
     if (item.id !== student.id) return item;
-    if (!Array.isArray(item.memberships)) return item;
-    const nextMems = item.memberships.map((mem) => {
-      const matchPeriod = (mem.period === record.period) || (mem.start_date && mem.start_date.slice(0, 7) === record.period);
-      if (matchPeriod && mem.status === 'past_due') {
-        return { ...mem, status: 'active' };
-      }
-      return mem;
-    });
+    const mems = Array.isArray(item.memberships) ? item.memberships : [];
+    const matches = (mem) => (mem.period === record.period) || (!mem.period && mem.start_date && mem.start_date.slice(0, 7) === record.period);
+    let nextMems = mems.map((mem) => (matches(mem) && mem.status === 'past_due' && record.status === 'Pagado' ? { ...mem, status: 'active' } : mem));
+    if (isSupabaseConnected && required?.source === 'abrir_mes' && !mems.some((mem) => matches(mem) && mem.status !== 'cancelled')) {
+      nextMems = [{
+        plan_name: required.plan.planName,
+        price: required.amount,
+        status: record.status === 'Pagado' ? 'active' : 'past_due',
+        period: record.period,
+        start_date: `${record.period}-01`,
+        due_date: record.dueDate,
+        created_at: new Date().toISOString()
+      }, ...nextMems];
+    }
     return { ...item, memberships: nextMems };
   });
 
-  const nextState = {
-    ...state,
-    students: nextStudents,
-    payments: nextPayments
-  };
-  persistState(nextState);
+  persistState({ ...state, students: nextStudents, payments: nextPayments });
   return record;
 }
 
 function registerPayment({ studentId, period, amount, method, reference = '' }) {
   const prepared = preparePaymentRecord({ studentId, period, amount, method, reference });
-  return commitPaymentRecord(prepared);
+  const record = buildMonthRecord(prepared);
+  return commitPaymentRecord({ ...prepared, record });
 }
 
 // Deja en memoria la mensualidad del mes con el precio de la promoción, para que la
@@ -8350,11 +9183,17 @@ async function handlePaymentSubmit(event) {
     return;
   }
 
-  const { student, record } = prepared;
-  let remoteConfirmed = false;
+  const { student, abono } = prepared;
 
   // Si está conectado a Supabase, la confirmación remota es obligatoria antes de guardar
   if (isSupabaseConnected) {
+    // Un abono por intento: reintentar el mismo envío (misma clave) no lo duplica,
+    // y un abono nuevo del mismo mes lleva su propia clave.
+    const attempt = `${student.id}|${prepared.required.period}|${abono.amount}|${abono.method}|${abono.reference}`;
+    if (form.dataset.attempt !== attempt) {
+      form.dataset.attempt = attempt;
+      form.dataset.attemptKey = `PAY-${student.id}-${prepared.required.period}-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+    }
     try {
       if (submitBtn) {
         submitBtn.disabled = true;
@@ -8363,29 +9202,27 @@ async function handlePaymentSubmit(event) {
       if (message) message.textContent = '';
       const serverResult = await syncRemotePayment({
         studentCardId: student.id,
-        amount: record.amount,
-        method: record.method,
-        period: record.period,
-        receiptNumber: record.id,
-        notes: record.reference,
-        idempotencyKey: `PAY-${student.id}-${record.period}`
+        amount: abono.amount,
+        method: abono.method,
+        period: prepared.required.period,
+        // El número lo da la base (REC-…): el correlativo local se repetiría entre equipos.
+        receiptNumber: null,
+        notes: abono.reference,
+        idempotencyKey: form.dataset.attemptKey
       });
-      remoteConfirmed = true;
 
-      // El frontend registra y muestra el registro confirmado devuelto por el servidor;
-      // no sustituirlo por la fecha actual ni por datos del intento
+      // El abono que se muestra es el que confirmó el servidor, con su fecha.
       const confirmedDate = serverResult.recordedAt ? new Date(serverResult.recordedAt) : TODAY;
-      record.id = serverResult.id;
-      record.amount = serverResult.amount;
-      record.method = serverResult.method;
-      record.period = serverResult.period;
-      record.reference = serverResult.reference !== undefined && serverResult.reference !== null ? serverResult.reference : record.reference;
-      record.status = 'Pagado';
-      record.paidAt = dayKey(confirmedDate);
-      record.date = shortDate(confirmedDate);
+      abono.id = serverResult.id;
+      abono.amount = serverResult.amount;
+      abono.method = serverResult.method;
+      abono.reference = serverResult.reference ?? abono.reference;
+      abono.paidAt = dayKey(confirmedDate);
+      abono.date = shortDate(confirmedDate);
+      abono.key = form.dataset.attemptKey;
 
       if (serverResult.isDuplicate) {
-        showToast('Pago ya confirmado', `Se recuperó el registro original de ${record.student} (${record.id}) con fecha ${record.date}.`);
+        showToast('Pago ya confirmado', `Este pago de ${student.name} ya estaba guardado (${abono.date}). No se registró dos veces.`);
       }
     } catch (err) {
       if (submitBtn) {
@@ -8393,32 +9230,54 @@ async function handlePaymentSubmit(event) {
         submitBtn.textContent = 'Guardar pago';
       }
       if (message) {
-        message.textContent = `Error remoto: ${err.message}. Puedes corregir o reintentar sin duplicar.`;
+        message.textContent = `${paymentErrorText(err)} Puedes corregir o reintentar sin duplicar.`;
       }
       return;
     }
   }
 
-  // Persistir solo tras confirmación
+  const record = buildMonthRecord(prepared);
   try {
-    commitPaymentRecord(prepared);
-    closeModal();
-    showToast('Pago guardado', `${record.student} · Q ${formatAmount(record.amount)} · ${record.method}`);
-    renderAndFocus();
+    commitPaymentRecord({ ...prepared, record });
   } catch (error) {
-    if (remoteConfirmed) {
-      console.warn('[In Motion] Pago confirmado en servidor pero falló persistencia/render:', error.message);
-      const nextPayments = state.payments.map((item) => (item.studentId === record.studentId && item.period === record.period ? record : item));
-      if (!nextPayments.some((item) => item.id === record.id)) {
-        nextPayments.unshift(record);
-      }
-      state.payments = nextPayments;
-      closeModal();
-      showToast('Pago confirmado en la nube', `El pago (${record.id}) de ${record.student} fue registrado exitosamente en Supabase. Advertencia: ${error.message}.`);
-      renderAndFocus();
-    } else {
+    // Ya quedó en la nube: se muestra aunque este navegador no lo pueda guardar.
+    if (!isSupabaseConnected) {
       if (message) message.textContent = error.message;
+      return;
     }
+    console.warn('[In Motion] Pago confirmado en servidor pero falló persistencia/render:', error.message);
+    state.payments = [record, ...state.payments.filter((item) => !(item.studentId === record.studentId && item.period === record.period))];
+  }
+  closeModal();
+  const balance = balanceOf(record);
+  showToast(balance ? 'Abono guardado' : 'Pago guardado', balance
+    ? `${student.name} · Q ${formatAmount(abono.amount)} · ${abono.method}. Saldo de ${record.month}: Q ${formatAmount(balance)}.`
+    : `${student.name} · Q ${formatAmount(abono.amount)} · ${abono.method}. ${record.month} queda pagado.`);
+  renderAndFocus();
+  if (isSupabaseConnected) refreshRemotePayments();
+}
+
+// Los errores de la base que la app conoce, en claro. Si falta la migración 015, la base
+// vieja rechaza cualquier monto distinto de la cuota exacta o un segundo pago del mes.
+function paymentErrorText(err) {
+  const text = String(err?.message || '');
+  if (/no coincide con la cuota exacta|ya existe un pago registrado para este alumno en el período|No se encontró una cuota o membresía registrada/i.test(text)) {
+    return 'La base todavía no acepta abonos ni montos distintos de la cuota: falta correr la migración 015 (docs/migrations/015_abonos_y_conciliacion.sql) en Supabase.';
+  }
+  return friendlyError(err, 'No se pudo guardar el pago.');
+}
+
+// Vuelve a leer los pagos de la base después de guardar: la cuota y el estado del mes
+// que manda la base reemplazan el cálculo local.
+async function refreshRemotePayments() {
+  try {
+    const remotePayments = await fetchRemotePayments(state.students);
+    if (!Array.isArray(remotePayments)) return;
+    state.payments = remotePayments;
+    persistOrWarn(state);
+    if (activeRole === 'admin' && ['pagos', 'conciliar'].includes(activeRoute) && elements.modalLayer.classList.contains('is-hidden')) renderApp();
+  } catch (err) {
+    console.warn('[In Motion] No se pudieron recargar los pagos:', err.message);
   }
 }
 
@@ -8642,13 +9501,13 @@ function registerWebMcpTools() {
   register({
     name: 'register_demo_payment',
     title: 'Registrar pago demo',
-    description: 'Registra localmente un pago ya realizado fuera de la plataforma; no cobra ni procesa tarjetas. El monto debe cubrir la mensualidad completa: la deuda registrada del mes o, si no hay ninguna, la cuota del plan del alumno.',
+    description: 'Registra localmente un pago ya realizado fuera de la plataforma; no cobra ni procesa tarjetas. El monto puede ser la mensualidad completa o un abono menor al saldo del mes; nunca más que el saldo.',
     inputSchema: {
       type: 'object',
       properties: {
         studentId: { type: 'string' },
         amount: { type: 'number', exclusiveMinimum: 0 },
-        method: { type: 'string', enum: ['Transferencia', 'Efectivo', 'Tarjeta'] }
+        method: { type: 'string', enum: PAYMENT_METHODS }
       },
       required: ['studentId', 'amount', 'method'],
       additionalProperties: false
@@ -8661,17 +9520,15 @@ function registerWebMcpTools() {
       const student = state.students.find((item) => item.id === input?.studentId);
       if (!student) throw new Error('Alumno demo no encontrado.');
       const period = monthKey(new Date());
-      const required = requiredPaymentFor(student.id, period);
-      if (required.existing?.status === 'Pagado') throw new Error('Este mes ya está pagado. El registro existente no se reemplazó.');
-      if (!sameAmount(input?.amount, required.amount)) {
-        throw new Error(`El registro debe cubrir ${requiredPaymentText(required)}. La demo solo admite liquidaciones completas: no registra abonos, descuentos ni cargos adicionales.`);
-      }
+      // Valida antes de pedir confirmación (no guarda nada).
+      const preview = preparePaymentRecord({ studentId: student.id, period, amount: Number(input?.amount), method: input?.method });
+      const balance = roundMoney(preview.required.amount - paidAmountOf(preview.existing));
       const approved = await confirmWebMcpWrite({
         title: 'Confirmar pago',
         lines: [
           `Alumno · ${student.name} (${student.id})`,
-          `Monto · Q ${formatAmount(input?.amount)} (liquidación completa)`,
-          `Referencia del importe · ${required.source === 'deuda' ? 'mensualidad pendiente registrada' : `cuota del ${required.plan.planName}`}`,
+          `Monto · Q ${formatAmount(input?.amount)} (${sameAmount(input?.amount, balance) ? 'cubre el saldo del mes' : `abono; quedan Q ${formatAmount(roundMoney(balance - Number(input?.amount)))}`})`,
+          `Cuota del mes · Q ${formatAmount(preview.required.amount)}`,
           `Método · ${input?.method}`,
           `Mes aplicado · ${monthLabel(new Date())}`
         ],
@@ -8681,9 +9538,9 @@ function registerWebMcpTools() {
       if (isSupabaseConnected) {
         throw new Error('Esta herramienta demo está bloqueada en modo conectado con Supabase. No se modificó el estado.');
       }
-      const record = registerPayment({ studentId: input?.studentId, amount: input?.amount, method: input?.method, period });
+      const record = registerPayment({ studentId: input?.studentId, amount: Number(input?.amount), method: input?.method, period });
       if (!elements.app.classList.contains('is-hidden')) renderAndFocus();
-      return { paymentId: record.id, studentId: record.studentId, amount: record.amount, status: 'recorded' };
+      return { paymentId: record.id, studentId: record.studentId, amount: Number(input?.amount), balance: balanceOf(record), status: 'recorded' };
     }
   });
 }
@@ -8898,6 +9755,11 @@ function handleContentClick(event) {
   const ddSave = find('[data-dd-save]');
   if (ddSave) return saveAcademyDataRow(ddSave.dataset.ddSave);
   if (find('[data-dd-save-all]')) return saveAllAcademyData();
+  if (find('[data-reconcile-register]')) return registerReconcileItems();
+  if (find('[data-reconcile-reset]')) {
+    reconcile = null;
+    return renderAndFocus();
+  }
   if (find('[data-open-staff]')) return openStaffModal();
 
   const planDetail = find('[data-plan-detail]');
@@ -9116,10 +9978,12 @@ function handleContentInput(event) {
     return;
   }
   if (event.target.matches('input[data-dd-field]')) handleAcademyDataChange(event.target);
+  if (event.target.matches('#reconcileForm textarea[name="raw"]')) reconcileState().raw = event.target.value;
 }
 
 function handleContentSubmit(event) {
   if (event.target.id === 'attendanceForm') handleAttendanceSubmit(event);
+  if (event.target.id === 'reconcileForm') handleReconcileSubmit(event);
   if (event.target.id === 'birthdayPromptForm') handleBirthdayPromptSubmit(event);
 }
 
@@ -9151,6 +10015,8 @@ elements.content.addEventListener('change', (event) => {
     return;
   }
   if (event.target.matches('select[data-dd-field]')) return handleAcademyDataChange(event.target);
+  if (event.target.matches('#reconcileForm input[type="file"]')) return handleReconcileFile(event.target);
+  if (event.target.matches('#reconcileForm select, [data-reconcile-map], [data-reconcile-student], [data-reconcile-period], [data-reconcile-include]')) return handleReconcileChange(event.target);
   if (event.target.matches('[data-assign-teacher]')) return handleAssignTeacher(event.target);
   if (event.target.matches('[data-attendance-class]')) {
     listClassId = event.target.value;
@@ -9174,6 +10040,10 @@ elements.modalLayer.addEventListener('input', handleModalInput);
 elements.modalLayer.addEventListener('change', (event) => {
   if (event.target.closest('#paymentForm') && ['studentId', 'period', 'concept', 'promo'].includes(event.target.name)) updatePaymentForm();
   if (event.target.closest('#createPassForm')) updateCreatePassForm();
+});
+// El monto se escribe a mano: el aviso de saldo se actualiza mientras se teclea.
+elements.modalLayer.addEventListener('input', (event) => {
+  if (event.target.closest('#paymentForm') && event.target.name === 'amount') updatePaymentForm();
 });
 
 // Estabilizar inputs en modal al abrir teclado móvil
