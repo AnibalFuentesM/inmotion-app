@@ -107,8 +107,12 @@ Se trabaja **siempre sobre esta misma app**: `academia/`, dentro de
    **Conciliar listados** (ruta oculta `conciliar`, botón en Pagos): el día 5 la academia
    comparte los listados de VisaLink y de transferencias; se pegan desde Excel o se suben en
    CSV, la app busca al alumno por carné, teléfono o nombre y registra solo las filas que
-   administración marca. Cada fila lleva `idempotency_key` = `CONC-<origen>-<referencia>`:
-   volver a cargar el mismo listado no duplica. No lee .xlsx (sin dependencias).
+   administración marca. Cada fila lleva `idempotency_key` =
+   `CONC-R<referencia>-<centavos>-<fecha>` (o `CONC-H<huella del nombre>-…` sin referencia;
+   sin fecha, `M<mes del listado>`; `-2`, `-3` si se repite en el listado), sin el origen:
+   volver a cargar el mismo listado no duplica, y dos pagos con la misma referencia genérica
+   no chocan. Como referencia solo se adivinan autorización, boleta o referencia con un valor
+   distinto por fila (nunca «No.», «ID» ni la tarjeta). No lee .xlsx (sin dependencias).
 11. **Lo que no funciona con datos reales no se muestra como si funcionara.** Fuera de `?demo`
    no hay cupos (`capacityTag`) y Pases sale de la barra inferior y queda en el menú lateral
    con la marca «Pronto» (`routeFeatureEnabled`). La Rockola (`MUSIC_ENABLED`) se enciende sola

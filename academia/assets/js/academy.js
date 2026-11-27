@@ -4817,8 +4817,9 @@ function renderAdminPayments() {
 // de pagos por VisaLink y el de transferencias. Se pega (copiado de Excel) o se sube
 // como CSV; la app busca a cada alumno por carné, teléfono o nombre, propone el mes y
 // registra como pago o abono solo las filas que administración confirma. Cada fila
-// lleva una clave fija (origen + referencia): volver a cargar el mismo listado no
-// duplica nada. Sin dependencias: un .xlsx se guarda como CSV o se copia y pega.
+// lleva una clave fija (referencia o huella del nombre, monto y fecha): volver a cargar
+// el mismo listado no duplica nada. Sin dependencias: un .xlsx se guarda como CSV o se
+// copia y pega.
 // ---------------------------------------------------------------------------
 const RECONCILE_SOURCES = ['VisaLink', 'Transferencia', 'Débito automático'];
 const RECONCILE_FIELDS = [
@@ -4833,7 +4834,7 @@ const RECONCILE_HEADER_HINTS = {
   name: /\b(nombre|cliente|titular|tarjetahabiente|ordenante|pagador|remitente|alumno|descripcion|concepto|detalle|observaciones?|comentario)\b/,
   date: /\b(fecha|date)\b/,
   reference: /\b(referencia|ref|autorizacion|documento|boleta|transaccion|comprobante|numero|no|id|codigo)\b/,
-  strongReference: /\b(referencia|ref|autorizacion|documento|boleta|transaccion|comprobante)\b/,
+  strongReference: /\b(referencia|ref|autorizacion|aprobacion|documento|boleta|transaccion|comprobante|operacion|voucher)\b/,
   phone: /\b(telefono|tel|celular|movil|whatsapp)\b/
 };
 let reconcile = null;
@@ -4911,6 +4912,11 @@ function isRowNumberColumn(table, index) {
   return values.every((value, position) => position === 0 || Number(value) === Number(values[position - 1]) + 1);
 }
 
+function columnValuesUnique(table, index) {
+  const values = table.rows.map((cells) => normalizeSearchText(cells[index]).replace(/[^a-z0-9]/g, '')).filter(Boolean);
+  return values.length > 0 && new Set(values).size === values.length;
+}
+
 // Primera fila (de las 10 primeras) que parece encabezado: dos o más nombres de columna
 // conocidos. Los bancos suelen poner títulos arriba; esas filas se saltan.
 function buildReconcileTable(text) {
@@ -4937,17 +4943,21 @@ function guessReconcileMapping(table) {
     // «Nombre» manda sobre «Descripción» si están las dos.
     if (kind === 'name' && mapping.name !== undefined && !/nombre|cliente|titular|tarjetahabiente|ordenante|pagador|remitente|alumno/.test(text)) return;
     if (kind === 'reference') {
-      // Autorización, referencia o boleta antes que «No.» o «ID»; nunca el número de fila.
-      if (isRowNumberColumn(table, index)) return;
-      const strong = RECONCILE_HEADER_HINTS.strongReference.test(text.replace(/[^a-z0-9 ]/g, ' '));
-      if (mapping.reference !== undefined && (!strong || mapping.referenceStrong)) return;
+      // Solo una columna que identifique a cada pago: autorización, boleta o referencia, con
+      // un valor distinto en cada fila. «No.», «#», «ID» o el número de tarjeta se repiten
+      // entre meses o entre pagos del mismo pagador; si hace falta, se eligen a mano.
+      const plain = text.replace(/[^a-z0-9 ]/g, ' ');
+      if (!RECONCILE_HEADER_HINTS.strongReference.test(plain) || /\b(tarjeta|cuenta)\b/.test(plain)) return;
+      if (isRowNumberColumn(table, index) || !columnValuesUnique(table, index)) return;
+      const rank = /\b(referencia|ref)\b/.test(plain) ? 1 : 2;
+      if (mapping.reference !== undefined && rank <= mapping.referenceRank) return;
       mapping.reference = index;
-      mapping.referenceStrong = strong;
+      mapping.referenceRank = rank;
       return;
     }
     if (mapping[kind] === undefined || kind === 'amount' || kind === 'name') mapping[kind] = index;
   });
-  delete mapping.referenceStrong;
+  delete mapping.referenceRank;
   if (mapping.amount === undefined) {
     // Sin encabezado de monto: la columna donde más filas tienen un monto con decimales.
     let best = -1;
@@ -4976,7 +4986,8 @@ function matchReconcileStudent(item) {
     const found = students.find((student) => student.id.replace(/\D/g, '').replace(/^0+/, '') === card[1].replace(/^0+/, ''));
     if (found) return { studentId: found.id, confidence: 'alta', why: 'carné' };
   }
-  const phones = new Set([...phoneDigitsIn(item.phone), ...phoneDigitsIn(item.cells.join(' '))]);
+  // Celda por celda: juntas, un teléfono y el número de la celda de al lado se pegarían.
+  const phones = new Set([...phoneDigitsIn(item.phone), ...item.cells.flatMap((value) => phoneDigitsIn(value))]);
   if (phones.size) {
     const byPhone = students.filter((student) => {
       const digits = String(student.phone || '').replace(/\D/g, '').slice(-8);
@@ -5015,15 +5026,54 @@ function reconcileReference(item) {
   return normalizeSearchText(item.reference).replace(/[^a-z0-9]/g, '').slice(0, 60);
 }
 
-// Clave fija de la fila, sin depender del origen elegido en pantalla: referencia + monto;
-// sin referencia, una huella de la fila (fecha, monto, nombre) y cuántas iguales van antes.
-function reconcileKey(item, seen) {
+// La fecha de la fila como AAAAMMDD (o sus dígitos). Sin fecha, el mes del listado
+// («M202611»), para que el pago de un mes no choque con el del mes siguiente.
+function reconcileDatePart(item, period) {
+  const text = String(item.date || '').trim();
+  let parts = text.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})/);
+  if (parts) return `${parts[1]}${parts[2].padStart(2, '0')}${parts[3].padStart(2, '0')}`;
+  parts = text.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{2}|\d{4})\b/);
+  if (parts) return `${parts[3].length === 2 ? `20${parts[3]}` : parts[3]}${parts[2].padStart(2, '0')}${parts[1].padStart(2, '0')}`;
+  return text.replace(/\D/g, '').slice(0, 14) || `M${String(period).replace(/\D/g, '')}`;
+}
+
+// Clave fija de cada pago del listado, sin depender del origen elegido en pantalla:
+// referencia (o huella del nombre) + monto + fecha, y cuántas filas iguales van antes.
+// Dos pagos con la misma referencia genérica no comparten clave, y el mismo pagador en
+// el listado de otro mes tampoco.
+function reconcileKey(item, seen, period) {
   const reference = reconcileReference(item);
-  if (reference) return `CONC-R${reference}-${toCents(item.amount)}`;
-  const base = `CONC-H${reconcileHash(`${item.date}|${roundMoney(item.amount)}|${normalizeSearchText(item.name || item.cells.join(' '))}`)}`;
+  const body = reference ? `R${reference}` : `H${reconcileHash(normalizeSearchText(item.name || item.cells.join(' ')))}`;
+  const base = `CONC-${body}-${toCents(item.amount)}-${reconcileDatePart(item, period)}`;
   const count = (seen.get(base) || 0) + 1;
   seen.set(base, count);
   return count > 1 ? `${base}-${count}` : base;
+}
+
+// Partes de la clave CONC-…: [cuerpo, centavos, fecha, n].
+function reconcileKeyParts(key) {
+  const parts = String(key || '').split('-');
+  return parts[0] === 'CONC' ? parts.slice(1) : null;
+}
+
+// Palabras de una referencia guardada («VisaLink · 02/11/2026 · ref 771201 · «Nico»» →
+// visalink, 771201, nico…), para comparar referencias completas y no pedazos de una fecha.
+function referenceTokens(text) {
+  const raw = String(text || '');
+  const clean = (value) => normalizeSearchText(value).replace(/[^a-z0-9]/g, '');
+  const tokens = raw.split(/[\s·,;:|/«»()]+/).map(clean).filter((token) => token.length >= 5);
+  const whole = clean(raw);
+  return whole.length >= 3 ? [whole, ...tokens] : tokens;
+}
+
+// La fila de totales del reporte («Total», «Totales: 4,670.00») no es un pago; una
+// descripción como «PAGO TOTAL NOVIEMBRE» sí lo es.
+function isReconcileTotalRow(item) {
+  const label = (value) => normalizeSearchText(value).replace(/[q\d.,:\s-]+$/, '').trim();
+  const totals = ['total', 'totales', 'subtotal', 'sub total', 'total general', 'gran total', 'suma'];
+  const isLabel = (value) => totals.includes(label(value));
+  if (!item.cells.some(isLabel)) return false;
+  return (!item.reference || isLabel(item.reference)) && (!item.name || isLabel(item.name));
 }
 
 function reconcileNotes(source, item) {
@@ -5036,21 +5086,18 @@ function buildReconcileItems() {
   const { table, mapping } = r;
   if (!table) { r.items = []; return; }
   const seen = new Map();
-  const previous = new Map(r.items.map((item) => [item.key, item]));
+  // Misma tabla: lo que administración ya eligió (o registró) en cada fila se conserva.
+  const previous = new Map(r.items.map((item) => [item.index, item]));
   r.items = table.rows.map((cells, index) => {
     const pick = (field) => (mapping[field] === undefined ? '' : String(cells[mapping[field]] || '').trim());
     const item = { index, cells, amount: parseMoney(pick('amount')), name: pick('name'), date: pick('date'), reference: pick('reference'), phone: pick('phone'), period: r.period };
-    if (!(item.amount > 0)) return { ...item, skip: true };
-    // La fila de totales del reporte no es un pago.
-    const words = normalizeSearchText(cells.join(' ')).split(/[^a-z]+/);
-    if (words.some((word) => ['total', 'totales', 'subtotal'].includes(word)) && (!item.name || /\btotal/.test(normalizeSearchText(item.name)))) return { ...item, skip: true };
+    if (!(item.amount > 0) || isReconcileTotalRow(item)) return { ...item, skip: true };
     item.amount = roundMoney(item.amount);
-    item.key = reconcileKey(item, seen);
+    item.key = reconcileKey(item, seen, r.period);
     item.notes = reconcileNotes(r.source, item);
-    // Lo que administración ya eligió a mano para esta fila se conserva.
-    const before = previous.get(item.key);
-    if (before?.manual) return { ...item, studentId: before.studentId, period: before.period, manualPeriod: before.manualPeriod, include: before.include, manual: true, confidence: before.confidence, candidates: before.candidates, result: before.result };
-    if (before?.result?.ok) return { ...before, ...item, result: before.result };
+    const before = previous.get(index);
+    if (before?.result?.ok && !before.skip) return { ...before };
+    if (before?.manual && !before.skip) return { ...item, studentId: before.studentId, period: before.manualPeriod ? before.period : item.period, manualPeriod: before.manualPeriod, include: before.include, manual: true, confidence: before.confidence, candidates: before.candidates, result: before.result };
     const match = matchReconcileStudent(item);
     return { ...item, ...match, include: null, result: before?.result || null };
   });
@@ -5062,16 +5109,24 @@ function buildReconcileItems() {
 function evaluateReconcileItems() {
   const r = reconcileState();
   const running = new Map();
+  const allAbonos = state.payments.flatMap((pay) => abonosOf(pay).map((abono) => ({ pay, abono })));
+  const byKey = new Map(allAbonos.filter(({ abono }) => abono.key).map((entry) => [entry.abono.key, entry]));
+  // Una referencia que sale en varias filas de este listado no identifica a un pago.
+  const refCount = new Map();
+  r.items.forEach((item) => {
+    const reference = !item.skip && reconcileReference(item);
+    if (reference) refCount.set(reference, (refCount.get(reference) || 0) + 1);
+  });
   for (const item of r.items) {
     if (item.skip) continue;
-    // La misma fila ya registrada (misma referencia y monto, o misma huella), aunque
-    // fuera con otro origen o a otro alumno elegido a mano.
-    const loaded = state.payments.find((pay) => abonosOf(pay).some((abono) => abono.key === item.key));
+    // La misma fila ya registrada (misma clave), aunque fuera con otro origen o a otro
+    // alumno elegido a mano. Se avisa dónde quedó, sin cambiar el alumno ni el mes de la fila.
+    const loaded = byKey.get(item.key);
+    item.loadedSame = Boolean(loaded && loaded.pay.studentId === item.studentId && loaded.pay.period === item.period);
     if (loaded) {
-      item.studentId = loaded.studentId;
-      item.period = loaded.period;
-      item.status = item.result?.ok ? 'registrado' : 'ya_cargado';
-      item.detail = item.result?.ok ? `Registrado: ${loaded.student}, ${loaded.month}.` : `Ya se registró (${loaded.student}, ${loaded.month}).`;
+      const registered = item.result?.ok && item.loadedSame;
+      item.status = registered ? 'registrado' : 'ya_cargado';
+      item.detail = registered ? 'Registrado.' : `Ya se registró: ${loaded.pay.student} · ${loaded.pay.studentId}, ${loaded.pay.month}.`;
       item.include = false;
       continue;
     }
@@ -5099,11 +5154,15 @@ function evaluateReconcileItems() {
       const paidBefore = roundMoney(paidAmountOf(existing) + (running.get(runKey) || 0));
       const balance = roundMoney(required.amount - paidBefore);
       // Un abono del mismo monto ya registrado (por ejemplo, a mano en recepción) puede ser este
-      // mismo pago; y la misma referencia en un pago de cualquier alumno, también.
+      // mismo pago; y la misma referencia en un pago de cualquier alumno, también (comparada
+      // completa; de otro listado, solo si es de la misma fecha).
       const reference = reconcileReference(item);
-      const sameRef = reference && state.payments.flatMap((pay) => abonosOf(pay).map((abono) => ({ pay, abono })))
-        .find(({ abono }) => String(abono.key || '').startsWith(`CONC-R${reference}-`)
-          || (reference.length >= 5 && normalizeSearchText(abono.reference).replace(/[^a-z0-9]/g, '').includes(reference)));
+      const datePart = reconcileDatePart(item, r.period);
+      const sameRef = reference && refCount.get(reference) === 1 && allAbonos.find(({ abono }) => {
+        const keyParts = reconcileKeyParts(abono.key);
+        if (keyParts) return keyParts[0] === `R${reference}` && keyParts[2] === datePart;
+        return referenceTokens(abono.reference).includes(reference);
+      });
       const twin = sameRef
         ? { amount: sameRef.abono.amount, method: sameRef.abono.method, date: `${sameRef.abono.date || sameRef.abono.paidAt}, ${sameRef.pay.student}, ${sameRef.pay.month}`, sameRef: true }
         : abonosOf(existing).find((abono) => sameAmount(abono.amount, item.amount));
@@ -5166,6 +5225,10 @@ function reconcileStudentOptions(item) {
   return `<option value="">— Elige al alumno —</option>${suggested.length ? `<optgroup label="Sugeridos">${suggested.map(option).join('')}</optgroup><optgroup label="Todos">` : ''}${sorted.filter((student) => !suggested.includes(student)).map(option).join('')}${suggested.length ? '</optgroup>' : ''}`;
 }
 
+function countLabel(value, one, many) {
+  return `${value} ${value === 1 ? one : many}`;
+}
+
 function reconcileResultsMarkup() {
   const r = reconcileState();
   if (!r.table) return '';
@@ -5197,11 +5260,11 @@ function reconcileResultsMarkup() {
     </section>
     <section class="section">
       <div class="section-head"><div><h2>${items.length === 1 ? '1 pago en el listado' : `${items.length} pagos en el listado`}</h2><p>${[
-        `${count('completo') + count('abono')} listos`,
+        countLabel(count('completo') + count('abono'), 'listo', 'listos'),
         count('sin_alumno') ? `${count('sin_alumno')} sin alumno` : '',
-        count('duplicado') ? `${count('duplicado')} posibles repetidos` : '',
-        count('pagado') + count('ya_cargado') ? `${count('pagado') + count('ya_cargado')} ya estaban` : '',
-        count('registrado') ? `${count('registrado')} registrados ahora` : '',
+        count('duplicado') ? countLabel(count('duplicado'), 'posible repetido', 'posibles repetidos') : '',
+        count('pagado') + count('ya_cargado') ? `${count('pagado') + count('ya_cargado')} ${count('pagado') + count('ya_cargado') === 1 ? 'ya estaba' : 'ya estaban'}` : '',
+        count('registrado') ? countLabel(count('registrado'), 'registrado ahora', 'registrados ahora') : '',
         skipped ? (skipped === 1 ? '1 fila sin monto (o de totales) se ignora' : `${skipped} filas sin monto (o de totales) se ignoran`) : ''
       ].filter(Boolean).join(' · ')}.</p></div></div>
       ${r.mapping.amount === undefined ? '<p class="modal-note">Elige arriba la columna del monto para ver los pagos.</p>' : `<div class="table-wrap table-wrap--stack reconcile-table"><table class="data-table"><thead><tr><th scope="col"><span class="sr-only">Registrar</span></th><th scope="col">Del listado</th><th scope="col">Monto</th><th scope="col">Alumno</th><th scope="col">Mes</th><th scope="col">Estado</th></tr></thead><tbody>${rows || '<tr><td colspan="6"><div class="empty-state"><strong>Sin pagos</strong>Ninguna fila tiene un monto mayor que cero.</div></td></tr>'}</tbody></table></div>`}
@@ -5300,8 +5363,7 @@ function handleReconcileChange(target) {
   if (target.matches('#reconcileForm select[name="period"]')) {
     // El mes general vale para las filas que nadie cambió a mano.
     r.period = target.value;
-    r.items.forEach((item) => { if (!item.manualPeriod && item.status !== 'registrado') item.period = r.period; });
-    evaluateReconcileItems();
+    if (r.table) buildReconcileItems();
     refreshReconcileResults();
     return;
   }
@@ -5392,17 +5454,20 @@ async function registerReconcileItems() {
   evaluateReconcileItems();
   ok = 0;
   failed = 0;
+  // Una fila cuenta como registrada si su propio pago quedó en la base: su llamada salió
+  // bien, o su clave está en un abono de ese mismo alumno y mes (se perdió la respuesta).
   for (const item of chosen) {
-    if (['registrado', 'ya_cargado'].includes(item.status)) {
+    if (item.status === 'registrado' || (item.status === 'ya_cargado' && item.loadedSame)) {
       ok += 1;
-      if (item.status === 'ya_cargado') item.status = 'registrado';
+      item.status = 'registrado';
+      item.detail = 'Registrado.';
     } else {
       failed += 1;
       if (item.result && !item.result.ok) item.detail = item.result.error;
     }
   }
   r.note = failed
-    ? `Se registraron ${ok} de ${chosen.length}. ${failed === 1 ? '1 fila no se pudo registrar' : `${failed} filas no se pudieron registrar`}: mira el estado de cada una.`
+    ? `${ok === 1 ? 'Se registró' : 'Se registraron'} ${ok} de ${chosen.length}. ${failed === 1 ? '1 fila no se pudo registrar' : `${failed} filas no se pudieron registrar`}: mira el estado de cada una.`
     : `Listo: ${ok === 1 ? 'se registró 1 pago' : `se registraron ${ok} pagos`}. Puedes volver a cargar este listado sin duplicar nada.`;
   refreshReconcileResults();
   showToast(failed ? 'Conciliación con pendientes' : 'Conciliación lista', r.note);
@@ -8786,7 +8851,7 @@ async function handlePaymentSubmit(event) {
       abono.key = form.dataset.attemptKey;
 
       if (serverResult.isDuplicate) {
-        showToast('Pago ya confirmado', `Se recuperó el registro original de ${student.name} (${abono.id}) con fecha ${abono.date}.`);
+        showToast('Pago ya confirmado', `Este pago de ${student.name} ya estaba guardado (${abono.date}). No se registró dos veces.`);
       }
     } catch (err) {
       if (submitBtn) {
