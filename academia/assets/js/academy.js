@@ -2831,11 +2831,12 @@ function renderStudentHome() {
       </div>
       <span class="student-welcome-mark" aria-hidden="true">IM</span>
     </header>
-    ${isSupabaseConnected && !studentPreviewId && authenticatedProfile && !authenticatedProfile.email ? `
+    ${birthdayPromptCard()}
+    ${isSupabaseConnected && !studentPreviewId && authenticatedProfile && authenticatedProfile.birth_date && !authenticatedProfile.email ? `
     <section class="section">
       <article class="surface-card">
         <p class="eyebrow">Completa tus datos</p>
-        <p class="payment-meta">Agrega tu correo, tu fecha de nacimiento y un contacto de emergencia. Así la academia puede avisarte de cambios de horario y eventos.</p>
+        <p class="payment-meta">Agrega tu correo y un contacto de emergencia. Así la academia puede avisarte de cambios de horario y eventos.</p>
         <div class="form-actions"><button class="button button--red" type="button" data-open-my-data>Completar mis datos</button></div>
       </article>
     </section>` : ''}
@@ -3773,6 +3774,7 @@ function renderTeacherHome() {
         ` : '<p>No tienes clases asignadas. Administración las asigna en «Completar datos».</p>'}
       </div>
     </section>
+    ${birthdayPromptCard()}
     ${missing.length ? `
       <section class="section">
         <div class="section-head"><div><h2>Te falta pasar lista</h2><p>Clases de esta semana sin lista guardada. Puedes pasarla hasta dos semanas después.</p></div></div>
@@ -4182,6 +4184,7 @@ function renderAdminHome() {
       <div><p class="eyebrow">Administración · ${escapeHtml(shortDayLabel(TODAY))}</p><h1>La academia,<br/>en orden.</h1></div>
       <div class="admin-intro-meta"><div><strong>${escapeHtml(state.students.length)}</strong><span>alumnos registrados</span></div><div><strong>${escapeHtml(withPlan)}</strong><span>con plan cargado</span></div></div>
     </section>
+    ${birthdayPromptCard()}
     ${monthOpenNotice()}
     ${withoutPlan > 0 ? `
     <section class="section">
@@ -4206,6 +4209,7 @@ function renderAdminHome() {
       </div>
       ${renderAttendanceAlertCards(attendanceAlerts)}
     </section>` : ''}
+    ${adminBirthdaysSection()}
     <section class="section">
       <div class="section-head"><div><h2>Pagos por resolver</h2><p>${due.length === 1 ? '1 registro necesita' : `${due.length} registros necesitan`} seguimiento.</p></div><button class="text-button" type="button" data-go="pagos">Ver todos →</button></div>
       <div class="table-wrap table-wrap--stack"><table class="data-table"><thead><tr><th scope="col">Alumno</th><th scope="col">Mes</th><th scope="col">Monto</th><th scope="col">Método</th><th scope="col">Estado</th><th scope="col">Acción</th></tr></thead><tbody>${adminPaymentRows(due, { title: 'Nada por resolver', detail: DEMO_MODE ? 'No hay mensualidades pendientes ni en mora en los datos demo.' : 'No hay mensualidades pendientes ni en mora.' })}</tbody></table></div>
@@ -4464,15 +4468,16 @@ function renderAcademyDataStaff() {
       <div class="section-head"><div><h2>Equipo</h2><p>Maestros y personal de la academia. Su usuario para entrar a la app se crea aparte.</p></div><button class="button button--red button--small" type="button" data-open-staff>+ Agregar maestro o staff</button></div>
       <div class="table-wrap table-wrap--stack">
         <table class="data-table">
-          <thead><tr><th scope="col">Nombre</th><th scope="col">Rol</th><th scope="col">Teléfono</th><th scope="col">Correo</th><th scope="col">Acceso a la app</th></tr></thead>
+          <thead><tr><th scope="col">Nombre</th><th scope="col">Rol</th><th scope="col">Teléfono</th><th scope="col">Correo</th><th scope="col">Cumpleaños</th><th scope="col">Acceso a la app</th></tr></thead>
           <tbody>${staffProfiles.length ? staffProfiles.map((person) => `
             <tr>
               <td data-label="Nombre"><div class="person-cell"><span class="avatar" aria-hidden="true">${escapeHtml(initials(person.name))}</span><strong>${escapeHtml(person.name)}</strong></div></td>
               <td data-label="Rol">${escapeHtml(staffRoleLabel(person.role))}</td>
               <td data-label="Teléfono">${escapeHtml(person.phone || '—')}</td>
               <td data-label="Correo">${escapeHtml(person.email || '—')}</td>
+              <td data-label="Cumpleaños">${person.birthDate ? escapeHtml(birthdayLabel(person.birthDate)) : '<span class="status-pill is-undefined">Falta</span>'}</td>
               <td data-label="Acceso a la app">${person.hasLogin ? '<span class="status-pill is-paid">Tiene usuario</span>' : '<span class="status-pill is-undefined">Falta crear usuario</span>'}</td>
-            </tr>`).join('') : '<tr><td colspan="5"><div class="empty-state"><strong>Sin equipo cargado</strong>Agrega a los maestros para poder asignarles sus clases.</div></td></tr>'}</tbody>
+            </tr>`).join('') : '<tr><td colspan="6"><div class="empty-state"><strong>Sin equipo cargado</strong>Agrega a los maestros para poder asignarles sus clases.</div></td></tr>'}</tbody>
         </table>
       </div>
     </section>
@@ -5126,6 +5131,7 @@ function renderGuardianHome() {
       </div>
       <button class="button" type="button" data-go="carnet">Ver carnés</button>
     </header>
+    ${birthdayPromptCard()}
     <section class="section">
       <div class="section-head"><div><h2>A tu cargo</h2><p>Próxima clase, última asistencia y mensualidad del mes.</p></div><span class="tag">${children.length} alumno${children.length === 1 ? '' : 's'}</span></div>
       <div class="cards-grid">
@@ -7321,6 +7327,11 @@ async function handleMyContactSubmit(event) {
     message.textContent = 'Revisa el correo: parece que le falta algo.';
     return form.email.focus();
   }
+  const birthError = form.birth_date.value ? birthDateError(form.birth_date.value) : '';
+  if (birthError) {
+    message.textContent = birthError;
+    return form.birth_date.focus();
+  }
   submitBtn.disabled = true;
   message.textContent = '';
   try {
@@ -7330,6 +7341,7 @@ async function handleMyContactSubmit(event) {
       emergency_contact_name: String(form.emergency_contact_name.value || '').trim(),
       emergency_contact_phone: String(form.emergency_contact_phone.value || '').trim()
     });
+    syncOwnBirthday();
     message.style.color = '';
     message.textContent = 'Listo, tus datos quedaron guardados.';
     renderApp();
@@ -7338,6 +7350,146 @@ async function handleMyContactSubmit(event) {
   } finally {
     submitBtn.disabled = false;
   }
+}
+
+// Cumpleaños: cada quien lo agrega en su propio perfil (profiles.birth_date, migración 009).
+// Mientras falte, el inicio de alumnos, maestros, administración y encargados lo pide.
+const BIRTHDAY_MIN = '1920-01-01';
+
+function birthdayParts(value) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value || ''));
+  if (!match) return null;
+  const [year, month, day] = match.slice(1).map(Number);
+  const date = new Date(year, month - 1, day);
+  if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) return null;
+  return { year, month, day };
+}
+
+function birthDateError(value) {
+  const parts = birthdayParts(value);
+  if (!parts) return 'Revisa la fecha: elige día, mes y año.';
+  if (value < BIRTHDAY_MIN) return 'Revisa el año de tu cumpleaños.';
+  if (value > dayKey(new Date())) return 'Esa fecha todavía no llega. Revisa el año.';
+  return '';
+}
+
+// «4 de diciembre», sin año: es lo que se celebra.
+function birthdayLabel(value) {
+  const parts = birthdayParts(value);
+  if (!parts) return '';
+  return new Intl.DateTimeFormat('es-GT', { day: 'numeric', month: 'long' }).format(new Date(2000, parts.month - 1, parts.day));
+}
+
+function birthdayPromptCard() {
+  if (!isSupabaseConnected || studentPreviewId || !authenticatedProfile || authenticatedProfile.birth_date) return '';
+  return `
+    <section class="section birthday-prompt-section">
+      <article class="surface-card birthday-prompt">
+        <p class="eyebrow">Tu cumpleaños</p>
+        <h2>¿Cuándo cumples años?</h2>
+        <p class="payment-meta">Agrégalo para que en In Motion podamos celebrarte. Lo puedes cambiar cuando quieras en «Mis datos».</p>
+        <form id="birthdayPromptForm" class="birthday-prompt-form" novalidate>
+          <label class="field">
+            <span>Fecha de nacimiento</span>
+            <input class="input" type="date" name="birth_date" min="${BIRTHDAY_MIN}" max="${escapeHtml(dayKey(TODAY))}" required />
+          </label>
+          <button class="button button--red" type="submit">Guardar cumpleaños</button>
+        </form>
+        <p class="payment-meta" id="birthdayPromptMessage" role="status"></p>
+      </article>
+    </section>`;
+}
+
+// Lleva el cumpleaños recién guardado a las listas que ya están en pantalla.
+function syncOwnBirthday() {
+  const profileId = authenticatedProfile?.id;
+  if (!profileId) return;
+  const birthDate = authenticatedProfile.birth_date || null;
+  if (state.students.some((item) => item.profileId === profileId)) {
+    try {
+      persistState({ ...state, students: state.students.map((item) => (item.profileId === profileId ? { ...item, birthDate } : item)) });
+    } catch {
+      // Ya quedó guardado en la base; si el navegador no deja escribir, la próxima sincronización lo trae.
+    }
+  }
+  staffProfiles = staffProfiles.map((person) => (person.id === profileId ? { ...person, birthDate } : person));
+}
+
+async function handleBirthdayPromptSubmit(event) {
+  event.preventDefault();
+  const form = event.target;
+  const message = document.querySelector('#birthdayPromptMessage');
+  const submitBtn = form.querySelector('button[type="submit"]');
+  const value = form.birth_date.value;
+  message.style.color = 'var(--red)';
+  const error = value ? birthDateError(value) : 'Elige tu fecha de nacimiento.';
+  if (error) {
+    message.textContent = error;
+    return form.birth_date.focus();
+  }
+  submitBtn.disabled = true;
+  submitBtn.textContent = 'Guardando...';
+  message.textContent = '';
+  try {
+    authenticatedProfile = await updateMyContact({ birth_date: value });
+  } catch (err) {
+    submitBtn.disabled = false;
+    submitBtn.textContent = 'Guardar cumpleaños';
+    message.textContent = err.message;
+    return;
+  }
+  syncOwnBirthday();
+  showToast('¡Anotado!', `Tu cumpleaños quedó guardado: ${birthdayLabel(value)}.`);
+  renderAndFocus();
+}
+
+// Administración: quién cumple años este mes (alumnos activos y equipo).
+function birthdaysThisMonth() {
+  const month = TODAY.getMonth() + 1;
+  const seen = new Set();
+  const people = [];
+  const add = (profileId, name, role, birthDate) => {
+    const parts = birthdayParts(birthDate);
+    if (!parts || parts.month !== month || seen.has(profileId)) return;
+    seen.add(profileId);
+    // Quien nació un 29 de febrero lo celebra el 28 en los años que no son bisiestos.
+    const lastDay = new Date(TODAY.getFullYear(), month, 0).getDate();
+    people.push({ name, role, day: Math.min(parts.day, lastDay), birthDate });
+  };
+  state.students
+    .filter((item) => item.lifecycleStatus !== 'suspended' && item.lifecycleStatus !== 'archived')
+    .forEach((item) => add(item.profileId || item.id, item.name, 'Alumno', item.birthDate));
+  staffProfiles.forEach((person) => add(person.id, person.name, staffRoleLabel(person.role), person.birthDate));
+  return people.sort((a, b) => a.day - b.day || a.name.localeCompare(b.name, 'es'));
+}
+
+function adminBirthdaysSection() {
+  if (!isSupabaseConnected) return '';
+  const people = birthdaysThisMonth();
+  const today = TODAY.getDate();
+  // Un alumno puede tener más de un carné: se cuenta por perfil, sin las filas que solo vienen de las listas de clase.
+  const activeStudents = new Map();
+  state.students
+    .filter((item) => !item.fromRoster && item.lifecycleStatus !== 'suspended' && item.lifecycleStatus !== 'archived')
+    .forEach((item) => {
+      const key = item.profileId || item.id;
+      if (!activeStudents.get(key)?.birthDate) activeStudents.set(key, item);
+    });
+  const withBirthday = [...activeStudents.values()].filter((item) => birthdayParts(item.birthDate)).length;
+  const coverage = `${withBirthday} de ${activeStudents.size} alumnos ya agregaron su cumpleaños.`;
+  const whenLabel = (day) => (day === today + 1 ? 'Mañana' : day < today ? 'Ya pasó' : `En ${day - today} días`);
+  return `
+    <section class="section">
+      <div class="section-head"><div><h2>Cumpleaños de ${escapeHtml(monthName(TODAY))}</h2><p>${escapeHtml(coverage)} Cada quien lo agrega en «Mis datos».</p></div><span class="tag">${people.length}</span></div>
+      ${people.length ? `
+      <div class="table-wrap table-wrap--stack"><table class="data-table"><thead><tr><th scope="col">Nombre</th><th scope="col">Día</th><th scope="col">Quién</th><th scope="col">Cuándo</th></tr></thead><tbody>${people.map((person) => `
+        <tr${person.day === today ? ' class="is-birthday-today"' : ''}>
+          <td data-label="Nombre"><div class="person-cell"><span class="avatar" aria-hidden="true">${escapeHtml(initials(person.name))}</span><strong>${escapeHtml(person.name)}</strong></div></td>
+          <td data-label="Día">${escapeHtml(birthdayLabel(person.birthDate))}</td>
+          <td data-label="Quién">${escapeHtml(person.role)}</td>
+          <td data-label="Cuándo">${person.day === today ? '<span class="status-pill is-paid">Hoy</span>' : escapeHtml(whenLabel(person.day))}</td>
+        </tr>`).join('')}</tbody></table></div>` : `<div class="empty-state"><strong>Nadie cumple años este mes</strong>O todavía no lo han agregado en la app.</div>`}
+    </section>`;
 }
 
 async function handleChangePassword(event) {
@@ -7566,15 +7718,15 @@ function openProfile() {
           </div>
           <p class="payment-meta" style="margin-top:22px">${escapeHtml(meta)}</p>
         </article>
-        <form id="myContactForm" class="modal-form" style="margin-top:18px">
+        <form id="myContactForm" class="modal-form" style="margin-top:18px" novalidate>
           <p class="eyebrow">Mis datos</p>
+          <label class="field">
+            <span>Tu cumpleaños (fecha de nacimiento)</span>
+            <input class="input" type="date" name="birth_date" min="${BIRTHDAY_MIN}" max="${escapeHtml(dayKey(TODAY))}" value="${escapeHtml(authenticatedProfile.birth_date || '')}" />
+          </label>
           <label class="field">
             <span>Correo electrónico</span>
             <input class="input" type="email" name="email" autocomplete="email" value="${escapeHtml(authenticatedProfile.email || '')}" placeholder="tucorreo@ejemplo.com" />
-          </label>
-          <label class="field">
-            <span>Fecha de nacimiento</span>
-            <input class="input" type="date" name="birth_date" value="${escapeHtml(authenticatedProfile.birth_date || '')}" />
           </label>
           <label class="field">
             <span>Contacto de emergencia</span>
@@ -8968,6 +9120,7 @@ function handleContentInput(event) {
 
 function handleContentSubmit(event) {
   if (event.target.id === 'attendanceForm') handleAttendanceSubmit(event);
+  if (event.target.id === 'birthdayPromptForm') handleBirthdayPromptSubmit(event);
 }
 
 document.querySelectorAll('[data-enter-role]').forEach((button) => button.addEventListener('click', () => enterDemo(button.dataset.enterRole, button.dataset.entryRoute || 'inicio')));

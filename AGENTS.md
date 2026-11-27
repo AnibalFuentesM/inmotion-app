@@ -85,6 +85,11 @@ Se trabaja **siempre sobre esta misma app**: `academia/`, dentro de
    cambia el otro. El alumno marca sus clases con «Elegir mis clases» (`set_my_classes`
    valida contra su plan) y completa correo, cumpleaños y contacto de emergencia en
    «Mis datos y contraseña». Nombre, teléfono, nivel y notas solo los cambia administración.
+   **Cumpleaños:** cada quien (alumno, maestro, administración, encargado) agrega el suyo;
+   mientras `profiles.birth_date` esté vacío, su inicio muestra la tarjeta «¿Cuándo cumples
+   años?» (`birthdayPromptCard`). Administración ve «Cumpleaños de <mes>» en su inicio
+   (alumnos activos y equipo) y la columna Cumpleaños en «Completar datos › Maestros y staff»,
+   solo lectura: no se llena por otros.
    Administración carga plan, clase del Dancer/Weekend, pago del mes, apellido y maestros
    en «Completar datos» (ruta `#/datos`, solo en el menú lateral): reemplaza al Excel
    «datos para la academia». Un «Pagó …» ahí registra el pago con método «Antes de la app».
