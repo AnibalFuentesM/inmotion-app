@@ -1216,13 +1216,14 @@ export async function saveStudentAcademyData({ studentCardId, lastName, active, 
 }
 
 export async function fetchRemoteStaff() {
-  const rows = await db.get('profiles', 'role=in.(teacher,admin)&select=id,user_id,role,first_name,last_name,phone,email&order=first_name.asc');
+  const rows = await db.get('profiles', 'role=in.(teacher,admin)&select=id,user_id,role,first_name,last_name,phone,email,birth_date&order=first_name.asc');
   return (rows || []).map((p) => ({
     id: p.id,
     role: p.role,
     name: `${p.first_name || ''} ${p.last_name || ''}`.trim(),
     phone: p.phone || '',
     email: p.email || '',
+    birthDate: p.birth_date || null,
     hasLogin: Boolean(p.user_id)
   }));
 }

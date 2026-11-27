@@ -4406,3 +4406,20 @@ button.student-check > span:last-child { color: var(--red); font-size: .74rem; f
 @media (max-width: 780px) {
   .reconcile-table select { max-width: none; }
 }
+/* Cumpleaños: tarjeta del inicio que lo pide mientras falte */
+.birthday-prompt-section { margin-bottom: 24px; }
+.birthday-prompt { border-color: var(--brand-red); }
+.birthday-prompt h2 { margin: 4px 0 8px; font-size: 1.15rem; }
+.birthday-prompt-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px;
+  margin-top: 14px;
+}
+.birthday-prompt-form .field { flex: 1 1 200px; margin: 0; }
+.birthday-prompt-form .button { flex: 0 0 auto; }
+@media (max-width: 420px) {
+  .birthday-prompt-form .button { flex: 1 1 100%; justify-content: center; }
+}
+.data-table tr.is-birthday-today td { background: rgba(226, 12, 20, .06); }
