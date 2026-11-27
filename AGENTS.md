@@ -101,6 +101,25 @@ Se trabaja **siempre sobre esta misma app**: `academia/`, dentro de
    de primer mes Q250 para quien nunca pagó (`apply_new_student_promo`). El membership
    anual (Q125) por ahora no se cobra. Las inscripciones van en `extraPayments`, aparte de
    `state.payments`, para no marcar el mes como pagado.
+   **Abonos (migración 015, decidido por Mariano el 26/11/2026).** En «Registrar pago» se
+   escribe el monto que la persona pagó: si es menor que el saldo queda como abono y el mes
+   sigue pendiente hasta que los abonos sumen la cuota; nunca se acepta más que el saldo
+   (`register_payment_idempotent` lo valida con la mensualidad bloqueada). Cada item de
+   `state.payments` es la mensualidad de un alumno en un mes: `amount` es la cuota,
+   `abonos` los pagos y `paidAmount` su suma (`paidAmountOf`, `balanceOf`). Si el mes no tiene
+   mensualidad, el pago la abre con el último plan del alumno (como «Abrir cobros»).
+   Métodos: Transferencia, Efectivo, Tarjeta, VisaLink y Débito automático (`PAYMENT_METHODS`).
+   **Conciliar listados** (ruta oculta `conciliar`, botón en Pagos): el día 5 la academia
+   comparte los listados de VisaLink y de transferencias; se pegan desde Excel o se suben en
+   CSV, la app busca al alumno por carné, teléfono o nombre y registra solo las filas que
+   administración marca. Cada fila lleva `idempotency_key` =
+   `CONC-R<referencia>-<centavos>-<fecha>` (o `CONC-H<huella del nombre>-…` sin referencia;
+   sin fecha, `M<mes del listado>`; `-2`, `-3` si se repite en el listado), sin el origen:
+   volver a cargar el mismo listado no duplica, y dos pagos con la misma referencia genérica
+   no chocan. Una clave que ya está en otro alumno o mes con otra nota sale «¿Repetido?» y,
+   si se marca, se registra con `-x`; con la misma nota es la recarga del listado («Ya
+   cargado»). Como referencia solo se adivinan autorización, boleta o referencia con un valor
+   distinto por fila (nunca «No.», «ID» ni la tarjeta). No lee .xlsx (sin dependencias).
 11. **Lo que no funciona con datos reales no se muestra como si funcionara.** Fuera de `?demo`
    no hay cupos (`capacityTag`) y Pases sale de la barra inferior y queda en el menú lateral
    con la marca «Pronto» (`routeFeatureEnabled`). La Rockola (`MUSIC_ENABLED`) se enciende sola

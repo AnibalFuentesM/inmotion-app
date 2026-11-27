@@ -541,7 +541,7 @@ export async function fetchRemoteStudents() {
 
   const profiles = await db.get('profiles', 'select=*');
   const enrollments = await db.get('enrollments', 'select=*&status=eq.active');
-  const memberships = await db.get('memberships', 'select=*');
+  const memberships = await db.getAll('memberships', 'select=*&order=id.asc');
 
   const profileMap = new Map((profiles || []).map((p) => [p.id, p]));
   const studentMembershipsMap = new Map();
@@ -946,7 +946,7 @@ function withMigrationHint(err) {
 export async function fetchRemoteExtraPayments(students = []) {
   let rows;
   try {
-    rows = await db.get('payments', 'concept=neq.mensualidad&select=*&order=recorded_at.desc');
+    rows = await db.getAll('payments', 'concept=neq.mensualidad&select=*&order=recorded_at.desc,id.asc');
   } catch {
     return []; // Sin la migración 012 la columna no existe: no hay otros cobros.
   }
@@ -1041,7 +1041,7 @@ export function formatShortDate(dateOrStr) {
  * Recupera el listado de membresías registradas en Supabase
  */
 export async function fetchRemoteMemberships() {
-  const rows = await db.get('memberships', 'select=*&order=created_at.desc');
+  const rows = await db.getAll('memberships', 'select=*&order=created_at.desc,id.asc');
   return Array.isArray(rows) ? rows : [];
 }
 
@@ -1053,93 +1053,97 @@ export async function fetchRemoteMemberships() {
  * @returns {Promise<Array>} Listado conciliado de pagos y obligaciones
  */
 export async function fetchRemotePayments(students = []) {
+  // Supabase corta cada respuesta en 1000 filas: se pagina con un orden estable.
   const [rows, membershipRows] = await Promise.all([
-    db.get('payments', 'select=*&order=recorded_at.desc'),
-    db.get('memberships', 'select=*&order=created_at.desc')
+    db.getAll('payments', 'select=*&order=recorded_at.asc,id.asc'),
+    db.getAll('memberships', 'select=*&order=created_at.desc,id.asc')
   ]);
 
-  const payments = [];
-  const paidSet = new Set();
+  const cardFor = (uuid) => profileUuidToCard.get(uuid) || students.find((s) => s.profileId === uuid)?.id;
+  const studentFor = (card, uuid) => students.find((s) => s.id === card || s.profileId === uuid);
+  const cents = (value) => Math.round(Number(value) * 100);
 
-  if (Array.isArray(rows)) {
-    for (const r of rows) {
-      const cardNumber = profileUuidToCard.get(r.student_id) || students.find((s) => s.profileId === r.student_id)?.id;
-      if (!cardNumber) continue;
-      // Inscripción y otros conceptos (migración 012) no son la mensualidad del mes:
-      // van aparte para no marcar el mes como pagado.
-      if (r.concept && r.concept !== 'mensualidad') continue;
-
-      const student = students.find((s) => s.id === cardNumber || s.profileId === r.student_id);
-      const studentName = student?.name || cardNumber;
-      const period = r.period || 'Período actual';
-      paidSet.add(`${cardNumber}|${period}`);
-      if (r.student_id) paidSet.add(`${r.student_id}|${period}`);
-
-      payments.push({
-        id: r.receipt_number || `REC-${r.id.slice(0, 8)}`,
-        remoteId: r.id,
-        membershipId: r.membership_id || undefined,
-        studentId: cardNumber,
-        studentUuid: r.student_id,
-        student: studentName,
-        month: formatPeriodMonth(period),
-        period,
-        amount: Number(r.amount) || 0,
-        method: r.payment_method || 'transferencia',
-        reference: r.notes || '',
-        date: r.recorded_at ? formatShortDate(r.recorded_at) : '',
-        paidAt: r.recorded_at?.slice(0, 10) || '',
-        dueDate: null,
-        status: 'Pagado'
-      });
-    }
-  }
+  // Abonos (migración 015): una mensualidad puede tener varios pagos. Se agrupan por
+  // alumno y mes; el mes queda «Pagado» cuando la suma llega a la cuota.
+  const groups = new Map();
+  const groupFor = (card, uuid, period) => {
+    const key = `${card}|${period}`;
+    if (!groups.has(key)) groups.set(key, { card, uuid, period, membership: null, abonos: [] });
+    return groups.get(key);
+  };
 
   if (Array.isArray(membershipRows)) {
     for (const m of membershipRows) {
       if (m.status === 'cancelled') continue;
       const period = m.period || (m.start_date ? m.start_date.slice(0, 7) : null);
-      if (!period) continue;
+      const card = cardFor(m.student_id);
+      if (!period || !card) continue;
+      const group = groupFor(card, m.student_id, period);
+      // Vienen de la más reciente a la más vieja: se queda la más reciente.
+      if (!group.membership) group.membership = m;
+    }
+  }
 
-      const cardNumber = profileUuidToCard.get(m.student_id) || students.find((s) => s.profileId === m.student_id)?.id;
-      if (!cardNumber) continue;
-
-      if (paidSet.has(`${cardNumber}|${period}`) || paidSet.has(`${m.student_id}|${period}`)) {
-        continue;
-      }
-      paidSet.add(`${cardNumber}|${period}`);
-      if (m.student_id) paidSet.add(`${m.student_id}|${period}`);
-
-      const student = students.find((s) => s.id === cardNumber || s.profileId === m.student_id);
-      const studentName = student?.name || cardNumber;
-      const amount = Number(m.price);
-
-      const dueDate = m.due_date || null;
-      let dateText = 'Sin fecha de vencimiento';
-      if (dueDate) {
-        const todayStr = new Date().toISOString().slice(0, 10);
-        dateText = `${dueDate < todayStr ? 'Venció' : 'Vence'} ${formatShortDate(dueDate)}`;
-      }
-
-      payments.push({
-        id: `MEM-${m.id.slice(0, 8)}`,
-        membershipId: m.id,
-        studentId: cardNumber,
-        studentUuid: m.student_id,
-        student: studentName,
-        month: formatPeriodMonth(period),
-        period,
-        amount: Number.isFinite(amount) ? amount : 0,
-        method: 'Pendiente',
-        reference: m.plan_name ? `Membresía: ${m.plan_name}` : '',
-        date: dateText,
-        paidAt: null,
-        dueDate,
-        status: 'Pendiente'
+  if (Array.isArray(rows)) {
+    for (const r of rows) {
+      // Inscripción y otros conceptos (migración 012) no son la mensualidad del mes:
+      // van aparte para no marcar el mes como pagado.
+      if (r.concept && r.concept !== 'mensualidad') continue;
+      const card = cardFor(r.student_id);
+      if (!card) continue;
+      const group = groupFor(card, r.student_id, r.period || 'Período actual');
+      group.abonos.push({
+        id: r.receipt_number || `REC-${r.id.slice(0, 8)}`,
+        remoteId: r.id,
+        amount: Number(r.amount) || 0,
+        method: r.payment_method || 'transferencia',
+        reference: r.notes || '',
+        paidAt: r.recorded_at?.slice(0, 10) || '',
+        date: r.recorded_at ? formatShortDate(r.recorded_at) : '',
+        key: r.idempotency_key || undefined
       });
     }
   }
 
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const payments = [];
+  for (const group of groups.values()) {
+    const { card, uuid, period, membership: m, abonos } = group;
+    const student = studentFor(card, uuid);
+    const paidAmount = Math.round(abonos.reduce((sum, item) => sum + item.amount, 0) * 100) / 100;
+    const price = m ? Number(m.price) : paidAmount;
+    const hasPrice = Number.isFinite(price) && price > 0;
+    // Sin cuota en la mensualidad, un pago basta (como antes de la 015).
+    const complete = abonos.length > 0 && (!hasPrice || cents(paidAmount) >= cents(price));
+    const last = abonos[abonos.length - 1];
+    const methods = [...new Set(abonos.map((item) => item.method))];
+    const dueDate = complete ? null : (m?.due_date || null);
+    let dateText = 'Sin fecha de vencimiento';
+    if (dueDate) dateText = `${dueDate < todayStr ? 'Venció' : 'Vence'} ${formatShortDate(dueDate)}`;
+
+    payments.push({
+      id: complete ? last.id : (m ? `MEM-${m.id.slice(0, 8)}` : last.id),
+      remoteId: complete ? last.remoteId : undefined,
+      membershipId: m?.id,
+      studentId: card,
+      studentUuid: uuid,
+      student: student?.name || card,
+      month: formatPeriodMonth(period),
+      period,
+      amount: hasPrice ? price : paidAmount,
+      paidAmount,
+      abonos,
+      method: complete ? (methods.length > 1 ? 'Varios' : methods[0]) : 'Pendiente',
+      reference: complete ? last.reference : (m?.plan_name ? `Membresía: ${m.plan_name}` : ''),
+      date: complete ? last.date : dateText,
+      paidAt: complete ? last.paidAt : null,
+      dueDate,
+      status: complete ? 'Pagado' : 'Pendiente'
+    });
+  }
+
+  // Lo más reciente primero, como antes.
+  payments.sort((a, b) => String(b.paidAt || b.period).localeCompare(String(a.paidAt || a.period)));
   return payments;
 }
 
@@ -1187,17 +1191,25 @@ export async function saveStudentAcademyData({ studentCardId, lastName, active, 
   if (classIds !== undefined) await syncRemoteEnrollments({ studentCardId, classIds });
 
   for (const period of paidPeriods) {
-    const existing = await db.get('payments', `student_id=eq.${studentUuid}&period=eq.${period}&select=id`);
-    if (existing.length) continue;
+    // Con abonos (migración 015) se registra solo lo que falta del mes.
+    const existing = await db.get('payments', `student_id=eq.${studentUuid}&period=eq.${period}&concept=eq.mensualidad&select=amount`);
+    const paid = existing.reduce((sum, row) => sum + Number(row.amount || 0), 0);
+    if (existing.length) {
+      // Ya tiene pagos ese mes: si cubren la cuota no se toca nada (ni el plan del mes).
+      const [current] = await db.get('memberships', `student_id=eq.${studentUuid}&period=eq.${period}&status=neq.cancelled&select=price&order=created_at.desc`);
+      if (!current || paid >= Number(current.price)) continue;
+    }
     const membership = await membershipForPeriod(studentUuid, period, planName, planPrice);
+    const remaining = Math.round((Number(membership.price) - paid) * 100) / 100;
+    if (remaining <= 0) continue;
     await db.rpc('register_payment_idempotent', {
       p_student_id: studentUuid,
       p_period: period,
-      p_amount: Number(membership.price),
+      p_amount: remaining,
       p_payment_method: 'Antes de la app',
       p_receipt_number: null,
       p_notes: 'Al día según la academia (Completar datos)',
-      p_idempotency_key: `carga-${studentUuid}-${period}`
+      p_idempotency_key: `carga-${studentUuid}-${period}${paid ? `-${Math.round(paid * 100)}` : ''}`
     });
   }
   return true;
