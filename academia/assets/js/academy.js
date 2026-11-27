@@ -5121,9 +5121,15 @@ function evaluateReconcileItems() {
     if (item.skip) continue;
     // La misma fila ya registrada (misma clave), aunque fuera con otro origen o a otro
     // alumno elegido a mano. Se avisa dónde quedó, sin cambiar el alumno ni el mes de la fila.
-    const loaded = byKey.get(item.key);
-    item.loadedSame = Boolean(loaded && loaded.pay.studentId === item.studentId && loaded.pay.period === item.period);
-    if (loaded) {
+    // Si la clave está en otro alumno o mes (una línea igual de otro listado), la fila no se
+    // bloquea: sale como posible repetido y, si se marca, se registra con su propia clave.
+    const sameAs = (entry) => Boolean(entry && entry.pay.studentId === item.studentId && entry.pay.period === item.period);
+    const primary = byKey.get(item.key);
+    const elsewhere = Boolean(primary && !sameAs(primary));
+    item.submitKey = elsewhere ? `${item.key}-x` : item.key;
+    const loaded = elsewhere ? (byKey.get(item.submitKey) || primary) : primary;
+    item.loadedSame = sameAs(loaded);
+    if (loaded && (item.loadedSame || !item.studentId)) {
       const registered = item.result?.ok && item.loadedSame;
       item.status = registered ? 'registrado' : 'ya_cargado';
       item.detail = registered ? 'Registrado.' : `Ya se registró: ${loaded.pay.student} · ${loaded.pay.studentId}, ${loaded.pay.month}.`;
@@ -5158,12 +5164,21 @@ function evaluateReconcileItems() {
       // completa; de otro listado, solo si es de la misma fecha).
       const reference = reconcileReference(item);
       const datePart = reconcileDatePart(item, r.period);
+      // Sin fecha ni referencia: la misma línea (nombre y monto) de un listado de otro mes.
+      const keyParts = reconcileKeyParts(item.key);
+      const sameLine = !reference && datePart.startsWith('M') && allAbonos.find(({ abono }) => {
+        const parts = reconcileKeyParts(abono.key);
+        return parts && abono.key !== item.key && parts[0] === keyParts[0] && parts[1] === keyParts[1] && String(parts[2]).startsWith('M');
+      });
       const sameRef = reference && refCount.get(reference) === 1 && allAbonos.find(({ abono }) => {
         const keyParts = reconcileKeyParts(abono.key);
         if (keyParts) return keyParts[0] === `R${reference}` && keyParts[2] === datePart;
         return referenceTokens(abono.reference).includes(reference);
       });
-      const twin = sameRef
+      const other = elsewhere ? primary : sameLine;
+      const twin = other
+        ? { amount: other.abono.amount, method: other.abono.method, date: `${other.pay.student} · ${other.pay.studentId}, ${other.pay.month}`, sameLine: true }
+        : sameRef
         ? { amount: sameRef.abono.amount, method: sameRef.abono.method, date: `${sameRef.abono.date || sameRef.abono.paidAt}, ${sameRef.pay.student}, ${sameRef.pay.month}`, sameRef: true }
         : abonosOf(existing).find((abono) => sameAmount(abono.amount, item.amount));
       if (balance <= 0) {
@@ -5174,7 +5189,9 @@ function evaluateReconcileItems() {
         detail = `Pasa del saldo de ${month} (Q ${formatAmount(balance)}). Regístralo a mano repartido.`;
       } else if (twin) {
         status = 'duplicado';
-        detail = twin.sameRef
+        detail = twin.sameLine
+          ? `Esta misma línea ya se registró: Q ${formatAmount(twin.amount)} a ${twin.date}. Márcalo solo si es otro pago.`
+          : twin.sameRef
           ? `La referencia ${item.reference} ya está en un pago de Q ${formatAmount(twin.amount)} (${twin.date}). Márcalo solo si es otro pago.`
           : `Ya tiene un abono igual: Q ${formatAmount(twin.amount)} por ${twin.method} (${twin.date || twin.paidAt}). Márcalo solo si es otro pago.`;
       } else if (sameAmount(item.amount, balance)) {
@@ -5408,7 +5425,8 @@ async function registerReconcileItems() {
   for (const item of chosen) {
     try {
       const prepared = preparePaymentRecord({ studentId: item.studentId, period: item.period, amount: item.amount, method: r.source, reference: item.notes });
-      prepared.abono.key = item.key;
+      const key = item.submitKey || item.key;
+      prepared.abono.key = key;
       if (isSupabaseConnected) {
         const server = await syncRemotePayment({
           studentCardId: item.studentId,
@@ -5417,7 +5435,7 @@ async function registerReconcileItems() {
           period: item.period,
           receiptNumber: null,
           notes: item.notes,
-          idempotencyKey: item.key
+          idempotencyKey: key
         });
         const confirmed = server.recordedAt ? new Date(server.recordedAt) : TODAY;
         Object.assign(prepared.abono, { id: server.id, amount: server.amount, method: server.method, reference: server.reference ?? item.notes, paidAt: dayKey(confirmed), date: shortDate(confirmed) });
