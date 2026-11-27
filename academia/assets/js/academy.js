@@ -5125,11 +5125,14 @@ function evaluateReconcileItems() {
     // bloquea: sale como posible repetido y, si se marca, se registra con su propia clave.
     const sameAs = (entry) => Boolean(entry && entry.pay.studentId === item.studentId && entry.pay.period === item.period);
     const primary = byKey.get(item.key);
-    const elsewhere = Boolean(primary && !sameAs(primary));
+    // La misma nota (origen, fecha, referencia y pagador) es la recarga del mismo listado,
+    // aunque esta vez se proponga otro alumno o mes: sigue «Ya cargado».
+    const sameLineAgain = Boolean(primary && primary.abono.reference === item.notes);
+    const elsewhere = Boolean(primary && !sameAs(primary) && !sameLineAgain);
     item.submitKey = elsewhere ? `${item.key}-x` : item.key;
     const loaded = elsewhere ? (byKey.get(item.submitKey) || primary) : primary;
     item.loadedSame = sameAs(loaded);
-    if (loaded && (item.loadedSame || !item.studentId)) {
+    if (loaded && (item.loadedSame || sameLineAgain || !item.studentId)) {
       const registered = item.result?.ok && item.loadedSame;
       item.status = registered ? 'registrado' : 'ya_cargado';
       item.detail = registered ? 'Registrado.' : `Ya se registró: ${loaded.pay.student} · ${loaded.pay.studentId}, ${loaded.pay.month}.`;

@@ -111,7 +111,9 @@ Se trabaja **siempre sobre esta misma app**: `academia/`, dentro de
    `CONC-R<referencia>-<centavos>-<fecha>` (o `CONC-H<huella del nombre>-…` sin referencia;
    sin fecha, `M<mes del listado>`; `-2`, `-3` si se repite en el listado), sin el origen:
    volver a cargar el mismo listado no duplica, y dos pagos con la misma referencia genérica
-   no chocan. Como referencia solo se adivinan autorización, boleta o referencia con un valor
+   no chocan. Una clave que ya está en otro alumno o mes con otra nota sale «¿Repetido?» y,
+   si se marca, se registra con `-x`; con la misma nota es la recarga del listado («Ya
+   cargado»). Como referencia solo se adivinan autorización, boleta o referencia con un valor
    distinto por fila (nunca «No.», «ID» ni la tarjeta). No lee .xlsx (sin dependencias).
 11. **Lo que no funciona con datos reales no se muestra como si funcionara.** Fuera de `?demo`
    no hay cupos (`capacityTag`) y Pases sale de la barra inferior y queda en el menú lateral
